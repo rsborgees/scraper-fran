@@ -28,14 +28,14 @@ async function runAllScrapers() {
 
                 const imgResult = await processProductUrl(p.url);
 
-                if (imgResult.status === 'success' && imgResult.path.length > 0) {
-                    // salva o caminho da imagem no produto
-                    p.imagePath = imgResult.path[0];
+                if (imgResult.status === 'success' && imgResult.cloudinary_urls.length > 0) {
+                    p.imagePath = imgResult.cloudinary_urls[0];
                     p.imageId = imgResult.id;
                     console.log(`   ✔️  Imagem salva: ${p.imagePath}`);
                 } else {
                     console.log(`   ⚠️  Não foi possível baixar imagem para esse produto.`);
                 }
+
             } catch (err) {
                 console.log(`   ❌ Erro ao baixar imagem: ${err.message}`);
             }
