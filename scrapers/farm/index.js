@@ -1,6 +1,7 @@
 const { initBrowser } = require('../../browser_setup');
 const fs = require('fs');
 const path = require('path');
+const { processProductUrl } = require('../../imageDownloader');
 
 /**
  * Scraper FARM - Isolado
@@ -41,11 +42,27 @@ async function scrapeFarm(quota = 84) {
         for (const url of candidates) {
             if (confirmedPromotions.length >= quota) break;
 
+            // 1. Image Download Integration
+            console.log(`🖼️  Baixando imagem...`);
+            let imagePath = null;
+            try {
+                const imgResult = await processProductUrl(url);
+                if (imgResult.status === 'success' && imgResult.path.length > 0) {
+                    imagePath = imgResult.path[0];
+                    console.log(`   ✔️  Imagem salva: ${imagePath}`);
+                } else {
+                    console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
+                }
+            } catch (err) {
+                console.log(`   ❌ Erro download imagem: ${err.message}`);
+            }
+
             const product = await parseProduct(url);
             if (product) {
                 // Adiciona campo 'loja' e 'desconto'
                 product.loja = 'farm';
                 product.desconto = product.precoOriginal - product.precoAtual;
+                product.imagePath = imagePath;
                 confirmedPromotions.push(product);
             }
         }

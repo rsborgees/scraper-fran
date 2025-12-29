@@ -1,6 +1,7 @@
 const { initBrowser } = require('../../browser_setup');
 const path = require('path');
 const fs = require('fs');
+const { processProductUrl } = require('../../imageDownloader');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -39,10 +40,26 @@ async function scrapeLive(quota = 6) {
         for (const url of productUrls) {
             if (products.length >= quota) break;
 
+            // 1. Image Download Integration
+            console.log(`🖼️  Baixando imagem...`);
+            let imagePath = null;
+            try {
+                const imgResult = await processProductUrl(url);
+                if (imgResult.status === 'success' && imgResult.path.length > 0) {
+                    imagePath = imgResult.path[0];
+                    console.log(`   ✔️  Imagem salva: ${imagePath}`);
+                } else {
+                    console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
+                }
+            } catch (err) {
+                console.log(`   ❌ Erro download imagem: ${err.message}`);
+            }
+
             const product = await parseProductLive(page, url);
             if (product) {
                 product.loja = 'live';
-                product.desconto = product.precoOriginal - product.precoAtual;
+                product.desconto = 0; // Explicitly 0
+                product.imagePath = imagePath;
                 products.push(product);
             }
         }
@@ -79,23 +96,7 @@ async function parseProductLive(page, url) {
             const nome = getSafeText(h1);
             if (!nome) return null;
 
-            // Preço original
-            const priceOldEl = document.querySelector('s, [class*="old"], [class*="de:"]');
-            if (!priceOldEl) return null;
-
-            const priceOldText = getSafeText(priceOldEl);
-            const matchOld = priceOldText.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-            if (!matchOld) return null;
-
-            let valStrOld = matchOld[1].replace(/\./g, '');
-            if (valStrOld.includes(',')) {
-                valStrOld = valStrOld.replace(',', '.');
-            } else {
-                valStrOld = valStrOld + '.00';
-            }
-            const precoOriginal = parseFloat(valStrOld);
-
-            // Preço à vista (ignorar parcelamento e "/")
+            // Preço Original SOMENTE (ignorar promoções)
             const allPrices = Array.from(document.querySelectorAll('*'))
                 .filter(el => el.children.length === 0 && getSafeText(el).includes('R$'))
                 .map(el => getSafeText(el));
@@ -116,16 +117,16 @@ async function parseProductLive(page, url) {
                         valStr = valStr + '.00';
                     }
                     const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0 && val < precoOriginal) {
+                    if (!isNaN(val) && val > 0) {
                         numericPrices.push(val);
                     }
                 }
             });
 
             if (numericPrices.length === 0) return null;
-            const precoAtual = Math.min(...numericPrices);
 
-            if (precoOriginal - precoAtual < 5) return null;
+            const precoOriginal = Math.max(...numericPrices);
+            const precoAtual = precoOriginal; // Force same price
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));

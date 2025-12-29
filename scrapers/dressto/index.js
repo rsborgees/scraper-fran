@@ -1,6 +1,7 @@
 const { initBrowser } = require('../../browser_setup');
 const path = require('path');
 const fs = require('fs');
+const { processProductUrl } = require('../../imageDownloader');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -38,10 +39,27 @@ async function scrapeDressTo(quota = 18) {
         for (const url of productUrls) {
             if (products.length >= quota) break;
 
+            // 1. Image Download Integration
+            console.log(`🖼️  Baixando imagem...`);
+            let imagePath = null;
+            try {
+                const imgResult = await processProductUrl(url);
+                if (imgResult.status === 'success' && imgResult.path.length > 0) {
+                    imagePath = imgResult.path[0];
+                    console.log(`   ✔️  Imagem salva: ${imagePath}`);
+                } else {
+                    console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
+                }
+            } catch (err) {
+                console.log(`   ❌ Erro download imagem: ${err.message}`);
+            }
+
+            // 2. Parse Product
             const product = await parseProductDressTo(page, url);
             if (product) {
                 product.loja = 'dressto';
-                product.desconto = product.precoOriginal - product.precoAtual;
+                product.desconto = 0; // Explicitly 0 as requested (no promo)
+                product.imagePath = imagePath;
                 products.push(product);
             }
         }
@@ -91,38 +109,34 @@ async function parseProductDressTo(page, url) {
             const nome = getSafeText(h1);
             if (!nome) return null;
 
-            // Preço original (riscado)
-            const priceOldEl = document.querySelector('s, [style*="line-through"]');
-            if (!priceOldEl) return null;
+            // Preço Original SOMENTE (ignorar promoções)
+            // Tenta pegar o preço principal exibido. Se tiver 'old', ignora e pega o 'old' como original? 
+            // "Capture APENAS o preço original exibido na página" -> Geralmente o maior valor se houver riscado, ou o único valor.
+            // DressTo markup: <s>Original</s> ... Current. Or just Current.
 
-            const priceOldText = getSafeText(priceOldEl);
-            const matchOld = priceOldText.match(/R\$\s*([\d\.]+,\d{2})/);
-            if (!matchOld) return null;
-
-            const precoOriginal = parseFloat(matchOld[1].replace(/\./g, '').replace(',', '.'));
-
-            // Preço atual
+            // Strategy: Get all prices, max price is likely original.
             const allPrices = Array.from(document.querySelectorAll('*'))
                 .filter(el => el.children.length === 0 && getSafeText(el).includes('R$'))
                 .map(el => getSafeText(el));
 
             const realPrices = allPrices.filter(txt => !/x\s*de|parcel|sem\s+juros/i.test(txt));
-
             const numericPrices = [];
+
             realPrices.forEach(txt => {
                 const match = txt.match(/R\$\s*([\d\.]+,\d{2})/);
                 if (match) {
                     const val = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
-                    if (!isNaN(val) && val > 0 && val < precoOriginal) {
-                        numericPrices.push(val);
-                    }
+                    if (!isNaN(val) && val > 0) numericPrices.push(val);
                 }
             });
 
             if (numericPrices.length === 0) return null;
-            const precoAtual = Math.min(...numericPrices);
 
-            if (precoOriginal <= precoAtual) return null;
+            // "Capture apenas o preço original" => Assuming this means the List Price.
+            // If there's a discount, List Price is Max. If no discount, Max == Min.
+            // So grabbing MAX price is safest to satisfy "Original Price".
+            const precoOriginal = Math.max(...numericPrices);
+            const precoAtual = precoOriginal; // Force same price (no promo logic)
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));

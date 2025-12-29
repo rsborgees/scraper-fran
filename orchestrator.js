@@ -4,6 +4,8 @@
  * Distribuição: FARM 84, Dress To 18, KJU 6, Live 6, ZZMall 6
  */
 
+const { processProductUrl } = require('./imageDownloader');
+
 async function runAllScrapers() {
     console.log('🚀 INICIANDO ORCHESTRATOR - 120 PRODUTOS TOTAL\n');
     console.log('Distribuição: FARM 70% (84), Dress To 15% (18), KJU/Live/ZZMall 5% cada (6)\n');
@@ -17,10 +19,36 @@ async function runAllScrapers() {
         zzmall: 6
     };
 
+    async function processImagesForProducts(products) {
+        for (const p of products) {
+            try {
+                if (!p.url) continue;
+
+                console.log(`🖼️  Baixando imagem de: ${p.url}`);
+
+                const imgResult = await processProductUrl(p.url);
+
+                if (imgResult.status === 'success' && imgResult.path.length > 0) {
+                    // salva o caminho da imagem no produto
+                    p.imagePath = imgResult.path[0];
+                    p.imageId = imgResult.id;
+                    console.log(`   ✔️  Imagem salva: ${p.imagePath}`);
+                } else {
+                    console.log(`   ⚠️  Não foi possível baixar imagem para esse produto.`);
+                }
+            } catch (err) {
+                console.log(`   ❌ Erro ao baixar imagem: ${err.message}`);
+            }
+        }
+
+        return products;
+    }
+
     // FARM
     try {
         const { scrapeFarm } = require('./scrapers/farm');
-        const farmProducts = await scrapeFarm(quotas.farm);
+        let farmProducts = await scrapeFarm(quotas.farm);
+        farmProducts = await processImagesForProducts(farmProducts);
         allProducts.push(...farmProducts);
         console.log(`✅ FARM completo: ${farmProducts.length} produtos\n`);
     } catch (error) {
@@ -30,7 +58,8 @@ async function runAllScrapers() {
     // Dress To
     try {
         const { scrapeDressTo } = require('./scrapers/dressto');
-        const dresstoProducts = await scrapeDressTo(quotas.dressto);
+        let dresstoProducts = await scrapeDressTo(quotas.dressto);
+        dresstoProducts = await processImagesForProducts(dresstoProducts);
         allProducts.push(...dresstoProducts);
         console.log(`✅ Dress To completo: ${dresstoProducts.length} produtos\n`);
     } catch (error) {
@@ -40,7 +69,8 @@ async function runAllScrapers() {
     // KJU
     try {
         const { scrapeKJU } = require('./scrapers/kju');
-        const kjuProducts = await scrapeKJU(quotas.kju);
+        let kjuProducts = await scrapeKJU(quotas.kju);
+        kjuProducts = await processImagesForProducts(kjuProducts);
         allProducts.push(...kjuProducts);
         console.log(`✅ KJU completo: ${kjuProducts.length} produtos\n`);
     } catch (error) {
@@ -50,7 +80,8 @@ async function runAllScrapers() {
     // Live
     try {
         const { scrapeLive } = require('./scrapers/live');
-        const liveProducts = await scrapeLive(quotas.live);
+        let liveProducts = await scrapeLive(quotas.live);
+        liveProducts = await processImagesForProducts(liveProducts);
         allProducts.push(...liveProducts);
         console.log(`✅ Live completo: ${liveProducts.length} produtos\n`);
     } catch (error) {
@@ -60,7 +91,8 @@ async function runAllScrapers() {
     // ZZMall
     try {
         const { scrapeZZMall } = require('./scrapers/zzmall');
-        const zzmallProducts = await scrapeZZMall(quotas.zzmall);
+        let zzmallProducts = await scrapeZZMall(quotas.zzmall);
+        zzmallProducts = await processImagesForProducts(zzmallProducts);
         allProducts.push(...zzmallProducts);
         console.log(`✅ ZZMall completo: ${zzmallProducts.length} produtos\n`);
     } catch (error) {
@@ -72,7 +104,6 @@ async function runAllScrapers() {
     console.log('==================================================');
     console.log(`Total de produtos: ${allProducts.length}/120`);
 
-    // Agrupa por loja
     const byStore = {};
     allProducts.forEach(p => {
         if (!byStore[p.loja]) byStore[p.loja] = 0;
