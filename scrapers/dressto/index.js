@@ -142,7 +142,8 @@ async function scrapeDressTo(quota = 18) {
 async function parseProductDressTo(page, url) {
     try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForTimeout(2000);
+        // Espera de estabilização extra para sites VTEX pesados
+        await page.waitForTimeout(4000);
 
         const data = await page.evaluate(() => {
             const getSafeText = (el) => {
@@ -186,17 +187,22 @@ async function parseProductDressTo(page, url) {
             const preco = Math.max(...numericPrices);
 
             // Tamanhos
-            const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));
-            const sizeRegex = /^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i;
+            const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
             const tamanhos = [];
 
             sizeEls.forEach(el => {
-                const txt = getSafeText(el).toUpperCase();
-                if (sizeRegex.test(txt)) {
+                let txt = getSafeText(el).toUpperCase();
+                // Limpeza: "TAMANHO P" -> "P", "TAM: 38" -> "38"
+                txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
+
+                const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
+                if (match) {
+                    const normalizedSize = match[0].toUpperCase();
                     const isDisabled = el.className.toLowerCase().includes('disable') ||
+                        el.className.toLowerCase().includes('unavailable') ||
                         el.getAttribute('aria-disabled') === 'true';
-                    if (!isDisabled && el.offsetWidth > 0) {
-                        tamanhos.push(txt);
+                    if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
+                        tamanhos.push(normalizedSize);
                     }
                 }
             });

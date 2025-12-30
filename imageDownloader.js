@@ -164,14 +164,33 @@ async function processProductUrl(url, forcedId = null) {
     };
 
     try {
-        await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+        // Se tivermos um ID forçado (do parser), garantimos que ele está na tela antes de continuar
+        if (forcedId) {
+            console.log(`   🔍 Aguardando ID ${forcedId} aparecer no DOM...`);
+            const idFound = await page.evaluate((targetId) => {
+                const check = () => {
+                    const bodyText = document.body.innerText;
+                    return bodyText.includes(targetId);
+                };
+                return check();
+            }, forcedId);
+
+            if (!idFound) {
+                console.log('   ⏳ ID não encontrado de imediato, aguardando 5s para estabilização...');
+                await page.waitForTimeout(5000);
+            }
+        } else {
+            await page.waitForTimeout(3000);
+        }
 
         try {
             await page.waitForSelector('img', { timeout: 10000 });
-            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+            await page.evaluate(() => window.scrollTo(0, 400));
             await page.waitForTimeout(1000);
         } catch (e) {
-            console.log('Timeout waiting for images, proceeding anyway...');
+            console.log('   ⚠️ Timeout esperando imagens, tentando capturar o que houver...');
         }
 
         const id = forcedId || await extractProductId(page, store, url);

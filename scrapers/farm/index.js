@@ -42,23 +42,25 @@ async function scrapeFarm(quota = 84) {
         for (const url of candidates) {
             if (confirmedPromotions.length >= quota) break;
 
-            // 1. Image Download Integration
-            console.log(`🖼️  Baixando imagem...`);
-            let imagePath = null;
-            try {
-                const imgResult = await processProductUrl(url);
-                if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
-                    imagePath = imgResult.cloudinary_urls[0];
-                    console.log(`   ✔️  Imagem salva: ${imagePath}`);
-                } else {
-                    console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
-                }
-            } catch (err) {
-                console.log(`   ❌ Erro download imagem: ${err.message}`);
-            }
-
+            // 1. Parse Product PRIMEIRO para garantir que estamos na página certa e ter o ID
             const product = await parseProduct(url);
+
             if (product) {
+                // 2. Image Download Integration (usando o ID já extraído)
+                console.log(`\n🖼️  Baixando imagem com ID: ${product.id}...`);
+                let imagePath = null;
+                try {
+                    const imgResult = await processProductUrl(url, product.id);
+                    if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                        imagePath = imgResult.cloudinary_urls[0];
+                        console.log(`   ✔️  Imagem salva: ${imagePath}`);
+                    } else {
+                        console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
+                    }
+                } catch (err) {
+                    console.log(`   ❌ Erro download imagem: ${err.message}`);
+                }
+
                 // Adiciona field 'url' com parâmetros de vendedora
                 const sellerParams = 'utm_campaign=7b1313&utm_source=vendedoras&utm_medium=organico';
                 product.url = url.includes('?') ? `${url}&${sellerParams}` : `${url}?${sellerParams}`;

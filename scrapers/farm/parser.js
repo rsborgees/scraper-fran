@@ -173,34 +173,49 @@ async function parseProduct(url) {
                 return { error: `Desconto insuficiente (R$${desconto.toFixed(2)})`, debugInfo };
             }
 
-            // 4. TAMANHOS
+            // 4. TAMANHOS (Sincronização Refinada)
             const sizeSelectors = [
                 '.vtex-store-components-3-x-skuSelectorItem',
                 'div[class*="skuSelector"]',
+                '.size-item',
+                'button',
                 'label'
             ];
 
             const potentialSizes = Array.from(document.querySelectorAll(sizeSelectors.join(',')));
             const validSizes = [];
-            const sizeRegex = /^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i;
+            // Regex mais flexível: permite "Tamanho P", "Tam: 38", etc.
+            const sizePattern = /\b(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])\b/i;
 
             potentialSizes.forEach(el => {
-                const txt = getSafeText(el).toUpperCase();
-                if (!sizeRegex.test(txt)) return;
+                let txt = getSafeText(el).toUpperCase();
+                // Limpeza básica
+                txt = txt.replace(/TAMANHO|TAM|[:]/g, '').trim();
+
+                // Pega apenas o primeiro "token" que pareça um tamanho
+                const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
+                if (!match) return;
+
+                const normalizedSize = match[0].toUpperCase();
 
                 const classStr = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
                 const isDisabled = classStr.includes('unavailable') ||
                     classStr.includes('disable') ||
+                    classStr.includes('after:bg-white') || // Padrão Farm para riscado
                     el.getAttribute('aria-disabled') === 'true';
 
-                const isVisible = (el.offsetWidth > 0);
+                const isVisible = (el.offsetWidth > 0 || el.offsetHeight > 0);
 
                 if (!isDisabled && isVisible) {
-                    validSizes.push(txt);
+                    validSizes.push(normalizedSize);
                 }
             });
 
             const uniqueSizes = [...new Set(validSizes)];
+            // Se não achou em seletores específicos, tenta uma busca bruta no body
+            if (uniqueSizes.length === 0) {
+                // ... fallback se necessário, mas os seletores acima cobrem quase tudo
+            }
             if (uniqueSizes.length === 0) return { error: 'Sem tamanhos habilitados', debugInfo };
 
             // 5. CATEGORIA (INFERÊNCIA INTELIGENTE)

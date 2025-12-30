@@ -40,23 +40,25 @@ async function scrapeZZMall(quota = 6) {
         for (const url of productUrls) {
             if (products.length >= quota) break;
 
-            // 1. Image Download Integration
-            console.log(`🖼️  Baixando imagem...`);
-            let imagePath = null;
-            try {
-                const imgResult = await processProductUrl(url);
-                if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
-                    imagePath = imgResult.cloudinary_urls[0];
-                    console.log(`   ✔️  Imagem salva: ${imagePath}`);
-                } else {
-                    console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
-                }
-            } catch (err) {
-                console.log(`   ❌ Erro download imagem: ${err.message}`);
-            }
-
+            // Parse Product PRIMEIRO para garantir dados consistentes
             const product = await parseProductZZMall(page, url);
+
             if (product) {
+                // Image Download Integration (usando o ID já extraído)
+                console.log(`🖼️  Baixando imagem com ID: ${product.id}...`);
+                let imagePath = null;
+                try {
+                    const imgResult = await processProductUrl(url, product.id);
+                    if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                        imagePath = imgResult.cloudinary_urls[0];
+                        console.log(`   ✔️  Imagem salva: ${imagePath}`);
+                    } else {
+                        console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
+                    }
+                } catch (err) {
+                    console.log(`   ❌ Erro download imagem: ${err.message}`);
+                }
+
                 // Adiciona parâmetro de influenciadora
                 product.url = url.includes('?') ? `${url}&influ=cupomdafran` : `${url}?influ=cupomdafran`;
 
@@ -133,27 +135,34 @@ async function parseProductZZMall(page, url) {
             const preco = Math.max(...numericPrices);
 
             // Tamanhos
-            const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));
-            const sizeRegex = /^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i;
+            const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
             const tamanhos = [];
 
             sizeEls.forEach(el => {
-                const txt = getSafeText(el).toUpperCase();
-                if (sizeRegex.test(txt)) {
+                let txt = getSafeText(el).toUpperCase();
+                // Limpeza: "TAMANHO P" -> "P", "TAM: 38" -> "38"
+                txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
+
+                const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
+                if (match) {
+                    const normalizedSize = match[0].toUpperCase();
                     const isDisabled = el.className.toLowerCase().includes('disable') ||
+                        el.className.toLowerCase().includes('unavailable') ||
                         el.getAttribute('aria-disabled') === 'true';
-                    if (!isDisabled && el.offsetWidth > 0) {
-                        tamanhos.push(txt);
+                    if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
+                        tamanhos.push(normalizedSize);
                     }
                 }
             });
+            const uniqueTamanhos = [...new Set(tamanhos)];
 
             // Categoria
             let categoria = 'outros';
             if (bodyText.includes('vestido')) categoria = 'vestido';
-            else if (bodyText.includes('sapato') || bodyText.includes('calçado')) categoria = 'calçado';
-            else if (bodyText.includes('bolsa')) categoria = 'acessório';
-            else if (bodyText.includes('blusa')) categoria = 'blusa';
+            else if (bodyText.includes('sapato') || bodyText.includes('calçado') || bodyText.includes('tênis') || bodyText.includes('rasteira') || bodyText.includes('sandália')) categoria = 'calçado';
+            else if (bodyText.includes('bolsa') || bodyText.includes('carteira') || bodyText.includes('cinto') || bodyText.includes('acessório')) categoria = 'acessório';
+            else if (bodyText.includes('blusa') || bodyText.includes('top') || bodyText.includes('regata')) categoria = 'blusa';
+            else if (bodyText.includes('macacão') || bodyText.includes('macaquinho')) categoria = 'macacão';
 
             // ID
             let id = 'unknown';

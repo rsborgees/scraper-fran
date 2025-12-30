@@ -30,69 +30,53 @@ async function checkFarmTimer() {
         const timerData = await page.evaluate(() => {
             const getSafeText = (el) => el ? (el.innerText || el.textContent || '').trim() : '';
 
-            // 1. Tenta padrão de texto HH:MM:SS ou HHh MMm SSs
+            // 1. Busca o Container do Timer (Classe específica da Farm)
+            const timerBanner = document.querySelector('.campaign-timer-above-header, .campaign-timer, [class*="timer-above-header"]');
+            const bannerText = timerBanner ? timerBanner.innerText : '';
             const bodyText = document.body.innerText;
-            const hmsMatch = bodyText.match(/(\d{1,2})[:h]\s*(\d{2})[:m]\s*(\d{2})[s]?/i);
 
+            // 2. Busca o Tempo (HH:MM:SS)
+            // Tenta primeiro no banner específico com regex flexível, depois no body todo
+            const timeRegex = /\b(\d{1,2})\s*[:h]?\s*(\d{1,2})\s*[:m]?\s*(\d{1,2})\s*s?\b/i;
             let timeStr = null;
-            if (hmsMatch) {
-                timeStr = `${hmsMatch[1].padStart(2, '0')}:${hmsMatch[2]}:${hmsMatch[3]}`;
-            } else {
-                // 2. Tenta buscar via variáveis CSS (padrão DaisyUI/Tailwind comum na Farm)
+
+            const timeMatch = (bannerText.match(timeRegex)) || (bodyText.match(timeRegex));
+            if (timeMatch) {
+                timeStr = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2].padStart(2, '0')}:${timeMatch[3].padStart(2, '0')}`;
+            }
+
+            // Fallback via variáveis CSS (DaisyUI/Tailwind)
+            if (!timeStr) {
                 const countdownSpans = Array.from(document.querySelectorAll('.countdown > span, [style*="--value"]'));
                 if (countdownSpans.length >= 2) {
                     const values = countdownSpans.map(s => {
                         const val = getComputedStyle(s).getPropertyValue('--value').trim();
                         return val || null;
                     }).filter(v => v !== null && v !== '');
-
                     if (values.length >= 2) {
                         timeStr = values.map(v => v.padStart(2, '0')).join(':');
-                        if (values.length === 2) timeStr = `00:${timeStr}`; // Adiciona horas se vier apenas MM:SS
+                        if (values.length === 2) timeStr = `00:${timeStr}`;
                     }
                 }
             }
 
             if (!timeStr) return null;
 
-            // 3. Busca desconto ou cupom (QUERO25, 20% OFF, etc)
-            // Prioriza elementos no TOPO da página que contenham "tic-tac" e uma porcentagem
-            const allElements = Array.from(document.querySelectorAll('*'));
-            const ticTacBanner = allElements.find(el => {
-                const text = (el.innerText || '').toLowerCase();
-                if (text.includes('tic-tac') && /\d+%/.test(text) && el.children.length < 10) {
-                    const rect = el.getBoundingClientRect();
-                    // O banner tic-tac é fixo no topo ou fica no início da página
-                    return rect.top < 250 && rect.height > 0;
-                }
-                return false;
-            });
+            // 3. Busca Desconto ancorado na palavra "tic-tac"
+            let discountText = '25% OFF'; // Fallback padrão da campanha atual
 
-            let discountText = 'Desconto Ativo';
+            // Busca específica por "tic-tac: XX%OFF"
+            const ticTacMatch = (bannerText.match(/tic-tac[:]?\s*(\d+%\s*(?:OFF)?)/i)) ||
+                (bodyText.match(/tic-tac[:]?\s*(\d+%\s*(?:OFF)?)/i));
 
-            if (ticTacBanner) {
-                const text = ticTacBanner.innerText;
-                const match = text.match(/(\d+%\s*OFF)/i) || text.match(/(\d+%)/);
-                if (match) {
-                    discountText = match[1].includes('OFF') ? match[1] : match[1] + ' OFF';
-                }
+            if (ticTacMatch) {
+                discountText = ticTacMatch[1].trim().toUpperCase();
+                if (!discountText.includes('OFF')) discountText += ' OFF';
+                discountText = discountText.replace(/(\d+%)OFF/, '$1 OFF');
             } else {
-                // Fallback de segurança: Busca padrão no body mas que comece com tic-tac
-                const bodyMatch = bodyText.match(/tic-tac:\s*(\d+%\s*OFF)/i);
-                if (bodyMatch) discountText = bodyMatch[1];
-            }
-
-            // Adiciona o Cupom se encontrado (REMOVIDO A PEDIDO - Mantendo apenas % OFF)
-            /*
-            const couponMatch = bodyText.match(/QUERO\d+/i);
-            if (couponMatch && !discountText.includes(couponMatch[0])) {
-                discountText = `${discountText} (Cupom: ${couponMatch[0]})`;
-            }
-            */
-
-            // Se ainda for o 10% OFF fantasma, força a busca por algo maior se houver 25% na página
-            if (discountText.includes('10%') && bodyText.includes('25%')) {
-                discountText = '25% OFF';
+                // Outro padrão comum: "XX% OFF NO TIC-TAC"
+                const reverseMatch = bodyText.match(/(\d+%\s*OFF)\s*(?:NO)?\s*TIC-TAC/i);
+                if (reverseMatch) discountText = reverseMatch[1].toUpperCase();
             }
 
             return {

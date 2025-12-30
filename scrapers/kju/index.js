@@ -88,16 +88,15 @@ async function scrapeKJU(quota = 6) {
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             }
 
-            // Parse Product
+            // Parse Product PRIMEIRO para garantir que estamos na página certa
             const product = await parseProductKJU(page, url);
 
             if (product && product.nome && !product.nome.includes('LANÇAMENTO')) {
-                // 1. Image Download Integration (Agora com ID pronto)
-                console.log(`   🖼️  Baixando imagem...`);
+                // Image Download Integration (usando o ID já extraído)
+                console.log(`   🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
                 try {
-                    // Passando o ID para o imageDownloader se necessário (ou deixando ele se virar)
-                    const imgResult = await processProductUrl(url);
+                    const imgResult = await processProductUrl(url, product.id);
                     if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
                         imagePath = imgResult.cloudinary_urls[0];
                         console.log(`      ✔️  Imagem salva: ${imagePath}`);
@@ -195,21 +194,29 @@ async function parseProductKJU(page, url) {
             const preco = precoMin;
             const preco_original = precoMax;
 
-            // Tamanhos (para classificar)
-            const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));
-            const sizeRegex = /^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i;
+            // Tamanhos
+            const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
             const tamanhos = [];
 
             sizeEls.forEach(el => {
-                const txt = getSafeText(el).toUpperCase();
-                if (sizeRegex.test(txt)) {
+                let txt = getSafeText(el).toUpperCase();
+                // Limpeza: "TAMANHO P" -> "P", "TAM: 38" -> "38"
+                txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
+
+                const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
+                if (match) {
+                    const normalizedSize = match[0].toUpperCase();
                     const isDisabled = el.className.toLowerCase().includes('disable') ||
+                        el.className.toLowerCase().includes('unavailable') ||
                         el.getAttribute('aria-disabled') === 'true';
-                    if (!isDisabled && el.offsetWidth > 0) {
-                        tamanhos.push(txt);
+                    if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
+                        tamanhos.push(normalizedSize);
                     }
                 }
             });
+
+            // Deduplicação final
+            const uniqueTamanhos = [...new Set(tamanhos)];
 
             // Classificação: com tamanhos = roupa, sem tamanhos = acessório
             const categoria = tamanhos.length > 0 ? 'roupa' : 'acessório';
