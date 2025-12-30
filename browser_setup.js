@@ -4,18 +4,23 @@ const { chromium } = require('playwright');
  * Inicializa o navegador Chromium com configurações específicas.
  * 
  * Requisitos atendidos:
- * - Chromium launch com headless: false e slowMo: 50
+ * - Chromium launch com headless: true e flags de segurança
  * - Viewport 1280x800
  * - User Agent realista
  * - Criação de contexto persistente
  * @returns {Promise<{browser: import('playwright').Browser, context: import('playwright').BrowserContext, page: import('playwright').Page}>}
  */
 async function initBrowser() {
-    console.log('Iniciando navegador Chromium (Non-Headless)...');
+    console.log('Iniciando navegador Chromium (Headless)...');
 
     const browser = await chromium.launch({
-        headless: false, // OBRIGATÓRIO: Modo visível
-        slowMo: 50,      // OBRIGATÓRIO: Ação mais humana
+        headless: true, // MUDANÇA: Necessário para rodar no Easypanel (Linux/Docker)
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled'
+        ]
     });
 
     const context = await browser.newContext({

@@ -132,7 +132,8 @@ async function processProductUrl(url) {
         args: [
             '--disable-blink-features=AutomationControlled',
             '--no-sandbox',
-            '--disable-setuid-sandbox'
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
         ]
     });
 
