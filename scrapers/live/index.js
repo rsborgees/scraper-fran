@@ -45,8 +45,8 @@ async function scrapeLive(quota = 6) {
             let imagePath = null;
             try {
                 const imgResult = await processProductUrl(url);
-                if (imgResult.status === 'success' && imgResult.path.length > 0) {
-                    imagePath = imgResult.path[0];
+                if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                    imagePath = imgResult.cloudinary_urls[0];
                     console.log(`   ✔️  Imagem salva: ${imagePath}`);
                 } else {
                     console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
@@ -125,8 +125,8 @@ async function parseProductLive(page, url) {
 
             if (numericPrices.length === 0) return null;
 
-            const precoOriginal = Math.max(...numericPrices);
-            const precoAtual = precoOriginal; // Force same price
+            // Apenas UM preço (o máximo encontrado)
+            const preco = Math.max(...numericPrices);
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));
@@ -154,8 +154,7 @@ async function parseProductLive(page, url) {
 
             return {
                 nome,
-                precoOriginal,
-                precoAtual,
+                preco,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href
@@ -163,7 +162,7 @@ async function parseProductLive(page, url) {
         });
 
         if (data) {
-            console.log(`✅ Live: ${data.nome} | R$${data.precoOriginal}->R$${data.precoAtual}`);
+            console.log(`✅ Live: ${data.nome} | R$${data.preco}`);
         }
 
         return data;

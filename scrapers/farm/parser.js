@@ -86,38 +86,68 @@ async function parseProduct(url) {
             }
 
             // 3. PREÇO ATUAL (BUSCA INTELIGENTE)
-            // Procura por elementos visíveis com R$ que NÃO sejam:
-            // - #list-price (já capturado)
-            // - parcelamento
-            const allEls = Array.from(document.querySelectorAll('*'));
-            const priceCandidates = allEls.filter(el => {
-                if (el.children.length > 0) return false;
-                if (el.id === 'list-price') return false; // Ignora o original
+            // Prioridade: Elementos no mesmo container que o #list-price
+            let currentPrices = [];
 
-                const txt = getSafeText(el);
-                if (!txt || !txt.includes('R$')) return false;
+            if (listPriceEl) {
+                const container = listPriceEl.closest('div, p, span.vtex-product-price-1-x-price-list');
+                if (container) {
+                    const localPrices = Array.from(container.querySelectorAll('*'))
+                        .filter(el => {
+                            if (el.children.length > 0) return false;
+                            if (el.id === 'list-price') return false;
+                            const txt = getSafeText(el);
+                            return txt && txt.includes('R$') && !/x\s*de|parcel|sem\s*juros|ou\s+\d+x/i.test(txt);
+                        });
 
-                // Filtro de parcelamento
-                if (/x\s*de\s*R\$|parcel|sem\s+juros|ou\s+\d+x/i.test(txt)) return false;
-
-                const isVisible = (el.offsetWidth > 0 && el.offsetHeight > 0);
-                return isVisible;
-            });
-
-            const currentPrices = [];
-            priceCandidates.forEach(el => {
-                const txt = getSafeText(el);
-                const match = txt.match(/R\$\s*([\d\.]+,\d{2})/);
-                if (match) {
-                    const valStr = match[1].replace(/\./g, '').replace(',', '.');
-                    const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0) {
-                        currentPrices.push(val);
-                    }
+                    localPrices.forEach(el => {
+                        const txt = getSafeText(el);
+                        const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                        if (match) {
+                            let valStr = match[1].replace(/\./g, '');
+                            if (valStr.includes(',')) valStr = valStr.replace(',', '.');
+                            else valStr = valStr + '.00';
+                            const val = parseFloat(valStr);
+                            if (!isNaN(val) && val > 0 && val < precoOriginal) {
+                                currentPrices.push(val);
+                            }
+                        }
+                    });
                 }
-            });
+            }
 
-            // Remove duplicatas e pega o menor (geralmente é o preço à vista)
+            // Fallback: Busca global se não encontrou no container
+            if (currentPrices.length === 0) {
+                const allEls = Array.from(document.querySelectorAll('*'));
+                const priceCandidates = allEls.filter(el => {
+                    if (el.children.length > 0) return false;
+                    if (el.id === 'list-price') return false;
+                    const txt = getSafeText(el);
+                    if (!txt || !txt.includes('R$')) return false;
+                    if (/x\s*de\s*R\$|parcel|sem\s+juros|ou\s+\d+x/i.test(txt)) return false;
+                    return (el.offsetWidth > 0 && el.offsetHeight > 0);
+                });
+
+                priceCandidates.forEach(el => {
+                    const txt = getSafeText(el);
+                    const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                    if (match) {
+                        let valStr = match[1].replace(/\./g, '');
+                        if (valStr.includes(',')) valStr = valStr.replace(',', '.');
+                        else valStr = valStr + '.00';
+                        const val = parseFloat(valStr);
+                        if (!isNaN(val) && val > 0) {
+                            // Se tiver precoOriginal, o atual tem que ser menor
+                            if (!precoOriginal || val < precoOriginal) {
+                                currentPrices.push(val);
+                            }
+                        }
+                    }
+                });
+            }
+
+            // O preço atual é o primeiro encontrado no container (que geralmente é o selling price)
+            // Se houver múltiplos, pegamos o menor para ser conservador
             const uniqueCurrentPrices = [...new Set(currentPrices)].sort((a, b) => a - b);
             const precoAtual = uniqueCurrentPrices.length > 0 ? uniqueCurrentPrices[0] : null;
 

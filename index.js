@@ -8,7 +8,7 @@ const { runAllScrapers } = require('./orchestrator');
 
 (async () => {
     console.log('═══════════════════════════════════════════════════');
-    console.log('🛍️  SISTEMA MULTI-LOJA DE PROMOÇÕES');
+    console.log('  SISTEMA MULTI-LOJA DE PROMOÇÕES');
     console.log('═══════════════════════════════════════════════════\n');
 
     const allProducts = await runAllScrapers();

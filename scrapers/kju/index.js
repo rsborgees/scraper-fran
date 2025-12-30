@@ -25,43 +25,96 @@ async function scrapeKJU(quota = 6) {
 
         await page.waitForTimeout(3000);
 
-        // Screenshot
-        if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
-        await page.screenshot({ path: path.join(DEBUG_DIR, 'kju_list.png') });
-
-        // Coleta URLs de produtos
-        const productUrls = await page.evaluate(() => {
-            const links = Array.from(document.querySelectorAll('a[href*="/produto"], a[href*="/p/"]'));
-            return [...new Set(links.map(a => a.href).filter(url => url.includes('/p')))];
+        // 📜 Rolagem lenta e parcial (3 viewports)
+        console.log('   📜 Rolando página suavemente (parcial)...');
+        await page.evaluate(async () => {
+            const distance = 100;
+            const delay = 400;
+            const maxScrolls = 20; // Aproximadamente 2-3 telas
+            for (let i = 0; i < maxScrolls; i++) {
+                window.scrollBy(0, distance);
+                await new Promise(r => setTimeout(r, delay));
+            }
         });
+        await page.waitForTimeout(2000);
 
-        console.log(`Encontrados ${productUrls.length} produtos candidatos`);
+        // Screenshot DEBUG
+        if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
+        await page.screenshot({ path: path.join(DEBUG_DIR, 'kju_list_refined.png') });
+
+        // Identifica seletores de cards de produtos
+        const productSelector = '.prod a';
+
+        // Coleta URLs de produtos (flat structure na KJU)
+        const productUrls = await page.evaluate((sel) => {
+            const links = Array.from(document.querySelectorAll(sel));
+            return [...new Set(links.map(a => a.href))]
+                .filter(url => {
+                    const path = new URL(url).pathname;
+                    if (path === '/' || path === '') return false;
+
+                    // Filtra links que parecem ser de produtos (longos e sem palavras de sistema/categoria)
+                    const isSystem = ['/carrinho', '/checkout', '/conta', '/atendimento', '/politica', '/troca', '/ajuda', '/contato', '/quem-somos'].some(s => path.includes(s));
+                    const isCategory = ['/categoria/', '/selo/', '/colecao/', '/novidades/', '/loja/', '/acessorios/'].some(s => path.includes(s));
+                    const isLongEnough = path.length > 20; // Produtos reais têm nomes descritivos longos
+                    return !isSystem && !isCategory && isLongEnough;
+                });
+        }, productSelector);
+
+        console.log(`   🔎 Encontrados ${productUrls.length} produtos na listagem.`);
 
         for (const url of productUrls) {
             if (products.length >= quota) break;
 
+            console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
+
+            // Simula o clique/interação
+            try {
+                const relativePath = new URL(url).pathname;
+                const element = await page.$(`.prod a[href*="${relativePath}"]`);
+                if (element) {
+                    console.log(`   🖱️  Clicando no elemento do produto...`);
+                    await element.scrollIntoViewIfNeeded();
+                    await page.waitForTimeout(500);
+                    await element.click();
+                    // Espera carregar a página do produto
+                    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
+                } else {
+                    console.log(`   🔗 Elemento não encontrado diretamente, navegando via URL...`);
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                }
+            } catch (err) {
+                console.log(`   ⚠️ Falha na interação: ${err.message}`);
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            }
+
             // 1. Image Download Integration
-            console.log(`🖼️  Baixando imagem...`);
+            console.log(`   🖼️  Baixando imagem...`);
             let imagePath = null;
             try {
                 const imgResult = await processProductUrl(url);
-                if (imgResult.status === 'success' && imgResult.path.length > 0) {
-                    imagePath = imgResult.path[0];
-                    console.log(`   ✔️  Imagem salva: ${imagePath}`);
-                } else {
-                    console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
+                if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                    imagePath = imgResult.cloudinary_urls[0];
+                    console.log(`      ✔️  Imagem salva: ${imagePath}`);
                 }
             } catch (err) {
-                console.log(`   ❌ Erro download imagem: ${err.message}`);
+                console.log(`      ❌ Erro imagem: ${err.message}`);
             }
 
+            // Parse Product
             const product = await parseProductKJU(page, url);
-            if (product) {
+
+            if (product && product.nome && !product.nome.includes('LANÇAMENTO')) {
                 product.loja = 'kju';
-                product.desconto = 0; // Explicitly 0
+                product.desconto = 0;
                 product.imagePath = imagePath;
                 products.push(product);
             }
+
+            // Volta para a lista
+            await page.goto('https://www.kjubrasil.com/?ref=7B1313', { waitUntil: 'domcontentloaded' });
+            await page.evaluate(() => window.scrollBy(0, 800));
+            await page.waitForTimeout(1000);
         }
 
     } catch (error) {
@@ -119,8 +172,8 @@ async function parseProductKJU(page, url) {
 
             if (numericPrices.length === 0) return null;
 
-            const precoOriginal = Math.max(...numericPrices);
-            const precoAtual = precoOriginal; // Force same price
+            // Apenas UM preço (o máximo encontrado)
+            const preco = Math.max(...numericPrices);
 
             // Tamanhos (para classificar)
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));
@@ -143,8 +196,7 @@ async function parseProductKJU(page, url) {
 
             return {
                 nome,
-                precoOriginal,
-                precoAtual,
+                preco,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href
@@ -152,7 +204,7 @@ async function parseProductKJU(page, url) {
         });
 
         if (data) {
-            console.log(`✅ KJU: ${data.nome} | R$${data.precoOriginal}->R$${data.precoAtual} (${data.categoria})`);
+            console.log(`✅ KJU: ${data.nome} | R$${data.preco} (${data.categoria})`);
         }
 
         return data;

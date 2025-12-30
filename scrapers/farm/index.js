@@ -47,8 +47,8 @@ async function scrapeFarm(quota = 84) {
             let imagePath = null;
             try {
                 const imgResult = await processProductUrl(url);
-                if (imgResult.status === 'success' && imgResult.path.length > 0) {
-                    imagePath = imgResult.path[0];
+                if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                    imagePath = imgResult.cloudinary_urls[0];
                     console.log(`   ✔️  Imagem salva: ${imagePath}`);
                 } else {
                     console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
@@ -68,6 +68,7 @@ async function scrapeFarm(quota = 84) {
         }
     }
 
+
     // Deduplicação
     const uniquePromotions = [];
     const seenUrls = new Set();
@@ -81,13 +82,18 @@ async function scrapeFarm(quota = 84) {
 
     // Aplicar cotas internas (65% vestido, 15% macacão, etc)
     const quotas = {
-        'vestido': Math.floor(quota * 0.65),
-        'macacão': Math.floor(quota * 0.15),
-        'saia': Math.floor(quota * 0.05),
-        'short': Math.floor(quota * 0.05),
-        'blusa': Math.floor(quota * 0.05),
-        'acessório': Math.floor(quota * 0.05)
+        'vestido': Math.round(quota * 0.65),
+        'macacão': Math.round(quota * 0.15),
+        'saia': Math.round(quota * 0.05),
+        'short': Math.round(quota * 0.05),
+        'blusa': Math.round(quota * 0.05),
+        'acessório': Math.round(quota * 0.05)
     };
+
+    // Ajuste fino para garantir que a soma das cotas seja igual à quota total
+    let totalQuotas = Object.values(quotas).reduce((a, b) => a + b, 0);
+    if (totalQuotas < quota) quotas['vestido'] += (quota - totalQuotas);
+    if (totalQuotas > quota) quotas['vestido'] -= (totalQuotas - quota);
 
     const byCategory = {};
     uniquePromotions.forEach(p => {
@@ -104,7 +110,17 @@ async function scrapeFarm(quota = 84) {
         selectedProducts.push(...selected);
     });
 
+    // Se ainda não atingiu a quota total (por falta de produtos em categorias específicas)
+    // Preenche com o que sobrar de outras categorias
+    if (selectedProducts.length < quota) {
+        const remainingQuota = quota - selectedProducts.length;
+        const alreadySelectedUrls = new Set(selectedProducts.map(p => p.url));
+        const pool = uniquePromotions.filter(p => !alreadySelectedUrls.has(p.url));
+        selectedProducts.push(...pool.slice(0, remainingQuota));
+    }
+
     console.log(`\n✅ FARM: ${selectedProducts.length}/${quota} produtos capturados`);
+
 
     if (selectedProducts.length < quota) {
         console.warn(`⚠️ quota_not_reached: FARM (${selectedProducts.length}/${quota})`);

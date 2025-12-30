@@ -44,8 +44,8 @@ async function scrapeDressTo(quota = 18) {
             let imagePath = null;
             try {
                 const imgResult = await processProductUrl(url);
-                if (imgResult.status === 'success' && imgResult.path.length > 0) {
-                    imagePath = imgResult.path[0];
+                if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                    imagePath = imgResult.cloudinary_urls[0];
                     console.log(`   ✔️  Imagem salva: ${imagePath}`);
                 } else {
                     console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
@@ -135,8 +135,8 @@ async function parseProductDressTo(page, url) {
             // "Capture apenas o preço original" => Assuming this means the List Price.
             // If there's a discount, List Price is Max. If no discount, Max == Min.
             // So grabbing MAX price is safest to satisfy "Original Price".
-            const precoOriginal = Math.max(...numericPrices);
-            const precoAtual = precoOriginal; // Force same price (no promo logic)
+            // Apenas UM preço (o máximo encontrado)
+            const preco = Math.max(...numericPrices);
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));
@@ -164,8 +164,7 @@ async function parseProductDressTo(page, url) {
 
             return {
                 nome,
-                precoOriginal,
-                precoAtual,
+                preco,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href
@@ -173,7 +172,7 @@ async function parseProductDressTo(page, url) {
         });
 
         if (data) {
-            console.log(`✅ Dress To: ${data.nome} | R$${data.precoOriginal}->R$${data.precoAtual}`);
+            console.log(`✅ Dress To: ${data.nome} | R$${data.preco}`);
         }
 
         return data;
