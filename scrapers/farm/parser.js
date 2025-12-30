@@ -225,8 +225,22 @@ async function parseProduct(url) {
                 else if (bodyText.includes('calça')) category = 'calça';
             }
 
+            // 6. ID (Referência)
+            let id = 'unknown';
+            const refEl = document.querySelector('.vtex-product-identifier, .productReference, .vtex-product-identifier--product-reference');
+            if (refEl) {
+                const rawId = getSafeText(refEl).replace(/\D/g, '');
+                if (rawId.length >= 6) id = rawId.substring(0, 6);
+                else id = rawId;
+            } else {
+                // Fallback URL: tenta pegar os primeiros 6 dígitos do SKU
+                const urlMatch = window.location.href.match(/(\d{6,})/);
+                if (urlMatch) id = urlMatch[1].substring(0, 6);
+            }
+
             return {
                 data: {
+                    id: id,
                     nome: name,
                     precoOriginal: precoOriginal,
                     precoAtual: precoAtual,

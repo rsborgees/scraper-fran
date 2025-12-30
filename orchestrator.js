@@ -19,36 +19,10 @@ async function runAllScrapers() {
         zzmall: 6
     };
 
-    async function processImagesForProducts(products) {
-        for (const p of products) {
-            try {
-                if (!p.url) continue;
-
-                console.log(`🖼️  Baixando imagem de: ${p.url}`);
-
-                const imgResult = await processProductUrl(p.url);
-
-                if (imgResult.status === 'success' && imgResult.cloudinary_urls.length > 0) {
-                    p.imagePath = imgResult.cloudinary_urls[0];
-                    p.imageId = imgResult.id;
-                    console.log(`   ✔️  Imagem salva: ${p.imagePath}`);
-                } else {
-                    console.log(`   ⚠️  Não foi possível baixar imagem para esse produto.`);
-                }
-
-            } catch (err) {
-                console.log(`   ❌ Erro ao baixar imagem: ${err.message}`);
-            }
-        }
-
-        return products;
-    }
-
     // FARM
     try {
         const { scrapeFarm } = require('./scrapers/farm');
         let farmProducts = await scrapeFarm(quotas.farm);
-        farmProducts = await processImagesForProducts(farmProducts);
         allProducts.push(...farmProducts);
         console.log(`✅ FARM completo: ${farmProducts.length} produtos\n`);
     } catch (error) {
@@ -59,7 +33,6 @@ async function runAllScrapers() {
     try {
         const { scrapeDressTo } = require('./scrapers/dressto');
         let dresstoProducts = await scrapeDressTo(quotas.dressto);
-        dresstoProducts = await processImagesForProducts(dresstoProducts);
         allProducts.push(...dresstoProducts);
         console.log(`✅ Dress To completo: ${dresstoProducts.length} produtos\n`);
     } catch (error) {
@@ -70,7 +43,6 @@ async function runAllScrapers() {
     try {
         const { scrapeKJU } = require('./scrapers/kju');
         let kjuProducts = await scrapeKJU(quotas.kju);
-        kjuProducts = await processImagesForProducts(kjuProducts);
         allProducts.push(...kjuProducts);
         console.log(`✅ KJU completo: ${kjuProducts.length} produtos\n`);
     } catch (error) {
@@ -81,7 +53,6 @@ async function runAllScrapers() {
     try {
         const { scrapeLive } = require('./scrapers/live');
         let liveProducts = await scrapeLive(quotas.live);
-        liveProducts = await processImagesForProducts(liveProducts);
         allProducts.push(...liveProducts);
         console.log(`✅ Live completo: ${liveProducts.length} produtos\n`);
     } catch (error) {
@@ -92,7 +63,6 @@ async function runAllScrapers() {
     try {
         const { scrapeZZMall } = require('./scrapers/zzmall');
         let zzmallProducts = await scrapeZZMall(quotas.zzmall);
-        zzmallProducts = await processImagesForProducts(zzmallProducts);
         allProducts.push(...zzmallProducts);
         console.log(`✅ ZZMall completo: ${zzmallProducts.length} produtos\n`);
     } catch (error) {

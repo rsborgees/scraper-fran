@@ -194,7 +194,19 @@ async function parseProductKJU(page, url) {
             // Classificação: com tamanhos = roupa, sem tamanhos = acessório
             const categoria = tamanhos.length > 0 ? 'roupa' : 'acessório';
 
+            // ID
+            let id = 'unknown';
+            const urlParts = window.location.pathname.split('-');
+            const potentialId = urlParts[urlParts.length - 1]; // Geralmente o ID está no final do slug
+            if (potentialId && !isNaN(potentialId)) {
+                id = potentialId;
+            } else {
+                const urlMatch = window.location.href.match(/(\d{5,})/);
+                if (urlMatch) id = urlMatch[1];
+            }
+
             return {
+                id,
                 nome,
                 preco,
                 tamanhos: [...new Set(tamanhos)],

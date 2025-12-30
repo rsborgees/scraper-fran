@@ -22,46 +22,87 @@ async function scrapeDressTo(quota = 18) {
             timeout: 45000
         });
 
-        await page.waitForTimeout(3000);
-
-        // Screenshot
-        if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
-        await page.screenshot({ path: path.join(DEBUG_DIR, 'dressto_list.png') });
-
-        // Coleta URLs de produtos
-        const productUrls = await page.evaluate(() => {
-            const links = Array.from(document.querySelectorAll('a[href*="/produto/"]'));
-            return [...new Set(links.map(a => a.href))];
+        // 📜 Rolagem lenta e parcial (simulando humano)
+        console.log('   📜 Rolando página suavemente (parcial)...');
+        await page.evaluate(async () => {
+            const distance = 150;
+            const delay = 350;
+            const maxScrolls = 15;
+            for (let i = 0; i < maxScrolls; i++) {
+                window.scrollBy(0, distance);
+                await new Promise(r => setTimeout(r, delay));
+            }
         });
+        await page.waitForTimeout(2000);
 
-        console.log(`Encontrados ${productUrls.length} produtos candidatos`);
+        // Coleta URLs de produtos (Dress To usa estrutura VTEX onde links de produtos terminam em /p)
+        const productSelector = 'a.vtex-product-summary-2-x-clearLink, a[href$="/p"]';
+        const productUrls = await page.evaluate((sel) => {
+            const links = Array.from(document.querySelectorAll(sel));
+            return [...new Set(links.map(a => a.href))]
+                .filter(url => {
+                    const path = new URL(url).pathname;
+                    // Links de produtos na Dress To terminam em /p e costumam ter o nome do produto no path
+                    return path.endsWith('/p') && path.length > 20;
+                });
+        }, productSelector);
+
+        console.log(`   🔎 Encontrados ${productUrls.length} produtos na listagem.`);
 
         for (const url of productUrls) {
-            if (products.length >= quota) break;
+            // Coletamos o dobro da quota para ter margem de manobra nas categorias
+            if (products.length >= (quota * 2)) break;
+
+            console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
+
+            // Simula o clique/interação
+            try {
+                const relativePath = new URL(url).pathname;
+                // Busca o link específico para clicar
+                const element = await page.$(`a[href*="${relativePath}"]`);
+                if (element) {
+                    console.log(`   🖱️  Clicando no elemento do produto...`);
+                    await element.scrollIntoViewIfNeeded();
+                    await page.waitForTimeout(500);
+                    await element.click();
+                    // Espera carregar a página do produto
+                    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
+                } else {
+                    console.log(`   🔗 Elemento não encontrado diretamente, navegando via URL...`);
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                }
+            } catch (err) {
+                console.log(`   ⚠️ Falha na interação: ${err.message}`);
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            }
 
             // 1. Image Download Integration
-            console.log(`🖼️  Baixando imagem...`);
+            console.log(`   🖼️  Baixando imagem...`);
             let imagePath = null;
             try {
                 const imgResult = await processProductUrl(url);
-                if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
                     imagePath = imgResult.cloudinary_urls[0];
-                    console.log(`   ✔️  Imagem salva: ${imagePath}`);
-                } else {
-                    console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
+                    console.log(`      ✔️  Imagem salva: ${imagePath}`);
                 }
             } catch (err) {
-                console.log(`   ❌ Erro download imagem: ${err.message}`);
+                console.log(`      ❌ Erro imagem: ${err.message}`);
             }
 
             // 2. Parse Product
+            // Passamos a página se ela já estiver no URL certo, senão o parser fará o dele
             const product = await parseProductDressTo(page, url);
             if (product) {
                 product.loja = 'dressto';
-                product.desconto = 0; // Explicitly 0 as requested (no promo)
+                product.desconto = 0;
                 product.imagePath = imagePath;
                 products.push(product);
             }
+
+            // Volta para a lista
+            await page.goto('https://www.dressto.com.br/nossas-novidades', { waitUntil: 'domcontentloaded' });
+            await page.evaluate(() => window.scrollBy(0, 800));
+            await page.waitForTimeout(1000);
         }
 
     } catch (error) {
@@ -70,18 +111,24 @@ async function scrapeDressTo(quota = 18) {
         await browser.close();
     }
 
-    // Aplicar prioridade: 80% vestidos, 20% macacões
+    // Aplicar prioridade: 80% vestidos, 20% macacões (ou preencher com o que houver)
     const vestidos = products.filter(p => p.categoria === 'vestido');
     const macacoes = products.filter(p => p.categoria === 'macacão');
     const outros = products.filter(p => p.categoria !== 'vestido' && p.categoria !== 'macacão');
 
-    const vestidosQuota = Math.floor(quota * 0.8);
-    const macacoesQuota = Math.floor(quota * 0.2);
+    const vestidosQuota = Math.round(quota * 0.8);
+    const macacoesQuota = Math.round(quota * 0.2);
 
-    const selected = [
+    let selected = [
         ...vestidos.slice(0, vestidosQuota),
         ...macacoes.slice(0, macacoesQuota)
     ];
+
+    // Se as categorias prioritárias não preencherem a quota total, pega do 'outros'
+    if (selected.length < quota) {
+        const gap = quota - selected.length;
+        selected = [...selected, ...outros.slice(0, gap)];
+    }
 
     console.log(`\n✅ DRESS TO: ${selected.length}/${quota} produtos capturados`);
 
@@ -89,7 +136,7 @@ async function scrapeDressTo(quota = 18) {
         console.warn(`⚠️ quota_not_reached: DRESS TO (${selected.length}/${quota})`);
     }
 
-    return selected;
+    return selected.slice(0, quota);
 }
 
 async function parseProductDressTo(page, url) {
@@ -156,13 +203,31 @@ async function parseProductDressTo(page, url) {
 
             if (tamanhos.length === 0) return null;
 
-            // Categoria
+            // Categoria (INFERÊNCIA MAIS PRECISA)
             let categoria = 'outros';
-            const bodyText = getSafeText(document.body).toLowerCase();
-            if (bodyText.includes('vestido')) categoria = 'vestido';
-            else if (bodyText.includes('macacão') || bodyText.includes('macaquinho')) categoria = 'macacão';
+            const pageTitle = (document.title || '').toLowerCase();
+            const breadcrumb = getSafeText(document.querySelector('.vtex-breadcrumb-1-x-container')).toLowerCase();
+            const fullText = (pageTitle + ' ' + breadcrumb + ' ' + nome.toLowerCase());
+
+            if (fullText.includes('vestido')) categoria = 'vestido';
+            else if (fullText.includes('macacão') || fullText.includes('macaquinho')) categoria = 'macacão';
+            else if (fullText.includes('saia')) categoria = 'saia';
+            else if (fullText.includes('short')) categoria = 'short';
+            else if (fullText.includes('blusa') || fullText.includes('top') || fullText.includes('camisa')) categoria = 'blusa';
+            else if (fullText.includes('calça')) categoria = 'calça';
+
+            // ID (Referência VTEX)
+            let id = 'unknown';
+            const refEl = document.querySelector('.vtex-product-identifier, .vtex-product-identifier--product-reference');
+            if (refEl) {
+                id = getSafeText(refEl).replace(/\D/g, '');
+            } else {
+                const urlMatch = window.location.href.match(/(\d{6,})/);
+                if (urlMatch) id = urlMatch[1];
+            }
 
             return {
+                id,
                 nome,
                 preco,
                 tamanhos: [...new Set(tamanhos)],

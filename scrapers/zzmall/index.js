@@ -152,7 +152,18 @@ async function parseProductZZMall(page, url) {
             else if (bodyText.includes('bolsa')) categoria = 'acessório';
             else if (bodyText.includes('blusa')) categoria = 'blusa';
 
+            // ID
+            let id = 'unknown';
+            const refEl = document.querySelector('.vtex-product-identifier, .productReference');
+            if (refEl) {
+                id = getSafeText(refEl).replace(/\D/g, '');
+            } else {
+                const urlMatch = window.location.href.match(/(\d{6,})/);
+                if (urlMatch) id = urlMatch[1];
+            }
+
             return {
+                id,
                 nome,
                 preco,
                 tamanhos: [...new Set(tamanhos)],
