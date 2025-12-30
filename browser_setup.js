@@ -2,19 +2,14 @@ const { chromium } = require('playwright');
 
 /**
  * Inicializa o navegador Chromium com configurações específicas.
- * 
- * Requisitos atendidos:
- * - Chromium launch com headless: true e flags de segurança
- * - Viewport 1280x800
- * - User Agent realista
- * - Criação de contexto persistente
+ * Versão: 2.1 (Forced Headless para Easypanel)
  * @returns {Promise<{browser: import('playwright').Browser, context: import('playwright').BrowserContext, page: import('playwright').Page}>}
  */
 async function initBrowser() {
-    console.log('Iniciando navegador Chromium (Headless)...');
+    console.log('🚀 [V2.1] Iniciando navegador Chromium (MODO HEADLESS FORÇADO)...');
 
     const browser = await chromium.launch({
-        headless: true, // MUDANÇA: Necessário para rodar no Easypanel (Linux/Docker)
+        headless: true, // ESTA LINHA DEVE SER TRUE PARA O EASYPANEL
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -24,18 +19,15 @@ async function initBrowser() {
     });
 
     const context = await browser.newContext({
-        viewport: { width: 1280, height: 800 }, // OBRIGATÓRIO: Viewport padrão
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', // OBRIGATÓRIO: UserAgent realista
+        viewport: { width: 1280, height: 800 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         locale: 'pt-BR',
         timezoneId: 'America/Sao_Paulo'
     });
 
     const page = await context.newPage();
 
-    // OBRIGATÓRIO: Aguardar carregamento (será usado nas navegações futuras, aqui apenas inicializa)
-    // Exemplo de uso futuro: await page.goto(url, { waitUntil: 'networkidle' });
-
-    console.log('Navegador iniciado com sucesso.');
+    console.log('✅ [V2.1] Navegador iniciado com sucesso.');
     return { browser, context, page };
 }
 
