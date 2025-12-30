@@ -110,7 +110,14 @@ async function scrapeKJU(quota = 6) {
                 product.url = url.includes('?') ? `${url}&ref=7B1313` : `${url}?ref=7B1313`;
 
                 product.loja = 'kju';
-                product.desconto = 0;
+
+                // Calcula desconto se houver preço original
+                if (product.preco_original && product.preco_original > product.preco) {
+                    product.desconto = Math.round(((product.preco_original - product.preco) / product.preco_original) * 100);
+                } else {
+                    product.desconto = 0;
+                }
+
                 product.imagePath = imagePath;
                 products.push(product);
             }
@@ -180,8 +187,13 @@ async function parseProductKJU(page, url) {
 
             if (numericPrices.length === 0) return null;
 
-            // Apenas UM preço (o máximo encontrado)
-            const preco = Math.max(...numericPrices);
+            // Diferencia preço original e promocional
+            // Se houver mais de um preço, o maior é o original, o menor é o promocional
+            const precoMax = Math.max(...numericPrices);
+            const precoMin = Math.min(...numericPrices);
+
+            const preco = precoMin;
+            const preco_original = precoMax;
 
             // Tamanhos (para classificar)
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], label'));
@@ -238,6 +250,7 @@ async function parseProductKJU(page, url) {
                 id,
                 nome,
                 preco,
+                preco_original,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href

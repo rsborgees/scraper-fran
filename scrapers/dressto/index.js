@@ -76,23 +76,23 @@ async function scrapeDressTo(quota = 18) {
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             }
 
-            // 1. Image Download Integration
-            console.log(`   🖼️  Baixando imagem...`);
-            let imagePath = null;
-            try {
-                const imgResult = await processProductUrl(url);
-                if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
-                    imagePath = imgResult.cloudinary_urls[0];
-                    console.log(`      ✔️  Imagem salva: ${imagePath}`);
-                }
-            } catch (err) {
-                console.log(`      ❌ Erro imagem: ${err.message}`);
-            }
-
-            // 2. Parse Product
-            // Passamos a página se ela já estiver no URL certo, senão o parser fará o dele
+            // 1. Parse Product PRIMEIRO para ter o ID
             const product = await parseProductDressTo(page, url);
+
             if (product) {
+                // 2. Image Download Integration (usando o ID já extraído)
+                console.log(`   🖼️  Baixando imagem com ID: ${product.id}...`);
+                let imagePath = null;
+                try {
+                    const imgResult = await processProductUrl(url, product.id);
+                    if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                        imagePath = imgResult.cloudinary_urls[0];
+                        console.log(`      ✔️  Imagem salva: ${imagePath}`);
+                    }
+                } catch (err) {
+                    console.log(`      ❌ Erro imagem: ${err.message}`);
+                }
+
                 product.loja = 'dressto';
                 product.desconto = 0;
                 product.imagePath = imagePath;

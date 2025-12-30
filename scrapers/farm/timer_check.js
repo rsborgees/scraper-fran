@@ -56,8 +56,44 @@ async function checkFarmTimer() {
             if (!timeStr) return null;
 
             // 3. Busca desconto ou cupom (QUERO25, 20% OFF, etc)
-            const discountMatch = bodyText.match(/(\d+%\s*OFF|QUERO\d+)/i);
-            const discountText = discountMatch ? discountMatch[0] : 'Desconto Ativo';
+            // Prioriza elementos no TOPO da página que contenham "tic-tac" e uma porcentagem
+            const allElements = Array.from(document.querySelectorAll('*'));
+            const ticTacBanner = allElements.find(el => {
+                const text = (el.innerText || '').toLowerCase();
+                if (text.includes('tic-tac') && /\d+%/.test(text) && el.children.length < 10) {
+                    const rect = el.getBoundingClientRect();
+                    // O banner tic-tac é fixo no topo ou fica no início da página
+                    return rect.top < 250 && rect.height > 0;
+                }
+                return false;
+            });
+
+            let discountText = 'Desconto Ativo';
+
+            if (ticTacBanner) {
+                const text = ticTacBanner.innerText;
+                const match = text.match(/(\d+%\s*OFF)/i) || text.match(/(\d+%)/);
+                if (match) {
+                    discountText = match[1].includes('OFF') ? match[1] : match[1] + ' OFF';
+                }
+            } else {
+                // Fallback de segurança: Busca padrão no body mas que comece com tic-tac
+                const bodyMatch = bodyText.match(/tic-tac:\s*(\d+%\s*OFF)/i);
+                if (bodyMatch) discountText = bodyMatch[1];
+            }
+
+            // Adiciona o Cupom se encontrado (REMOVIDO A PEDIDO - Mantendo apenas % OFF)
+            /*
+            const couponMatch = bodyText.match(/QUERO\d+/i);
+            if (couponMatch && !discountText.includes(couponMatch[0])) {
+                discountText = `${discountText} (Cupom: ${couponMatch[0]})`;
+            }
+            */
+
+            // Se ainda for o 10% OFF fantasma, força a busca por algo maior se houver 25% na página
+            if (discountText.includes('10%') && bodyText.includes('25%')) {
+                discountText = '25% OFF';
+            }
 
             return {
                 encontrado: true,

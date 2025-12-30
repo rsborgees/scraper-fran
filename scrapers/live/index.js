@@ -85,23 +85,23 @@ async function scrapeLive(quota = 6) {
         for (const url of productUrls) {
             if (products.length >= quota) break;
 
-            // 1. Image Download Integration
-            console.log(`🖼️  Baixando imagem...`);
-            let imagePath = null;
-            try {
-                const imgResult = await processProductUrl(url);
-                if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
-                    imagePath = imgResult.cloudinary_urls[0];
-                    console.log(`   ✔️  Imagem salva: ${imagePath}`);
-                } else {
-                    console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
-                }
-            } catch (err) {
-                console.log(`   ❌ Erro download imagem: ${err.message}`);
-            }
-
             const product = await parseProductLive(page, url);
             if (product) {
+                // Image Download Integration com ID já extraído
+                console.log(`🖼️  Baixando imagem com ID: ${product.id}...`);
+                let imagePath = null;
+                try {
+                    const imgResult = await processProductUrl(url, product.id);
+                    if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                        imagePath = imgResult.cloudinary_urls[0];
+                        console.log(`   ✔️  Imagem salva: ${imagePath}`);
+                    } else {
+                        console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
+                    }
+                } catch (err) {
+                    console.log(`   ❌ Erro download imagem: ${err.message}`);
+                }
+
                 product.loja = 'live';
                 product.desconto = 0; // Explicitly 0
                 product.imagePath = imagePath;

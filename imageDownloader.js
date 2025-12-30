@@ -89,10 +89,19 @@ async function extractProductId(page, store, url) {
             const liveId = await page.evaluate(() => {
                 const el = document.querySelector('.vtex-product-identifier, .sku, .productReference');
                 if (el) return el.innerText.replace(/\D/g, '');
+                // Fallback URL
                 const urlMatch = window.location.href.match(/(\d{5,})/);
                 return urlMatch ? urlMatch[1] : null;
             });
             if (liveId) id = liveId;
+        } else if (store === 'DRESSTO') {
+            const dressId = await page.evaluate(() => {
+                const el = document.querySelector('.vtex-product-identifier, .productReference');
+                if (el) return el.innerText.replace(/\D/g, '');
+                const urlMatch = window.location.href.match(/(\d{6,})/);
+                return urlMatch ? urlMatch[1] : null;
+            });
+            if (dressId) id = dressId;
         } else {
             const urlId = url.split('/').pop().split('?')[0].replace(/[^a-zA-Z0-9]/g, '');
             if (urlId.length > 0) id = urlId;
@@ -117,7 +126,7 @@ async function extractProductId(page, store, url) {
 /**
  * Main function to process product URL.
  */
-async function processProductUrl(url) {
+async function processProductUrl(url, forcedId = null) {
     console.log(`\nProcessing: ${url}`);
 
     let store = 'GENERIC';
@@ -165,7 +174,7 @@ async function processProductUrl(url) {
             console.log('Timeout waiting for images, proceeding anyway...');
         }
 
-        const id = await extractProductId(page, store, url);
+        const id = forcedId || await extractProductId(page, store, url);
         result.id = id;
 
         const imageUrls = await page.evaluate(() => {
