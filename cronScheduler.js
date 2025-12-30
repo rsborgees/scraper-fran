@@ -104,6 +104,7 @@ function setupDailySchedule() {
 
     cron.schedule(cronExpression, async () => {
         await runScheduledScraping();
+        console.log(`\n✅ Execução concluída. Próxima agendada para: ${getNextRunTime()}\n`);
     }, {
         timezone: "America/Sao_Paulo"
     });
