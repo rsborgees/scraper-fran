@@ -88,23 +88,27 @@ async function scrapeKJU(quota = 6) {
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             }
 
-            // 1. Image Download Integration
-            console.log(`   🖼️  Baixando imagem...`);
-            let imagePath = null;
-            try {
-                const imgResult = await processProductUrl(url);
-                if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
-                    imagePath = imgResult.cloudinary_urls[0];
-                    console.log(`      ✔️  Imagem salva: ${imagePath}`);
-                }
-            } catch (err) {
-                console.log(`      ❌ Erro imagem: ${err.message}`);
-            }
-
             // Parse Product
             const product = await parseProductKJU(page, url);
 
             if (product && product.nome && !product.nome.includes('LANÇAMENTO')) {
+                // 1. Image Download Integration (Agora com ID pronto)
+                console.log(`   🖼️  Baixando imagem...`);
+                let imagePath = null;
+                try {
+                    // Passando o ID para o imageDownloader se necessário (ou deixando ele se virar)
+                    const imgResult = await processProductUrl(url);
+                    if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                        imagePath = imgResult.cloudinary_urls[0];
+                        console.log(`      ✔️  Imagem salva: ${imagePath}`);
+                    }
+                } catch (err) {
+                    console.log(`      ❌ Erro imagem: ${err.message}`);
+                }
+
+                // Adiciona parâmetro de vendedora
+                product.url = url.includes('?') ? `${url}&ref=7B1313` : `${url}?ref=7B1313`;
+
                 product.loja = 'kju';
                 product.desconto = 0;
                 product.imagePath = imagePath;
@@ -144,10 +148,14 @@ async function parseProductKJU(page, url) {
                 return (typeof txt === 'string') ? txt.trim() : '';
             };
 
-            // Nome
+            // Nome (Limpeza: remove "Comprar" e a parte "Loja KJU")
             const h1 = document.querySelector('h1');
-            const nome = getSafeText(h1);
+            let nome = getSafeText(h1);
             if (!nome) return null;
+
+            nome = nome.replace(/^Comprar\s+/i, '')
+                .replace(/\s*-\s*Loja KJU.*$/i, '')
+                .trim();
 
             // Preço Original SOMENTE (ignorar promoções)
             // KJU markup might have old/new price. We want just the "Original" (max).
@@ -194,15 +202,36 @@ async function parseProductKJU(page, url) {
             // Classificação: com tamanhos = roupa, sem tamanhos = acessório
             const categoria = tamanhos.length > 0 ? 'roupa' : 'acessório';
 
-            // ID
+            // ID (Extração refinada: números logo abaixo do nome)
             let id = 'unknown';
-            const urlParts = window.location.pathname.split('-');
-            const potentialId = urlParts[urlParts.length - 1]; // Geralmente o ID está no final do slug
-            if (potentialId && !isNaN(potentialId)) {
-                id = potentialId;
-            } else {
-                const urlMatch = window.location.href.match(/(\d{5,})/);
-                if (urlMatch) id = urlMatch[1];
+
+            // Tenta seletores específicos primeiro
+            const specificIdEl = document.querySelector('.codigo_produto, [itemprop="identifier"], .productReference');
+            if (specificIdEl) {
+                const text = getSafeText(specificIdEl);
+                const match = text.match(/\d+/); // Pega apenas a primeira sequência de números
+                if (match) id = match[0];
+            }
+
+            // Fallback: Busca nos arredores do nome (H1)
+            if (id === 'unknown' && h1) {
+                let current = h1.nextElementSibling;
+                for (let i = 0; i < 5 && current; i++) {
+                    const text = getSafeText(current);
+                    const match = text.match(/\d+/);
+                    if (match && match[0].length >= 4) { // IDs costumam ter pelo menos 4 dígitos
+                        id = match[0];
+                        break;
+                    }
+                    current = current.nextElementSibling;
+                }
+            }
+
+            // Fallback final: Corpo
+            if (id === 'unknown') {
+                const bodyText = getSafeText(document.body);
+                const matchBody = bodyText.match(/Cód\.?:?\s*(\d+)/i) || bodyText.match(/Ref\.?:?\s*(\d+)/i);
+                if (matchBody) id = matchBody[1];
             }
 
             return {

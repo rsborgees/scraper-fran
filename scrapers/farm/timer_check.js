@@ -19,7 +19,7 @@ async function checkFarmTimer() {
             timeout: 45000
         });
 
-        // Espera um pouco para banners dinâmicos
+        // Espera banners dinâmicos carregarem
         await page.waitForTimeout(5000);
 
         // Screenshot para debug
@@ -30,36 +30,39 @@ async function checkFarmTimer() {
         const timerData = await page.evaluate(() => {
             const getSafeText = (el) => el ? (el.innerText || el.textContent || '').trim() : '';
 
-            // Busca por padrões de tempo HH : MM : SS
-            const allElements = Array.from(document.querySelectorAll('*'));
-            const timeElement = allElements.find(el =>
-                el.children.length === 0 && /\d{2}\s*:\s*\d{2}\s*:\s*\d{2}/.test(getSafeText(el))
-            );
+            // 1. Tenta padrão de texto HH:MM:SS ou HHh MMm SSs
+            const bodyText = document.body.innerText;
+            const hmsMatch = bodyText.match(/(\d{1,2})[:h]\s*(\d{2})[:m]\s*(\d{2})[s]?/i);
 
-            if (!timeElement) return null;
+            let timeStr = null;
+            if (hmsMatch) {
+                timeStr = `${hmsMatch[1].padStart(2, '0')}:${hmsMatch[2]}:${hmsMatch[3]}`;
+            } else {
+                // 2. Tenta buscar via variáveis CSS (padrão DaisyUI/Tailwind comum na Farm)
+                const countdownSpans = Array.from(document.querySelectorAll('.countdown > span, [style*="--value"]'));
+                if (countdownSpans.length >= 2) {
+                    const values = countdownSpans.map(s => {
+                        const val = getComputedStyle(s).getPropertyValue('--value').trim();
+                        return val || null;
+                    }).filter(v => v !== null && v !== '');
 
-            const tempoRestante = getSafeText(timeElement);
-
-            // Busca por indicação de desconto próxima ao cronômetro
-            let container = timeElement.parentElement;
-            let desconto = 'Não identificado';
-            let limite = 0;
-
-            while (container && limite < 5) {
-                const text = getSafeText(container);
-                const matchOff = text.match(/(\+\d+%| \d+%)\s*OFF/i);
-                if (matchOff) {
-                    desconto = matchOff[0];
-                    break;
+                    if (values.length >= 2) {
+                        timeStr = values.map(v => v.padStart(2, '0')).join(':');
+                        if (values.length === 2) timeStr = `00:${timeStr}`; // Adiciona horas se vier apenas MM:SS
+                    }
                 }
-                container = container.parentElement;
-                limite++;
             }
+
+            if (!timeStr) return null;
+
+            // 3. Busca desconto ou cupom (QUERO25, 20% OFF, etc)
+            const discountMatch = bodyText.match(/(\d+%\s*OFF|QUERO\d+)/i);
+            const discountText = discountMatch ? discountMatch[0] : 'Desconto Ativo';
 
             return {
                 encontrado: true,
-                desconto,
-                tempoRestante,
+                desconto: discountText,
+                tempoRestante: timeStr,
                 timestamp: Date.now()
             };
         });
@@ -67,8 +70,12 @@ async function checkFarmTimer() {
         if (timerData && timerData.encontrado) {
             console.log(`✅ Cronômetro ENCONTRADO: ${timerData.desconto} | Faltam: ${timerData.tempoRestante}`);
 
-            // Calcular horário de término
-            const [h, m, s] = timerData.tempoRestante.split(':').map(t => parseInt(t.trim()));
+            // Calcular horário de término aproximado
+            const parts = timerData.tempoRestante.split(':');
+            const h = parseInt(parts[0]) || 0;
+            const m = parseInt(parts[1]) || 0;
+            const s = parseInt(parts[2]) || 0;
+
             const terminaEm = new Date();
             terminaEm.setHours(terminaEm.getHours() + h);
             terminaEm.setMinutes(terminaEm.getMinutes() + m);

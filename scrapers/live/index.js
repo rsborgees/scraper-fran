@@ -7,7 +7,7 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
 
 /**
  * Scraper LIVE
- * URL: https://www.liveoficial.com.br/novidades
+ * URL: https://www.liveoficial.com.br/outlet
  * Quota: 6 produtos
  * Usar SOMENTE preço à vista (ignorar parcelamento)
  */
@@ -18,24 +18,69 @@ async function scrapeLive(quota = 6) {
     const { browser, page } = await initBrowser();
 
     try {
-        await page.goto('https://www.liveoficial.com.br/novidades', {
+        await page.goto('https://www.liveoficial.com.br/outlet', {
             waitUntil: 'domcontentloaded',
             timeout: 45000
         });
 
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000);
+
+        // 🛡️ Fecha popups/modais iniciais
+        console.log('   🛡️ Verificando popups...');
+        await page.evaluate(() => {
+            // Seletores identificados via inspeção
+            const closeSelectors = [
+                'button.sc-f0c9328e-3.dnwgCm', // Popup Perfis Falsos
+                'button[class*="close"]',
+                '.modal-close',
+                'button:has(svg)',
+                '[aria-label="Close"]'
+            ];
+
+            closeSelectors.forEach(sel => {
+                const btn = document.querySelector(sel);
+                if (btn && btn.offsetWidth > 0) {
+                    console.log(`      ✔️ Fechando popup: ${sel}`);
+                    btn.click();
+                }
+            });
+
+            // Tenta fechar por texto "×" se nada acima funcionar
+            const allButtons = Array.from(document.querySelectorAll('button'));
+            const xButton = allButtons.find(b => b.innerText.trim() === '×' || b.innerText.trim().toLowerCase() === 'fechar');
+            if (xButton) xButton.click();
+        });
+        await page.waitForTimeout(2000);
 
         // Screenshot
         if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
         await page.screenshot({ path: path.join(DEBUG_DIR, 'live_list.png') });
 
-        // Coleta URLs de produtos
-        const productUrls = await page.evaluate(() => {
-            const links = Array.from(document.querySelectorAll('a[href*="/produto"], a[href*="/p/"]'));
-            return [...new Set(links.map(a => a.href).filter(url => url.includes('/p')))];
+        // 📜 Rolagem mais profunda para carregar produtos
+        console.log('   📜 Rolando página para carregar produtos...');
+        await page.evaluate(async () => {
+            for (let i = 0; i < 5; i++) {
+                window.scrollBy(0, 800);
+                await new Promise(r => setTimeout(r, 1000));
+            }
         });
 
-        console.log(`Encontrados ${productUrls.length} produtos candidatos`);
+        // Coleta URLs de produtos (Links terminando em /p ou contendo /p/)
+        const productUrls = await page.evaluate(() => {
+            const links = Array.from(document.querySelectorAll('a[href]'));
+            return [...new Set(links.map(a => a.href))]
+                .filter(url => {
+                    const path = new URL(url).pathname;
+                    // URLs de produtos na Live geralmente terminam em /p ou /p/ e são longas
+                    return (path.endsWith('/p') || path.includes('/p/')) &&
+                        path.length > 15 &&
+                        !path.includes('/carrinho') &&
+                        !path.includes('/login') &&
+                        path !== '/produtos/p'; // Exclui links genéricos se houver
+                });
+        });
+
+        console.log(`   🔎 Encontrados ${productUrls.length} produtos candidatos.`);
 
         for (const url of productUrls) {
             if (products.length >= quota) break;
@@ -144,22 +189,36 @@ async function parseProductLive(page, url) {
                 }
             });
 
-            // Categoria
+            // Categoria (Mapeamento mais preciso)
             let categoria = 'outros';
-            const bodyText = getSafeText(document.body).toLowerCase();
-            if (bodyText.includes('vestido')) categoria = 'vestido';
-            else if (bodyText.includes('macacão')) categoria = 'macacão';
-            else if (bodyText.includes('blusa')) categoria = 'blusa';
-            else if (bodyText.includes('calça')) categoria = 'calça';
+            const breadcrumb = getSafeText(document.querySelector('.breadcrumb, .vtex-breadcrumb-1-x-container')).toLowerCase();
+            const lowerNome = nome.toLowerCase();
+            const combinedText = (lowerNome + ' ' + breadcrumb).toLowerCase();
 
-            // ID
+            if (combinedText.includes('vestido')) categoria = 'vestido';
+            else if (combinedText.includes('macacão')) categoria = 'macacão';
+            else if (combinedText.includes('blusa') || combinedText.includes('camiseta') || combinedText.includes('regata') || combinedText.includes('top')) categoria = 'blusa';
+            else if (combinedText.includes('legging') || combinedText.includes('calça') || combinedText.includes('short') || combinedText.includes('saia')) categoria = 'roupa';
+            else if (combinedText.includes('jaqueta') || combinedText.includes('casaco')) categoria = 'roupa';
+            else categoria = 'roupa'; // Default para Live que vende majoritariamente vestuário
+
+            // ID (Tenta buscar no seletor da VTEX específico ou na URL)
             let id = 'unknown';
-            const refEl = document.querySelector('.vtex-product-identifier');
+            const refEl = document.querySelector('.vtex-product-identifier, .productReference, .sku');
             if (refEl) {
                 id = getSafeText(refEl).replace(/\D/g, '');
-            } else {
-                const urlMatch = window.location.href.match(/(\d{6,})/);
-                if (urlMatch) id = urlMatch[1];
+            }
+
+            if (id === 'unknown' || id === '') {
+                // Tenta pegar o código numérico da URL (geralmente antes do /p)
+                const urlMatch = window.location.href.match(/(\d+)(AZ|00|BC|[\-\/])/);
+                if (urlMatch) {
+                    id = urlMatch[1];
+                } else {
+                    // Fallback para qualquer sequência numérica longa
+                    const longNumMatch = window.location.href.match(/(\d{5,})/);
+                    if (longNumMatch) id = longNumMatch[1];
+                }
             }
 
             return {

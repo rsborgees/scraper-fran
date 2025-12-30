@@ -2,6 +2,7 @@ const express = require("express");
 const { spawn } = require("child_process");
 const path = require("path");
 const { setupDailySchedule } = require("./cronScheduler");
+const { checkFarmTimer } = require("./scrapers/farm/timer_check");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -69,6 +70,13 @@ app.listen(PORT, () => {
 
     // Inicia o agendador automático (7h da manhã) ao subir o servidor
     setupDailySchedule();
+
+    // 🕒 Inicia monitoramento do cronômetro Farm (30 em 30 min)
+    console.log('🕒 Iniciando monitoramento de cronômetro Farm...');
+    checkFarmTimer(); // Primeira execução imediata
+    setInterval(() => {
+        checkFarmTimer().catch(err => console.error('Erro no timer_check (setInterval):', err));
+    }, 30 * 60 * 1000); // 30 minutos
 });
 
 // Debug: Prevent process from exiting

@@ -77,16 +77,35 @@ async function extractProductId(page, store, url) {
 
             const match = refText.match(/(\d{5,})/);
             if (match) id = match[1].substring(0, 6);
+        } else if (store === 'KJU') {
+            const kjuId = await page.evaluate(() => {
+                const el = document.querySelector('.codigo_produto, [itemprop="identifier"]');
+                if (!el) return null;
+                const match = el.innerText.match(/\d+/);
+                return match ? match[0] : null;
+            });
+            if (kjuId) id = kjuId;
+        } else if (store === 'LIVE') {
+            const liveId = await page.evaluate(() => {
+                const el = document.querySelector('.vtex-product-identifier, .sku, .productReference');
+                if (el) return el.innerText.replace(/\D/g, '');
+                const urlMatch = window.location.href.match(/(\d{5,})/);
+                return urlMatch ? urlMatch[1] : null;
+            });
+            if (liveId) id = liveId;
         } else {
             const urlId = url.split('/').pop().split('?')[0].replace(/[^a-zA-Z0-9]/g, '');
             if (urlId.length > 0) id = urlId;
 
             const visibleRef = await page.evaluate(() => {
-                const el = document.querySelector('.sku, .ref, .product-code');
+                const el = document.querySelector('.sku, .ref, .product-code, .codigo_produto');
                 return el ? el.innerText.trim() : null;
             });
 
-            if (visibleRef) id = visibleRef.replace(/[^a-zA-Z0-9]/g, '');
+            if (visibleRef) {
+                const match = visibleRef.match(/\d+/);
+                id = match ? match[0] : visibleRef.replace(/[^a-zA-Z0-9]/g, '');
+            }
         }
     } catch (e) {
         console.warn(`ID Extraction failed: ${e.message}`);

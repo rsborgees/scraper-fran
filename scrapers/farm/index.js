@@ -59,6 +59,10 @@ async function scrapeFarm(quota = 84) {
 
             const product = await parseProduct(url);
             if (product) {
+                // Adiciona field 'url' com parâmetros de vendedora
+                const sellerParams = 'utm_campaign=7b1313&utm_source=vendedoras&utm_medium=organico';
+                product.url = url.includes('?') ? `${url}&${sellerParams}` : `${url}?${sellerParams}`;
+
                 // Adiciona campo 'loja' e 'desconto'
                 product.loja = 'farm';
                 product.desconto = product.precoOriginal - product.precoAtual;

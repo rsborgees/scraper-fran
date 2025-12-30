@@ -57,6 +57,9 @@ async function scrapeZZMall(quota = 6) {
 
             const product = await parseProductZZMall(page, url);
             if (product) {
+                // Adiciona parâmetro de influenciadora
+                product.url = url.includes('?') ? `${url}&influ=cupomdafran` : `${url}?influ=cupomdafran`;
+
                 product.loja = 'zzmall';
                 product.desconto = 0; // Explicitly 0
                 product.imagePath = imagePath;
