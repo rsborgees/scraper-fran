@@ -207,14 +207,111 @@ async function parseProductLive(page, url) {
             const nome = getSafeText(h1);
             if (!nome) return null;
 
-            // Preço Original SOMENTE (ignorar promoções)
+            // Preço - Estratégia Robusta
+            // 1. Busca por "Por R$" (preço de venda)
+            // 2. Filtra parcelas (valores pequenos ou com "x")
+            // 3. Usa menor preço válido (>= R$ 50)
+
             const allPrices = Array.from(document.querySelectorAll('*'))
                 .filter(el => el.children.length === 0 && getSafeText(el).includes('R$'))
                 .map(el => getSafeText(el));
 
-            // Filtro ESTRITO: sem "x de", sem "/", sem "parcel"
+            // Prioridade 1: Buscar "Por R$" explicitamente
+            const porPriceText = allPrices.find(txt => /por\s+R\$/i.test(txt));
+            if (porPriceText) {
+                const match = porPriceText.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                if (match) {
+                    let valStr = match[1].replace(/\./g, '');
+                    if (valStr.includes(',')) {
+                        valStr = valStr.replace(',', '.');
+                    } else {
+                        valStr = valStr + '.00';
+                    }
+                    const preco = parseFloat(valStr);
+                    if (!isNaN(preco) && preco >= 50) {
+                        // Encontrou preço "Por" válido - continua para extrair outros dados
+                        const tamanhos = [];
+                        const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
+
+                        sizeEls.forEach(el => {
+                            let txt = getSafeText(el).toUpperCase();
+                            txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
+                            const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
+                            if (match) {
+                                const normalizedSize = match[0].toUpperCase();
+                                const isDisabled = el.className.toLowerCase().includes('disable') ||
+                                    el.className.toLowerCase().includes('unavailable') ||
+                                    el.getAttribute('aria-disabled') === 'true';
+                                if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
+                                    tamanhos.push(normalizedSize);
+                                }
+                            }
+                        });
+
+                        let categoria = 'outros';
+                        const breadcrumb = getSafeText(document.querySelector('.breadcrumb, .vtex-breadcrumb-1-x-container')).toLowerCase();
+                        const lowerNome = nome.toLowerCase();
+                        const combinedText = (lowerNome + ' ' + breadcrumb).toLowerCase();
+
+                        if (combinedText.includes('vestido')) categoria = 'vestido';
+                        else if (combinedText.includes('macacão')) categoria = 'macacão';
+                        else if (combinedText.includes('blusa') || combinedText.includes('camiseta') || combinedText.includes('regata') || combinedText.includes('top')) categoria = 'blusa';
+                        else if (combinedText.includes('legging') || combinedText.includes('calça') || combinedText.includes('short') || combinedText.includes('saia')) categoria = 'roupa';
+                        else if (combinedText.includes('jaqueta') || combinedText.includes('casaco')) categoria = 'roupa';
+                        else categoria = 'roupa';
+
+                        let id = 'unknown';
+                        const refEl = document.querySelector('.vtex-product-identifier, .productReference, .sku');
+                        if (refEl) {
+                            id = getSafeText(refEl).replace(/\D/g, '');
+                        }
+
+                        if (id === 'unknown' || id === '') {
+                            const urlMatch = window.location.href.match(/(\d+)(AZ|00|BC|[\-\/])/);
+                            if (urlMatch) {
+                                id = urlMatch[1];
+                            } else {
+                                const longNumMatch = window.location.href.match(/(\d{5,})/);
+                                if (longNumMatch) id = longNumMatch[1];
+                            }
+                        }
+
+                        return {
+                            id,
+                            nome,
+                            preco,
+                            tamanhos: [...new Set(tamanhos)],
+                            categoria,
+                            url: window.location.href,
+                            imageUrl: (function () {
+                                const ogImg = document.querySelector('meta[property="og:image"]');
+                                if (ogImg && ogImg.content) return ogImg.content;
+
+                                const imgs = Array.from(document.querySelectorAll('img'));
+                                const productImg = imgs.find(img =>
+                                    img.src &&
+                                    img.src.includes('/product/') &&
+                                    img.width > 200
+                                );
+                                if (productImg) return productImg.src;
+
+                                const fallback = imgs.find(img => img.width > 300 && img.height > 300);
+                                return fallback ? fallback.src : null;
+                            })()
+                        };
+                    }
+                }
+            }
+
+            // Prioridade 2: Filtro robusto de parcelas
             const realPrices = allPrices.filter(txt => {
-                return !/x\s*de|\/|parcel|sem\s+juros/i.test(txt);
+                // Exclui textos com indicadores de parcelamento
+                if (/\d+\s*x|x\s*de|\/|parcel|sem\s+juros|em\s+até/i.test(txt)) return false;
+
+                // Exclui se o texto completo contém "x" seguido de "R$"
+                if (/\d+\s*x\s*R\$/i.test(txt)) return false;
+
+                return true;
             });
 
             const numericPrices = [];
@@ -228,7 +325,8 @@ async function parseProductLive(page, url) {
                         valStr = valStr + '.00';
                     }
                     const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0) {
+                    // Filtra valores muito baixos (provavelmente parcelas)
+                    if (!isNaN(val) && val >= 50) {
                         numericPrices.push(val);
                     }
                 }
@@ -236,8 +334,8 @@ async function parseProductLive(page, url) {
 
             if (numericPrices.length === 0) return null;
 
-            // Apenas UM preço (o máximo encontrado)
-            const preco = Math.max(...numericPrices);
+            // Se houver múltiplos preços, pega o menor (preço de venda após desconto)
+            const preco = Math.min(...numericPrices);
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
