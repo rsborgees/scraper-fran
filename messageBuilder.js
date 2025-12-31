@@ -164,7 +164,6 @@ ${produto.nome}
 
 10% EXTRA usando meu voucher  ZZCUPOM4452  ⁠🎟️
 
-(ISSO AQUI PEGA NO LINK DO PRODUTO: TAMANHOS E PREÇO)
 Por *${formatPrice(produto.precoAtual)}* 🔥
 
 ${produto.url}
