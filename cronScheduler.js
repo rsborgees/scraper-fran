@@ -98,9 +98,8 @@ async function runScheduledScraping() {
 function setupDailySchedule() {
     console.log('\n🕐 Configurando agendamento diário...');
 
-    // Cron: Todos os dias às 7h da manhã (0 7 * * *)
-    // Formato: segundo minuto hora dia mês dia-da-semana
-    const cronExpression = '0 3 * * *';
+    // Cron: De 1h em 1h, das 7h às 21h (Horário de Brasília)
+    const cronExpression = '0 7-21 * * *';
 
     cron.schedule(cronExpression, async () => {
         await runScheduledScraping();
@@ -109,7 +108,7 @@ function setupDailySchedule() {
         timezone: "America/Sao_Paulo"
     });
 
-    console.log('✅ Agendamento configurado: 3h da manhã (horário de Brasília)');
+    console.log('✅ Agendamento configurado: Das 7h às 21h, a cada 1 hora (horário de Brasília)');
     console.log(`   Próxima execução: ${getNextRunTime()}\n`);
 }
 
@@ -120,11 +119,19 @@ function getNextRunTime() {
     const now = new Date();
     const next = new Date(now);
 
-    next.setHours(3, 0, 0, 0);
+    // Se estamos fora do intervalo (antes das 7h ou depois das 21h), agenda para as 7h de hoje ou amanhã
+    const currentHour = now.getHours();
 
-    // Se já passou das 3h hoje, agenda para amanhã
-    if (now.getHours() >= 3) {
+    if (currentHour >= 21) {
+        // Já passou das 21h, próximo é amanhã às 7h
         next.setDate(next.getDate() + 1);
+        next.setHours(7, 0, 0, 0);
+    } else if (currentHour < 7) {
+        // Antes das 7h, próximo é hoje às 7h
+        next.setHours(7, 0, 0, 0);
+    } else {
+        // Dentro do intervalo, próximo é na próxima hora cheia
+        next.setHours(currentHour + 1, 0, 0, 0);
     }
 
     return next.toLocaleString('pt-BR');

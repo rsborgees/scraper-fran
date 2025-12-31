@@ -2,6 +2,7 @@ const { initBrowser } = require('../../browser_setup');
 const path = require('path');
 const fs = require('fs');
 const { processProductUrl, processImageDirect } = require('../../imageDownloader');
+const { isDuplicate, markAsSent } = require('../../historyManager');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -44,6 +45,10 @@ async function scrapeZZMall(quota = 6) {
             const product = await parseProductZZMall(page, url);
 
             if (product) {
+                if (isDuplicate(product.id)) {
+                    console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                    continue;
+                }
                 // Image Download Integration (usando o ID já extraído)
                 console.log(`🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
@@ -71,6 +76,7 @@ async function scrapeZZMall(quota = 6) {
                 product.loja = 'zzmall';
                 product.desconto = 0; // Explicitly 0
                 product.imagePath = imagePath;
+                markAsSent([product.id]);
                 products.push(product);
             }
         }
@@ -114,31 +120,55 @@ async function parseProductZZMall(page, url) {
             const nome = getSafeText(h1);
             if (!nome) return null;
 
-            // Preço Original SOMENTE (ignorar promoções)
-            // ZZMall can have 'old' prices. We ignore them and grab the max displayed.
-            const allPrices = Array.from(document.querySelectorAll('*'))
-                .filter(el => el.children.length === 0 && getSafeText(el).includes('R$'))
-                .map(el => getSafeText(el));
+            let numericPrices = [];
 
-            const realPrices = allPrices.filter(txt => !/x\s*de|parcel|sem\s+juros/i.test(txt));
-            const numericPrices = [];
+            // Estratégia 1: Meta Tags (Mais confiável)
+            const metaPrice = document.querySelector('meta[property="product:price:amount"], meta[itemprop="price"]');
+            if (metaPrice) {
+                const val = parseFloat(metaPrice.content);
+                if (!isNaN(val) && val > 0) numericPrices.push(val);
+            }
 
-            realPrices.forEach(txt => {
-                const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-                if (match) {
-                    let valStr = match[1].replace(/\./g, '');
-                    if (valStr.includes(',')) valStr = valStr.replace(',', '.');
-                    else valStr = valStr + '.00';
+            // Estratégia 2: JSON-LD (Script Data)
+            try {
+                const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                scripts.forEach(script => {
+                    const json = JSON.parse(script.innerText);
+                    if (json && (json['@type'] === 'Product' || json['@type'] === 'ProductGroup')) {
+                        const offers = json.offers;
+                        if (offers) {
+                            const price = offers.price || offers.lowPrice || offers.highPrice;
+                            if (price) numericPrices.push(parseFloat(price));
+                        }
+                    }
+                });
+            } catch (e) { }
 
-                    const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0) numericPrices.push(val);
+            // Estratégia 3: Varredura visual robusta (Fallback)
+            const allElements = Array.from(document.querySelectorAll('.price, .ns-product-price, .vtex-product-price-1-x-sellingPrice, span, strong'));
+            allElements.forEach(el => {
+                const txt = getSafeText(el);
+                if (txt.includes('R$') && !/x\s*de|parcel|juros/i.test(txt)) {
+                    const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                    if (match) {
+                        let valStr = match[1].replace(/\./g, '').replace(',', '.');
+                        const val = parseFloat(valStr);
+                        if (!isNaN(val) && val > 0) numericPrices.push(val);
+                    }
                 }
             });
 
             if (numericPrices.length === 0) return null;
 
-            // Apenas UM preço (o máximo encontrado)
-            const preco = Math.max(...numericPrices);
+            const maxVal = Math.max(...numericPrices);
+            // Filtra parcelas (<30% do max)
+            const valid = numericPrices.filter(v => v > (maxVal * 0.3));
+
+            // ZZMall geralmente tem um unico preço válido ou (De/Por)
+            const precoOriginal = Math.max(...valid); // De
+            const precoAtual = Math.min(...valid);    // Por
+
+            const preco = precoAtual;
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
@@ -183,7 +213,7 @@ async function parseProductZZMall(page, url) {
             return {
                 id,
                 nome,
-                preco,
+                precoAtual: preco,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href,
@@ -227,4 +257,4 @@ async function parseProductZZMall(page, url) {
     }
 }
 
-module.exports = { scrapeZZMall };
+module.exports = { scrapeZZMall, parseProductZZMall };

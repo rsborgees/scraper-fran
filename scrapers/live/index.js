@@ -2,6 +2,7 @@ const { initBrowser } = require('../../browser_setup');
 const path = require('path');
 const fs = require('fs');
 const { processProductUrl, processImageDirect } = require('../../imageDownloader');
+const { isDuplicate, markAsSent } = require('../../historyManager');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -83,40 +84,25 @@ async function scrapeLive(quota = 6) {
         console.log(`   🔎 Encontrados ${productUrls.length} produtos candidatos.`);
 
         for (const url of productUrls) {
-            if (products.length >= quota) break;
+            if (products.length >= quota * 3) break;
 
+            console.log(`\n   🔎 Processando: ${url}`);
             const product = await parseProductLive(page, url);
-            if (product) {
-                // Image Download Integration com ID já extraído
-                console.log(`🖼️  Baixando imagem com ID: ${product.id}...`);
-                let imagePath = null;
-                try {
-                    // OTIMIZAÇÃO: Usa processImageDirect se tivermos a URL, evitando abrir novo navegador
-                    let imgResult;
-                    if (product.imageUrl) {
-                        imgResult = await processImageDirect(product.imageUrl, 'LIVE', product.id);
-                    } else {
-                        // Fallback (lento)
-                        console.warn('   ⚠️ URL da imagem não encontrada no parse, usando método lento...');
-                        imgResult = await processProductUrl(url, product.id);
-                    }
 
-                    if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
-                        imagePath = imgResult.cloudinary_urls[0];
-                        console.log(`   ✔️  Imagem salva: ${imagePath}`);
-                    } else {
-                        console.log(`   ⚠️  Falha download imagem: ${imgResult.reason}`);
-                    }
-                } catch (err) {
-                    console.log(`   ❌ Erro download imagem: ${err.message}`);
-                }
+            if (!product) continue;
 
-                product.loja = 'live';
-                product.desconto = 0; // Explicitly 0
-                product.imagePath = imagePath;
-                products.push(product);
+            if (isDuplicate(product.id)) {
+                console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                continue;
             }
+
+            product.loja = 'live';
+            product.precoAtual = product.preco;
+            product.precoOriginal = null; // Garante que não tem preço 'De'
+
+            products.push(product);
         }
+
 
     } catch (error) {
         console.error(`Erro no scraper Live: ${error.message}`);
@@ -124,13 +110,83 @@ async function scrapeLive(quota = 6) {
         await browser.close();
     }
 
-    console.log(`\n✅ LIVE: ${products.length}/${quota} produtos capturados`);
+    // LÓGICA DE PAREAMENTO (CONJUNTOS)
+    console.log(`\n🧩 Tentando formar conjuntos com ${products.length} produtos...`);
+    const sets = [];
+    const singles = [];
+    const usedIndices = new Set();
 
-    if (products.length < quota) {
-        console.warn(`⚠️ quota_not_reached: LIVE (${products.length}/${quota})`);
+    // Separa Tops e Bottoms
+    const tops = products.filter((p, i) => !usedIndices.has(i) && (p.nome.includes('Top') || p.nome.includes('Cropped') || p.nome.includes('Sutiã')));
+    const bottoms = products.filter((p, i) => !usedIndices.has(i) && (p.nome.includes('Legging') || p.nome.includes('Short') || p.nome.includes('Saia')));
+
+    // Tenta pares por nome similar
+    for (const top of tops) {
+        // Encontra bottom com maior similaridade de nome (ex: "Legging Fit" e "Top Fit")
+        // Simplificado: 2 palavras em comum (ignora 'Top', 'Legging', 'de', 'para')
+        const topWords = top.nome.toLowerCase().split(' ').filter(w => w.length > 3 && !['top', 'cropped'].includes(w));
+
+        const match = bottoms.find(b => {
+            const bWords = b.nome.toLowerCase().split(' ');
+            const intersections = topWords.filter(w => bWords.includes(w));
+            return intersections.length >= 1; // Pelo menos 1 palavra chave igual (ex: "Nebulosa", "Velvet")
+        });
+
+        if (match) {
+            sets.push(top);
+            sets.push(match);
+            usedIndices.add(products.indexOf(top));
+            usedIndices.add(products.indexOf(match));
+        }
     }
 
-    return products;
+    // Preenche o resto
+    products.forEach((p, i) => {
+        if (!usedIndices.has(i)) singles.push(p);
+    });
+
+    // Prioriza Conjuntos
+    const finalSelection = [...sets];
+
+    // Completa com singles se precisar
+    if (finalSelection.length < quota) {
+        const remaining = quota - finalSelection.length;
+        finalSelection.push(...singles.slice(0, remaining));
+    }
+
+    // Processa imagens (apenas dos selecionados) e marca como enviado
+    const output = [];
+    for (const p of finalSelection.slice(0, quota)) {
+        // Image logic moved here to save resources on unused items? 
+        // Actually we already checked imageUrl in the parser, but download happens here?
+        // No, the original code downloaded inside the loop. 
+        // To optimize, we should have pushed `product` to `products` WITHOUT downloading, and download only `finalSelection`.
+        // BUT, the parser extracts the ID.
+        // Let's keep the download logic in the loop for now to be safe with the "optimizations" previously made, 
+        // OR better: Move download to here.
+
+        // Since I removed the inner loop download block in this replacement (it was replaced by 'products.push'), 
+        // I need to add the download logic back here.
+
+        console.log(`🖼️  [Final] Baixando imagem: ${p.nome}...`);
+        try {
+            let imgResult;
+            if (p.imageUrl) {
+                imgResult = await processImageDirect(p.imageUrl, 'LIVE', p.id);
+            } else {
+                imgResult = await processProductUrl(p.url, p.id);
+            }
+            if (imgResult.status === 'success' && imgResult.cloudinary_urls?.length) {
+                p.imagePath = imgResult.cloudinary_urls[0];
+            }
+        } catch (e) { console.error(e.message); }
+
+        markAsSent([p.id]);
+        output.push(p);
+    }
+
+    console.log(`\n✅ LIVE: ${output.length}/${quota} produtos selecionados (Conjuntos priorizados)`);
+    return output;
 }
 
 async function parseProductLive(page, url) {
@@ -244,31 +300,24 @@ async function parseProductLive(page, url) {
                 categoria,
                 url: window.location.href,
                 imageUrl: (function () {
-                    const gallerySelectors = [
-                        '.product-image',
-                        '.vtex-store-components-3-x-productImageTag',
-                        '.swiper-slide-active img',
-                        '.image-gallery img',
-                        'img[data-zoom]',
-                        'img[srcset]' // Fallback comum
-                    ];
+                    // Estratégia Híbrida Robustez + Velocidade
 
-                    let candidates = [];
-                    for (const sel of gallerySelectors) {
-                        const els = document.querySelectorAll(sel);
-                        if (els.length > 0) candidates.push(...Array.from(els));
-                    }
-                    if (candidates.length === 0) {
-                        candidates = Array.from(document.querySelectorAll('img'))
-                            .filter(img => img.width > 250 && img.height > 250);
-                    }
-                    if (candidates.length === 0) {
-                        const ogImg = document.querySelector('meta[property="og:image"]');
-                        if (ogImg && ogImg.content) return ogImg.content;
-                    }
+                    // 1. Meta Tag (Geralmente a mais rápida e confiável)
+                    const ogImg = document.querySelector('meta[property="og:image"]');
+                    if (ogImg && ogImg.content) return ogImg.content;
 
-                    const bestImg = candidates.find(img => (img.currentSrc || img.src) && !(img.src || '').includes('svg'));
-                    return bestImg ? (bestImg.currentSrc || bestImg.src) : null;
+                    // 2. Busca por padrão de URL (/product/)
+                    const imgs = Array.from(document.querySelectorAll('img'));
+                    const productImg = imgs.find(img =>
+                        img.src &&
+                        img.src.includes('/product/') &&
+                        img.width > 200
+                    );
+                    if (productImg) return productImg.src;
+
+                    // 3. Fallback: Qualquer imagem grande
+                    const fallback = imgs.find(img => img.width > 300 && img.height > 300);
+                    return fallback ? fallback.src : null;
                 })()
             };
         });

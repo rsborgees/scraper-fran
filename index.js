@@ -1,7 +1,7 @@
 /**
  * Sistema Multi-Loja de Scraping de Promoções
- * Total: 120 produtos
- * Lojas: FARM (84), Dress To (18), KJU (6), Live (6), ZZMall (6)
+ * Total: 12 produtos
+ * Lojas: FARM (7), Dress To (2), KJU (1), Live (1), ZZMall (1)
  */
 
 const { runAllScrapers } = require('./orchestrator');
@@ -16,7 +16,7 @@ const { runAllScrapers } = require('./orchestrator');
     console.log('\n═══════════════════════════════════════════════════');
     console.log('📊 RESULTADO FINAL');
     console.log('═══════════════════════════════════════════════════');
-    console.log(`\nTotal de produtos capturados: ${allProducts.length}/120\n`);
+    console.log(`\nTotal de produtos capturados: ${allProducts.length}/12\n`);
 
     if (allProducts.length > 0) {
         console.log(JSON.stringify(allProducts, null, 2));

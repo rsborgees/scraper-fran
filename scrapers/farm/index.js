@@ -2,6 +2,8 @@ const { initBrowser } = require('../../browser_setup');
 const fs = require('fs');
 const path = require('path');
 const { processProductUrl, processImageDirect } = require('../../imageDownloader');
+const { checkFarmTimer } = require('./timer_check');
+const { isDuplicate, markAsSent } = require('../../historyManager');
 
 /**
  * Scraper FARM - Isolado
@@ -18,9 +20,16 @@ async function scrapeFarm(quota = 84) {
         { name: 'Shorts', url: 'https://www.farmrio.com.br/short' },
         { name: 'Blusas', url: 'https://www.farmrio.com.br/blusa' },
         { name: 'Camisas', url: 'https://www.farmrio.com.br/camisa' },
-        { name: 'Bazar', url: 'https://www.farmrio.com.br/bazar' },
+        // { name: 'Bazar', url: 'https://www.farmrio.com.br/bazar' }, // REMOVIDO A PEDIDO
         { name: 'Praia', url: 'https://www.farmrio.com.br/praia' }
     ];
+
+    // Verifica Timer/Cupom Global
+    console.log('⏳ Verificando status do reloginho/cupom...');
+    let timerData = null;
+    try {
+        timerData = await checkFarmTimer();
+    } catch (e) { console.error('Error checking timer:', e); }
 
     const confirmedPromotions = [];
 
@@ -46,6 +55,10 @@ async function scrapeFarm(quota = 84) {
             const product = await parseProduct(url);
 
             if (product) {
+                if (isDuplicate(product.id)) {
+                    console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                    continue;
+                }
                 // 2. Image Download Integration (usando o ID já extraído)
                 console.log(`\n🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
@@ -73,9 +86,13 @@ async function scrapeFarm(quota = 84) {
                 product.url = url.includes('?') ? `${url}&${sellerParams}` : `${url}?${sellerParams}`;
 
                 // Adiciona campo 'loja' e 'desconto'
+                // Adiciona informações extras para o MessageBuilder
                 product.loja = 'farm';
                 product.desconto = product.precoOriginal - product.precoAtual;
                 product.imagePath = imagePath;
+                product.timerData = timerData;
+
+                markAsSent([product.id]);
                 confirmedPromotions.push(product);
             }
         }

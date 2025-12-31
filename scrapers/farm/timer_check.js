@@ -14,7 +14,7 @@ async function checkFarmTimer() {
     const { browser, page } = await initBrowser();
 
     try {
-        await page.goto('https://www.farmrio.com.br/', {
+        await page.goto('https://www.farmrio.com.br/novidades', {
             waitUntil: 'domcontentloaded',
             timeout: 45000
         });
@@ -30,93 +30,107 @@ async function checkFarmTimer() {
         const timerData = await page.evaluate(() => {
             const getSafeText = (el) => el ? (el.innerText || el.textContent || '').trim() : '';
 
-            // 1. Busca o Container do Timer (Classe específica da Farm)
-            const timerBanner = document.querySelector('.campaign-timer-above-header, .campaign-timer, [class*="timer-above-header"]');
-            const bannerText = timerBanner ? timerBanner.innerText : '';
-            const bodyText = document.body.innerText;
+            // 1. Verificação VISUAL de Timer Ativo
+            // Procura por container que contenha "faltam" ou "acaba em" e dígitos de tempo
+            const allElements = Array.from(document.querySelectorAll('div, section, header p'));
+            const timerContainer = allElements.find(el => {
+                const txt = getSafeText(el).toLowerCase();
+                // Deve conter "faltam" E dígitos no formato de horário ou separados
+                return (txt.includes('faltam') || txt.includes('acaba em')) &&
+                    (/\d{2}\s*:\s*\d{2}/.test(txt) || /\d{1,2}\s*(?:h|min|s)/.test(txt));
+            });
 
-            // 2. Busca o Tempo (HH:MM:SS)
-            // Tenta primeiro no banner específico com regex flexível, depois no body todo
-            const timeRegex = /\b(\d{1,2})\s*[:h]?\s*(\d{1,2})\s*[:m]?\s*(\d{1,2})\s*s?\b/i;
-            let timeStr = null;
-
-            const timeMatch = (bannerText.match(timeRegex)) || (bodyText.match(timeRegex));
-            if (timeMatch) {
-                timeStr = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2].padStart(2, '0')}:${timeMatch[3].padStart(2, '0')}`;
+            if (!timerContainer) {
+                return { encontrado: false };
             }
 
-            // Fallback via variáveis CSS (DaisyUI/Tailwind)
-            if (!timeStr) {
-                const countdownSpans = Array.from(document.querySelectorAll('.countdown > span, [style*="--value"]'));
-                if (countdownSpans.length >= 2) {
-                    const values = countdownSpans.map(s => {
-                        const val = getComputedStyle(s).getPropertyValue('--value').trim();
-                        return val || null;
-                    }).filter(v => v !== null && v !== '');
-                    if (values.length >= 2) {
-                        timeStr = values.map(v => v.padStart(2, '0')).join(':');
-                        if (values.length === 2) timeStr = `00:${timeStr}`;
-                    }
+            // 2. Extração do Tempo (Busca números dentro do container encontrado)
+            const bannerText = getSafeText(timerContainer);
+            let timeStr = null;
+
+            // Tenta HH:MM:SS
+            const hmsMatch = bannerText.match(/(\d{2})\s*:\s*(\d{2})\s*:\s*(\d{2})/);
+            if (hmsMatch) {
+                timeStr = `${hmsMatch[1]}:${hmsMatch[2]}:${hmsMatch[3]}`;
+            } else {
+                // Tenta formato "00 hora 54 minutos..."
+                const numbers = bannerText.match(/(\d{1,2})\s*(?:h|hora|min|seg|s)/g);
+                if (numbers && numbers.length >= 2) {
+                    const cleanNums = numbers.map(s => s.replace(/\D/g, '').padStart(2, '0'));
+                    timeStr = cleanNums.join(':');
+                }
+            }
+            // Fallback se achou o container mas não o tempo exato: placeholder
+            if (!timeStr) timeStr = "EM BREVE";
+
+
+            // 3. Busca Cupom/Desconto (Varredura no header/banner)
+            const fullText = document.body.innerText; // Usa texto completo para garantir
+            let discountCode = null;
+            let discountPercent = null;
+
+            // Busca código explícito (ex: "Cupom\nQUERO25" ou "Cupom: QUERO25")
+            // A quebra de linha \s pega novos, mas vamos ser específicos
+            const cupomRegex = /(?:CUPOM|CÓDIGO|USE)[\s\n\r]*[:]?[\s\n\r]*([A-Z0-9]{4,})/i;
+            const cupomMatch = fullText.match(cupomRegex);
+            if (cupomMatch) {
+                const candidate = cupomMatch[1].toUpperCase();
+                // Filtra indesejados
+                if (!['DIA', 'HOJE', 'SALE', 'AGORA', 'APLICAR'].includes(candidate)) {
+                    discountCode = candidate;
                 }
             }
 
-            if (!timeStr) return null;
-
-            // 3. Busca Desconto ancorado na palavra "tic-tac"
-            let discountText = '25% OFF'; // Fallback padrão da campanha atual
-
-            // Busca específica por "tic-tac: XX%OFF"
-            const ticTacMatch = (bannerText.match(/tic-tac[:]?\s*(\d+%\s*(?:OFF)?)/i)) ||
-                (bodyText.match(/tic-tac[:]?\s*(\d+%\s*(?:OFF)?)/i));
-
-            if (ticTacMatch) {
-                discountText = ticTacMatch[1].trim().toUpperCase();
-                if (!discountText.includes('OFF')) discountText += ' OFF';
-                discountText = discountText.replace(/(\d+%)OFF/, '$1 OFF');
+            // Busca porcentagem de destaque (Tic-Tac ou Progressivo ou apenas XX% OFF)
+            // Prioriza "tic-tac: 25%OFF"
+            const tictacMatch = fullText.match(/tic-tac.*?(\d{1,2}%\s*OFF)/i);
+            if (tictacMatch) {
+                discountPercent = tictacMatch[1].toUpperCase();
             } else {
-                // Outro padrão comum: "XX% OFF NO TIC-TAC"
-                const reverseMatch = bodyText.match(/(\d+%\s*OFF)\s*(?:NO)?\s*TIC-TAC/i);
-                if (reverseMatch) discountText = reverseMatch[1].toUpperCase();
+                // Tenta geral
+                const percentMatch = fullText.match(/(\d{1,2}%\s*OFF)/i);
+                if (percentMatch) discountPercent = percentMatch[1].toUpperCase();
             }
 
+            // Decisão do Cupom (Mantém suporte a legado mas retorna campos separados)
+            let finalCupom = "NO SITE";
+            if (discountCode) finalCupom = discountCode;
+            else if (discountPercent) finalCupom = discountPercent;
+
+            // 4. Verifica Desconto Progressivo (3 peças 30%, etc)
+            // Procura por termos chaves do banner progressivo no CORPO TODO (para garantir)
+            const bodyTextFull = document.body.innerText;
+            const progressiveKeywords = ['progressivo', '3 peças', '3 pecas', '33% off', '30% off'];
+            const hasProgressive = progressiveKeywords.some(kw => bodyTextFull.toLowerCase().includes(kw));
+
             return {
-                encontrado: true,
-                desconto: discountText,
+                encontrado: !!timerContainer,
+                timerContainerFound: !!timerContainer,
+                ativo: !!timerContainer,
+                cupom: finalCupom, // Legacy support
+                discountCode: discountCode, // Separado
+                discountPercent: discountPercent, // Separado
                 tempoRestante: timeStr,
-                timestamp: Date.now()
+                progressive: hasProgressive,
+                rawText: bannerText
             };
         });
 
-        if (timerData && timerData.encontrado) {
-            console.log(`✅ Cronômetro ENCONTRADO: ${timerData.desconto} | Faltam: ${timerData.tempoRestante}`);
+        const result = {
+            ativo: timerData.timerContainerFound,
+            cupom: timerData.cupom,
+            discountCode: timerData.discountCode,
+            discountPercent: timerData.discountPercent,
+            tempoRestante: timerData.tempoRestante || null,
+            progressive: timerData.progressive || false
+        };
 
-            // Calcular horário de término aproximado
-            const parts = timerData.tempoRestante.split(':');
-            const h = parseInt(parts[0]) || 0;
-            const m = parseInt(parts[1]) || 0;
-            const s = parseInt(parts[2]) || 0;
-
-            const terminaEm = new Date();
-            terminaEm.setHours(terminaEm.getHours() + h);
-            terminaEm.setMinutes(terminaEm.getMinutes() + m);
-            terminaEm.setSeconds(terminaEm.getSeconds() + s);
-
-            const payload = {
-                desconto: timerData.desconto,
-                tempo_restante: timerData.tempoRestante,
-                termina_as: terminaEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-                url: 'https://www.farmrio.com.br/',
-                timestamp: new Date().toISOString()
-            };
-
-            await axios.post(WEBHOOK_URL, payload);
-            console.log('🚀 Webhook enviado com sucesso!');
-        } else {
-            console.log('info: Nenhum cronômetro detectado nesta rodada.');
-        }
+        console.log(`✅ Farm Promo Check: Timer=${result.ativo}, Progressive=${result.progressive}, Cupom=${result.cupom}, %=${result.discountPercent}`);
+        return result;
 
     } catch (error) {
-        console.error(`❌ Erro ao verificar cronômetro: ${error.message}`);
+        console.error(`❌ Erro ao verificar timer/promo: ${error.message}`);
+        return { ativo: false, progressive: false, cupom: null };
     } finally {
         await browser.close();
     }

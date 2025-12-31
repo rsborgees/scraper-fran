@@ -1,105 +1,183 @@
-/**
- * Construtor de Mensagens Promocionais
- */
-
-const SELLER_CODE = "R892"; // Configuração global (exemplo)
+const SELLER_CODE = "7B1313";
+const LINKTREE = "https://linktr.ee/FranNaFarm";
+const WHATSAPP_LINK = "https://chat.whatsapp.com/B5NunogKsnMIoyJSxMAtcN";
 
 function formatPrice(price) {
+    if (!price || isNaN(price)) return 'R$ 0,00';
     return price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function buildUTM(url, brand) {
-    // Simulação de adição de UTM e código vendedor
-    const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}utm_content=${SELLER_CODE}&vendedora=${SELLER_CODE}`;
+// Helper para parcelamento (simulado fixo ou calculado)
+function getInstallments(price) {
+    const val = (price / 10).toFixed(2).replace('.', ',');
+    return `💳 10x R$ ${val}`;
 }
 
 /**
- * Template FARM
- */
-function buildFarmMessage(produto, bannerResumo = "") {
-    const desconto = Math.round(((produto.precoOriginal - produto.precoAtual) / produto.precoOriginal) * 100);
-
-    return `
-🌸 *FARM RIO* 🌸
-
-${bannerResumo ? `📢 _${bannerResumo}_` : ''}
-
-👗 *${produto.nome}*
-Por: ${formatPrice(produto.precoAtual)}
-(Era: ${formatPrice(produto.precoOriginal)})
-📉 Desconto: ${desconto}% OFF
-
-📏 Tamanhos: ${produto.tamanhos?.join(', ') || 'Consulte'}
-
-🛒 Compre aqui: ${buildUTM(produto.url, 'FARM')}
-
-Cód vendedora: *${SELLER_CODE}*
-`.trim();
-}
-
-/**
- * Template KJU (Foco Acessórios/Roupas)
+ * KJU TEMPLATE
  */
 function buildKjuMessage(produto) {
+    const original = produto.precoOriginal ? `De ~${formatPrice(produto.precoOriginal)}~ ` : '';
+
     return `
-✨ *KJU LIFESTYLE* ✨
+⭕️ Lançamento na Kju 🤩‼️
+${produto.nome}
 
-💎 *${produto.nome}*
-Valor: ${formatPrice(produto.precoAtual)}
+ ${original}Por *${formatPrice(produto.precoAtual)}* 🔥
++ 10% extra no pix  💰
 
-👉 ${buildUTM(produto.url, 'KJU')}
-Cód: ${SELLER_CODE}
+Cód vendedora: ${SELLER_CODE}
+
+${produto.url}
+🌈*Vaga pra entrar no grupo:*
+
+${LINKTREE}
 `.trim();
 }
 
 /**
- * Template DRESS
+ * DRESS TO TEMPLATE
  */
 function buildDressMessage(produto) {
+    const sizes = produto.tamanhos ? produto.tamanhos.join(' ') : 'P M G';
+
     return `
-💃 *DRESS TO*
+${produto.nome}
+${sizes}
+Por *${formatPrice(produto.precoAtual)}*
 
-🔥 *${produto.nome}*
-${formatPrice(produto.precoAtual)}
+✨ Primeira compra: BEMVINDA15
 
-Compre agora: ${buildUTM(produto.url, 'DRESS')}
-Vendedora: ${SELLER_CODE}
+✨ Aniversariante : ANIVERDEZ15
+
++ código de vendedora: 5KP4
+
+${produto.url}
+
+🌈*Vaga pra entrar no grupo:*
+
+${LINKTREE}
 `.trim();
 }
 
 /**
- * Template LIVE (Agrupado)
+ * LIVE TEMPLATE (Agrupado por Top + Bottom se possível, ou individual)
+ * O User pediu "conjunto", peça de cima e peça de baixo. 
+ * A função aqui aceita um array de 2 produtos (cima e baixo) ou um single.
  */
-function buildLiveMessage(produtos) {
-    const lista = produtos.map(p => `- ${p.nome}: ${formatPrice(p.precoAtual)}`).join('\n');
-    return `
-🧘‍♀️ *LIVE! OFERTAS* 🧘‍♀️
+function buildLiveMessage(products) {
+    // Header fixo
+    let msg = `LIVE! ✨\n\n`;
 
-${lista}
+    products.forEach(p => {
+        const original = '';
+        const link = `${p.url}?size=${p.tamanhos ? p.tamanhos[0] : 'M'}`; // Exemplo de query param para tamanho
 
-Acesse: www.liveoficial.com.br/vendedora/${SELLER_CODE}
-`.trim();
+        msg += `
+${p.nome}
+${original}Por *${formatPrice(p.precoAtual)}* 🔥
+${getInstallments(p.precoAtual)}
+
+${link}
+`.trim() + '\n\n';
+    });
+
+    msg += `🌈*Vaga pra entrar no grupo:*
+
+${LINKTREE}`;
+
+    return msg.trim();
 }
 
 /**
- * Template ZZMALL
+ * FARM TEMPLATE
+ * Requer verificação externa se "reloginho" está ativo.
+ * Se timerAtivo = true, usa cupom do banner. Se false, usa texto padrão.
+ */
+function buildFarmMessage(produto, timerData = null) {
+    const sizes = produto.tamanhos ? produto.tamanhos.join(' ') : 'P M G';
+
+    // Bloco do Desconto Progressivo (Campanha Atual)
+    let progressiveHeader = "";
+    // Exibe se o scraper detectou a campanha OU se não temos dados (assume ativo por segurança/padrão recente)
+    if (!timerData || timerData.progressive) {
+        progressiveHeader = `Desconto Progressivo🔥
+
+1️⃣ peça  20% off
+2️⃣ peças  25% off
+3️⃣ peças  30% off`;
+    }
+
+    // Lógica do Cupom
+    let cupomText = "";
+    // Se temos timer ativo OU campanha progressiva, motra linha de cupom
+    if (timerData && (timerData.ativo || timerData.progressive)) {
+        const perc = timerData.discountPercent; // ex: "25% OFF"
+        const code = timerData.discountCode;    // ex: "QUERO25"
+
+        // Prioriza EXIBIR APENAS O CUPOM se ele existir (pedido do usuário)
+        if (code) {
+            cupomText = `Cupom: *${code}*`;
+        } else if (perc) {
+            cupomText = `Cupom: *${perc} no site*`;
+        } else {
+            // Fallback se ativou mas não achou textos específicos
+            const fallback = (timerData.cupom && timerData.cupom !== 'NO SITE') ? timerData.cupom : 'Confira o desconto no site';
+            cupomText = `Cupom: *${fallback}*`;
+        }
+    } else {
+        // Fallback apenas se não houver NENHUMA campanha ativa
+        cupomText = "10% off comprando pelo link e usando código da vendedora";
+    }
+
+    // Adiciona parâmetros de vendedora na URL de forma robusta
+    let finalUrl = produto.url;
+    if (!finalUrl.includes('utm_campaign')) {
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}brand=farm&utm_campaign=${SELLER_CODE}&utm_source=vendedoras&utm_medium=organico`;
+    }
+
+    // Monta a mensagem final: Progressivo (se houver) -> Nome -> Tamanhos -> Preço -> Cupom -> Código -> Link -> Grupo
+    const parts = [
+        progressiveHeader,
+        produto.nome,
+        sizes,
+        `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`,
+        cupomText,
+        `Código Vendedora ${SELLER_CODE}`,
+        finalUrl,
+        `🌈*Vaga pra entrar no grupo:*`,
+        LINKTREE
+    ];
+
+    // Filtra partes vazias (ex: progressiveHeader se inativo) e junta
+    return parts.filter(p => p.trim() !== "").join('\n\n');
+}
+
+/**
+ * ZZMALL TEMPLATE
  */
 function buildZzMallMessage(produto) {
     return `
-👠 *ZZ MALL*
-*${produto.nome}*
-De R$ ${produto.precoOriginal} por R$ ${produto.precoAtual}
+* AREZZO, SCHÜTZ, ANACAPRI, VANS, VICENZA ❤️
+${produto.nome}
 
-Link: ${buildUTM(produto.url, 'ZZMALL')}
-Cód: ${SELLER_CODE}
+10% EXTRA usando meu voucher  ZZCUPOM4452  ⁠🎟️
+
+(ISSO AQUI PEGA NO LINK DO PRODUTO: TAMANHOS E PREÇO)
+Por *${formatPrice(produto.precoAtual)}* 🔥
+
+${produto.url}
+
+
+💚ZZ MALL é marketplace oficial do grupo Arezzo
 `.trim();
 }
 
 module.exports = {
-    buildFarmMessage,
     buildKjuMessage,
     buildDressMessage,
     buildLiveMessage,
+    buildFarmMessage,
     buildZzMallMessage
 };

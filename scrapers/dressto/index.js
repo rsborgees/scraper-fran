@@ -2,6 +2,7 @@ const { initBrowser } = require('../../browser_setup');
 const path = require('path');
 const fs = require('fs');
 const { processProductUrl, processImageDirect } = require('../../imageDownloader');
+const { isDuplicate, markAsSent } = require('../../historyManager');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -64,7 +65,16 @@ async function scrapeDressTo(quota = 18) {
                     console.log(`   🖱️  Clicando no elemento do produto...`);
                     await element.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
-                    await element.click();
+
+                    // Tenta clique forçado primeiro (Playwright)
+                    try {
+                        await element.click({ force: true, timeout: 5000 });
+                    } catch (clickErr) {
+                        // Fallback: Clique via JavaScript (ignorando overlays)
+                        console.log('   ⚠️ Click padrão falhou, tentando via JS...');
+                        await page.evaluate((el) => el.click(), element);
+                    }
+
                     // Espera carregar a página do produto
                     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
                 } else {
@@ -72,7 +82,7 @@ async function scrapeDressTo(quota = 18) {
                     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
                 }
             } catch (err) {
-                console.log(`   ⚠️ Falha na interação: ${err.message}`);
+                console.log(`   ⚠️ Falha na interação: ${err.message}, forçando navegação direta.`);
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             }
 
@@ -80,6 +90,10 @@ async function scrapeDressTo(quota = 18) {
             const product = await parseProductDressTo(page, url);
 
             if (product) {
+                if (isDuplicate(product.id)) {
+                    console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                    continue;
+                }
                 // 2. Image Download Integration (usando o ID já extraído)
                 console.log(`   🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
@@ -102,6 +116,7 @@ async function scrapeDressTo(quota = 18) {
                 product.loja = 'dressto';
                 product.desconto = 0;
                 product.imagePath = imagePath;
+                markAsSent([product.id]);
                 products.push(product);
             }
 
@@ -168,29 +183,38 @@ async function parseProductDressTo(page, url) {
             // "Capture APENAS o preço original exibido na página" -> Geralmente o maior valor se houver riscado, ou o único valor.
             // DressTo markup: <s>Original</s> ... Current. Or just Current.
 
-            // Strategy: Get all prices, max price is likely original.
+            // 1. Coleta todos os preços visíveis
             const allPrices = Array.from(document.querySelectorAll('*'))
                 .filter(el => el.children.length === 0 && getSafeText(el).includes('R$'))
                 .map(el => getSafeText(el));
 
             const realPrices = allPrices.filter(txt => !/x\s*de|parcel|sem\s+juros/i.test(txt));
-            const numericPrices = [];
+            let numericPrices = [];
 
             realPrices.forEach(txt => {
-                const match = txt.match(/R\$\s*([\d\.]+,\d{2})/);
+                const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
-                    const val = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+                    let valStr = match[1].replace(/\./g, '');
+                    if (valStr.includes(',')) valStr = valStr.replace(',', '.');
+                    else valStr = valStr + '.00';
+                    const val = parseFloat(valStr);
                     if (!isNaN(val) && val > 0) numericPrices.push(val);
                 }
             });
 
             if (numericPrices.length === 0) return null;
 
-            // "Capture apenas o preço original" => Assuming this means the List Price.
-            // If there's a discount, List Price is Max. If no discount, Max == Min.
-            // So grabbing MAX price is safest to satisfy "Original Price".
-            // Apenas UM preço (o máximo encontrado)
-            const preco = Math.max(...numericPrices);
+            // 2. Filtra valores de parcelas (geralmente menores que 30% do maior valor)
+            const maxVal = Math.max(...numericPrices);
+            const validPrices = numericPrices.filter(p => p > (maxVal * 0.3));
+
+            // 3. Define Preço Original e Atual
+            const precoOriginal = Math.max(...validPrices);
+            const precoAtual = Math.min(...validPrices);
+
+            // Compatibilidade com lógica antiga de extração que retornava 'preco' como max
+            // Vamos usar o atual para exibição principal
+            const preco = precoAtual;
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
@@ -241,7 +265,8 @@ async function parseProductDressTo(page, url) {
             return {
                 id,
                 nome,
-                preco,
+                precoAtual: preco,
+                precoOriginal: preco, // Assume fallback logic if needed
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href,
@@ -274,7 +299,7 @@ async function parseProductDressTo(page, url) {
         });
 
         if (data) {
-            console.log(`✅ Dress To: ${data.nome} | R$${data.preco}`);
+            console.log(`✅ Dress To: ${data.nome} | R$${data.precoAtual}`);
         }
 
         return data;
@@ -285,4 +310,4 @@ async function parseProductDressTo(page, url) {
     }
 }
 
-module.exports = { scrapeDressTo };
+module.exports = { scrapeDressTo, parseProductDressTo };

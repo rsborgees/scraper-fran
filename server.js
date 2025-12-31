@@ -76,7 +76,7 @@ app.listen(PORT, () => {
     checkFarmTimer(); // Primeira execução imediata
     setInterval(() => {
         checkFarmTimer().catch(err => console.error('Erro no timer_check (setInterval):', err));
-    }, 30 * 60 * 1000); // 30 minutos
+    }, 60 * 60 * 1000); // 1 hora (60 minutos)
 });
 
 // Debug: Prevent process from exiting

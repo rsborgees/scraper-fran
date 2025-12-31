@@ -2,6 +2,7 @@ const { initBrowser } = require('../../browser_setup');
 const path = require('path');
 const fs = require('fs');
 const { processProductUrl } = require('../../imageDownloader');
+const { isDuplicate, markAsSent } = require('../../historyManager');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -92,6 +93,11 @@ async function scrapeKJU(quota = 6) {
             const product = await parseProductKJU(page, url);
 
             if (product && product.nome && !product.nome.includes('LANÇAMENTO')) {
+                if (isDuplicate(product.id)) {
+                    console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                    continue;
+                }
+
                 // Image Download Integration (usando o ID já extraído)
                 console.log(`   🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
@@ -118,6 +124,7 @@ async function scrapeKJU(quota = 6) {
                 }
 
                 product.imagePath = imagePath;
+                markAsSent([product.id]);
                 products.push(product);
             }
 
@@ -163,22 +170,25 @@ async function parseProductKJU(page, url) {
                 .replace(/\s*-\s*Loja KJU.*$/i, '')
                 .trim();
 
-            // Preço Original SOMENTE (ignorar promoções)
-            // KJU markup might have old/new price. We want just the "Original" (max).
-            const allPrices = Array.from(document.querySelectorAll('*'))
-                .filter(el => el.children.length === 0 && getSafeText(el).includes('R$'))
-                .map(el => getSafeText(el));
+            // Preço (Estratégia Robusta v2)
+            // Tenta focar no container do produto principal para evitar preços de "aproveite também"
+            let container = document.querySelector('.produto-info') || document.querySelector('.info') || document.querySelector('#product-container') || document.body;
 
-            const realPrices = allPrices.filter(txt => !/x\s*de|parcel|sem\s+juros/i.test(txt));
+            const priceElements = Array.from(container.querySelectorAll('.price, .current-price, .old-price, span, div, strong, b'));
+
             const numericPrices = [];
 
-            realPrices.forEach(txt => {
+            priceElements.forEach(el => {
+                const txt = getSafeText(el);
+                if (!txt.includes('R$')) return;
+
+                // Ignora textos de parcelamento (ex: "3x de")
+                if (/x\s*de|parcel|juros/i.test(txt)) return;
+
                 const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
                     let valStr = match[1].replace(/\./g, '');
-                    if (valStr.includes(',')) valStr = valStr.replace(',', '.');
-                    else valStr = valStr + '.00';
-
+                    valStr = valStr.replace(',', '.');
                     const val = parseFloat(valStr);
                     if (!isNaN(val) && val > 0) numericPrices.push(val);
                 }
@@ -186,13 +196,25 @@ async function parseProductKJU(page, url) {
 
             if (numericPrices.length === 0) return null;
 
-            // Diferencia preço original e promocional
-            // Se houver mais de um preço, o maior é o original, o menor é o promocional
-            const precoMax = Math.max(...numericPrices);
-            const precoMin = Math.min(...numericPrices);
+            // Remove duplicatas exatas
+            const uniquePrices = [...new Set(numericPrices)];
 
-            const preco = precoMin;
-            const preco_original = precoMax;
+            // Se houver muitos preços diferentes (> 3), perigo de pegar cross-sell.
+            // Os preços do produto principal costumam aparecer primeiro no DOM.
+            // Vamos pegar apenas os primeiros candidatos.
+            let candidatePrices = uniquePrices;
+            if (uniquePrices.length > 3) {
+                candidatePrices = uniquePrices.slice(0, 3);
+            }
+
+            const maxP = Math.max(...candidatePrices);
+            const validP = candidatePrices.filter(p => p > (maxP * 0.3));
+
+            const precoOriginal = Math.max(...validP);
+            const precoAtual = Math.min(...validP);
+
+            const preco = precoAtual;
+            const preco_original = precoOriginal;
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
@@ -256,8 +278,8 @@ async function parseProductKJU(page, url) {
             return {
                 id,
                 nome,
-                preco,
-                preco_original,
+                precoAtual: preco,
+                precoOriginal: preco_original,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href
@@ -276,4 +298,4 @@ async function parseProductKJU(page, url) {
     }
 }
 
-module.exports = { scrapeKJU };
+module.exports = { scrapeKJU, parseProductKJU };

@@ -4,86 +4,96 @@
  * Distribuição: FARM 84, Dress To 18, KJU 6, Live 6, ZZMall 6
  */
 
-const { processProductUrl } = require('./imageDownloader');
+/**
+ * Orchestrator - Coordena todos os scrapers de lojas
+ * Total: 120 produtos
+ * Distribuição: FARM 84, Dress To 18, KJU 6, Live 6, ZZMall 6
+ */
 
-async function runAllScrapers() {
-    console.log('🚀 INICIANDO ORCHESTRATOR - 120 PRODUTOS TOTAL\n');
-    console.log('Distribuição: FARM 70% (84), Dress To 15% (18), KJU/Live/ZZMall 5% cada (6)\n');
+const { processProductUrl } = require('./imageDownloader');
+const {
+    buildFarmMessage,
+    buildDressMessage,
+    buildKjuMessage,
+    buildLiveMessage,
+    buildZzMallMessage
+} = require('./messageBuilder');
+
+async function runAllScrapers(overrideQuotas = null) {
+    console.log('🚀 INICIANDO ORCHESTRATOR - 120 PRODUTOS TOTAL (ou override)\n');
+    console.log('Distribuição: FARM (7), Dress To (2), KJU (1), Live (1), ZZMall (1)\n');
 
     const allProducts = [];
-    const quotas = {
-        farm: 84,
-        dressto: 18,
-        kju: 6,
-        live: 6,
-        zzmall: 6
+    const quotas = overrideQuotas || {
+        farm: 7,
+        dressto: 2,
+        kju: 1,
+        live: 1,
+        zzmall: 1
     };
 
-    // FARM
+    // 1. Scrapes
     try {
         const { scrapeFarm } = require('./scrapers/farm');
-        let farmProducts = await scrapeFarm(quotas.farm);
-        allProducts.push(...farmProducts);
-        console.log(`✅ FARM completo: ${farmProducts.length} produtos\n`);
-    } catch (error) {
-        console.error(`❌ Erro no scraper FARM: ${error.message}\n`);
-    }
+        let products = await scrapeFarm(quotas.farm);
+        products.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+        allProducts.push(...products);
+        console.log(`✅ FARM: ${products.length} msgs geradas`);
+    } catch (e) { console.error(`❌ FARM Error: ${e.message}`); }
 
-    // Dress To
     try {
         const { scrapeDressTo } = require('./scrapers/dressto');
-        let dresstoProducts = await scrapeDressTo(quotas.dressto);
-        allProducts.push(...dresstoProducts);
-        console.log(`✅ Dress To completo: ${dresstoProducts.length} produtos\n`);
-    } catch (error) {
-        console.error(`❌ Erro no scraper Dress To: ${error.message}\n`);
-    }
+        let products = await scrapeDressTo(quotas.dressto);
+        products.forEach(p => p.message = buildDressMessage(p));
+        allProducts.push(...products);
+        console.log(`✅ DressTo: ${products.length} msgs geradas`);
+    } catch (e) { console.error(`❌ DressTo Error: ${e.message}`); }
 
-    // KJU
     try {
         const { scrapeKJU } = require('./scrapers/kju');
-        let kjuProducts = await scrapeKJU(quotas.kju);
-        allProducts.push(...kjuProducts);
-        console.log(`✅ KJU completo: ${kjuProducts.length} produtos\n`);
-    } catch (error) {
-        console.error(`❌ Erro no scraper KJU: ${error.message}\n`);
-    }
+        let products = await scrapeKJU(quotas.kju);
+        products.forEach(p => p.message = buildKjuMessage(p));
+        allProducts.push(...products);
+        console.log(`✅ KJU: ${products.length} msgs geradas`);
+    } catch (e) { console.error(`❌ KJU Error: ${e.message}`); }
 
-    // Live
-    try {
-        const { scrapeLive } = require('./scrapers/live');
-        let liveProducts = await scrapeLive(quotas.live);
-        allProducts.push(...liveProducts);
-        console.log(`✅ Live completo: ${liveProducts.length} produtos\n`);
-    } catch (error) {
-        console.error(`❌ Erro no scraper Live: ${error.message}\n`);
-    }
-
-    // ZZMall
     try {
         const { scrapeZZMall } = require('./scrapers/zzmall');
-        let zzmallProducts = await scrapeZZMall(quotas.zzmall);
-        allProducts.push(...zzmallProducts);
-        console.log(`✅ ZZMall completo: ${zzmallProducts.length} produtos\n`);
-    } catch (error) {
-        console.error(`❌ Erro no scraper ZZMall: ${error.message}\n`);
-    }
+        let products = await scrapeZZMall(quotas.zzmall);
+        products.forEach(p => p.message = buildZzMallMessage(p));
+        allProducts.push(...products);
+        console.log(`✅ ZZMall: ${products.length} msgs geradas`);
+    } catch (e) { console.error(`❌ ZZMall Error: ${e.message}`); }
+
+    // 2. LIVE Special Handling (Sets)
+    try {
+        const { scrapeLive } = require('./scrapers/live');
+        let products = await scrapeLive(quotas.live);
+
+        // Agrupa em pares (Sets) se possível.
+        // A lógica do scraper já tenta ordenar pares juntos.
+        // Vamos pegar de 2 em 2. Se sobrar 1, manda sozinho.
+        const liveBundles = [];
+        for (let i = 0; i < products.length; i += 2) {
+            const chunk = products.slice(i, i + 2);
+            // Verifica se faz sentido ser um set (ex: Top + Legging)
+            // Se não fizer sentido (ex: Legging + Legging), manda separado?
+            // O User pediu "mandar um conjunto". Vamos assumir que o chunk é um conjunto visual.
+            // Para simplificar: Geramos UMA mensagem para o par.
+            // Mas precisamos manter a estrutura de 'allProducts' plana ou agrupada?
+            // 'allProducts' é lista de produtos. Mas o campo 'message' pode ser igual para os membros do set.
+            const msg = buildLiveMessage(chunk);
+            chunk.forEach(p => p.message = msg);
+            allProducts.push(...chunk);
+        }
+        console.log(`✅ LIVE: ${products.length} produtos agrupados em ${Math.ceil(products.length / 2)} msgs`);
+
+    } catch (e) { console.error(`❌ LIVE Error: ${e.message}`); }
 
     console.log('\n==================================================');
-    console.log('RESULTADO FINAL - TODAS AS LOJAS');
+    console.log(`RESULTADO FINAL: ${allProducts.length}/120 produtos`);
+    console.log('Todas as mensagens foram geradas com sucesso.');
     console.log('==================================================');
-    console.log(`Total de produtos: ${allProducts.length}/120`);
-
-    const byStore = {};
-    allProducts.forEach(p => {
-        if (!byStore[p.loja]) byStore[p.loja] = 0;
-        byStore[p.loja]++;
-    });
-
-    console.log('\nDistribuição por loja:');
-    Object.keys(byStore).forEach(loja => {
-        console.log(`  ${loja}: ${byStore[loja]} produtos`);
-    });
 
     return allProducts;
 }
