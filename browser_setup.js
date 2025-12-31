@@ -27,7 +27,17 @@ async function initBrowser() {
 
     const page = await context.newPage();
 
-    console.log('✅ [V2.1] Navegador iniciado com sucesso.');
+    // 🚀 OTIMIZAÇÃO: Bloqueia recursos desnecessários para economizar banda e processamento
+    await page.route('**/*', (route) => {
+        const type = route.request().resourceType();
+        // Mantemos 'stylesheet' e 'script' pois são essenciais para o funcionamento (React/VTEX hydration)
+        if (['image', 'media', 'font'].includes(type)) {
+            return route.abort();
+        }
+        return route.continue();
+    });
+
+    console.log('✅ [V2.1] Navegador iniciado com sucesso (Imagens/Fonts bloqueadas).');
     return { browser, context, page };
 }
 

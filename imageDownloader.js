@@ -267,6 +267,49 @@ async function processProductUrl(url, forcedId = null) {
     return result;
 }
 
+/**
+ * DIRECT PROCESSOR (Optimized)
+ * Downloads and uploads image directly from a URL without opening a browser.
+ * Use this when the scraper already has the image URL.
+ */
+async function processImageDirect(imageUrl, store, id) {
+    const result = {
+        local_paths: [],
+        cloudinary_urls: [],
+        id: id,
+        store: store,
+        status: 'error',
+        reason: ''
+    };
+
+    try {
+        const filename = `${store}_${id}.jpg`;
+        const filepath = join(DOWNLOAD_DIR, filename);
+
+        // Download
+        await downloadImage(imageUrl, filepath);
+        result.local_paths.push(filepath);
+
+        // Upload
+        const cloudUrl = await uploadToCloudinary(filepath, `${store}_${id}`);
+        if (cloudUrl) {
+            result.cloudinary_urls.push(cloudUrl);
+            result.status = 'success';
+        } else {
+            result.reason = 'Cloudinary upload failed';
+        }
+
+        // Cleanup
+        unlink(filepath, () => { });
+
+    } catch (err) {
+        result.reason = err.message;
+        console.error(`Error in processImageDirect for ${id}:`, err);
+    }
+
+    return result;
+}
+
 if (require.main === module) {
     const testUrl = process.argv[2];
     if (testUrl) {
@@ -276,4 +319,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { processProductUrl };
+module.exports = { processProductUrl, processImageDirect };

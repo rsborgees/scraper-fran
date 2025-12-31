@@ -260,7 +260,36 @@ async function parseProduct(url) {
                     precoOriginal: precoOriginal,
                     precoAtual: precoAtual,
                     tamanhos: uniqueSizes,
-                    categoria: category
+                    tamanhos: uniqueSizes,
+                    categoria: category,
+                    imageUrl: (function () {
+                        const gallerySelectors = [
+                            '.pixel-image',
+                            '.product-image',
+                            '.vtex-store-components-3-x-productImageTag',
+                            '.swiper-slide-active img',
+                            '.image-gallery img',
+                            'img[data-zoom]'
+                        ];
+
+                        let candidates = [];
+                        for (const sel of gallerySelectors) {
+                            const els = document.querySelectorAll(sel);
+                            if (els.length > 0) candidates.push(...Array.from(els));
+                        }
+                        if (candidates.length === 0) {
+                            // Farm often uses large images in grids
+                            candidates = Array.from(document.querySelectorAll('img'))
+                                .filter(img => img.width > 300 && img.height > 300);
+                        }
+
+                        // Extract meta image as backup
+                        const ogImg = document.querySelector('meta[property="og:image"]');
+                        if (candidates.length === 0 && ogImg && ogImg.content) return ogImg.content;
+
+                        const bestImg = candidates.find(img => (img.currentSrc || img.src) && !(img.src || '').includes('svg'));
+                        return bestImg ? (bestImg.currentSrc || bestImg.src) : (ogImg ? ogImg.content : null);
+                    })()
                 },
                 debugInfo: debugInfo
             };

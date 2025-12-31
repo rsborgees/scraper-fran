@@ -1,7 +1,7 @@
 const { initBrowser } = require('../../browser_setup');
 const path = require('path');
 const fs = require('fs');
-const { processProductUrl } = require('../../imageDownloader');
+const { processProductUrl, processImageDirect } = require('../../imageDownloader');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -91,7 +91,16 @@ async function scrapeLive(quota = 6) {
                 console.log(`🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
                 try {
-                    const imgResult = await processProductUrl(url, product.id);
+                    // OTIMIZAÇÃO: Usa processImageDirect se tivermos a URL, evitando abrir novo navegador
+                    let imgResult;
+                    if (product.imageUrl) {
+                        imgResult = await processImageDirect(product.imageUrl, 'LIVE', product.id);
+                    } else {
+                        // Fallback (lento)
+                        console.warn('   ⚠️ URL da imagem não encontrada no parse, usando método lento...');
+                        imgResult = await processProductUrl(url, product.id);
+                    }
+
                     if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
                         imagePath = imgResult.cloudinary_urls[0];
                         console.log(`   ✔️  Imagem salva: ${imagePath}`);
@@ -233,7 +242,34 @@ async function parseProductLive(page, url) {
                 preco,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
-                url: window.location.href
+                url: window.location.href,
+                imageUrl: (function () {
+                    const gallerySelectors = [
+                        '.product-image',
+                        '.vtex-store-components-3-x-productImageTag',
+                        '.swiper-slide-active img',
+                        '.image-gallery img',
+                        'img[data-zoom]',
+                        'img[srcset]' // Fallback comum
+                    ];
+
+                    let candidates = [];
+                    for (const sel of gallerySelectors) {
+                        const els = document.querySelectorAll(sel);
+                        if (els.length > 0) candidates.push(...Array.from(els));
+                    }
+                    if (candidates.length === 0) {
+                        candidates = Array.from(document.querySelectorAll('img'))
+                            .filter(img => img.width > 250 && img.height > 250);
+                    }
+                    if (candidates.length === 0) {
+                        const ogImg = document.querySelector('meta[property="og:image"]');
+                        if (ogImg && ogImg.content) return ogImg.content;
+                    }
+
+                    const bestImg = candidates.find(img => (img.currentSrc || img.src) && !(img.src || '').includes('svg'));
+                    return bestImg ? (bestImg.currentSrc || bestImg.src) : null;
+                })()
             };
         });
 

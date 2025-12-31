@@ -1,7 +1,7 @@
 const { initBrowser } = require('../../browser_setup');
 const fs = require('fs');
 const path = require('path');
-const { processProductUrl } = require('../../imageDownloader');
+const { processProductUrl, processImageDirect } = require('../../imageDownloader');
 
 /**
  * Scraper FARM - Isolado
@@ -50,7 +50,14 @@ async function scrapeFarm(quota = 84) {
                 console.log(`\n🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
                 try {
-                    const imgResult = await processProductUrl(url, product.id);
+                    // OTIMIZAÇÃO
+                    let imgResult;
+                    if (product.imageUrl) {
+                        imgResult = await processImageDirect(product.imageUrl, 'FARM', product.id);
+                    } else {
+                        imgResult = await processProductUrl(url, product.id);
+                    }
+
                     if (imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
                         imagePath = imgResult.cloudinary_urls[0];
                         console.log(`   ✔️  Imagem salva: ${imagePath}`);

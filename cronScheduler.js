@@ -100,7 +100,7 @@ function setupDailySchedule() {
 
     // Cron: Todos os dias às 7h da manhã (0 7 * * *)
     // Formato: segundo minuto hora dia mês dia-da-semana
-    const cronExpression = '0 7 * * *';
+    const cronExpression = '0 3 * * *';
 
     cron.schedule(cronExpression, async () => {
         await runScheduledScraping();
@@ -109,7 +109,7 @@ function setupDailySchedule() {
         timezone: "America/Sao_Paulo"
     });
 
-    console.log('✅ Agendamento configurado: 7h da manhã (horário de Brasília)');
+    console.log('✅ Agendamento configurado: 3h da manhã (horário de Brasília)');
     console.log(`   Próxima execução: ${getNextRunTime()}\n`);
 }
 
@@ -120,10 +120,10 @@ function getNextRunTime() {
     const now = new Date();
     const next = new Date(now);
 
-    next.setHours(7, 0, 0, 0);
+    next.setHours(3, 0, 0, 0);
 
-    // Se já passou das 7h hoje, agenda para amanhã
-    if (now.getHours() >= 7) {
+    // Se já passou das 3h hoje, agenda para amanhã
+    if (now.getHours() >= 3) {
         next.setDate(next.getDate() + 1);
     }
 
