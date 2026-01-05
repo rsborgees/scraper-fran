@@ -10,8 +10,8 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
  */
 async function parseProduct(url) {
     // VALIDAÇÃO ESTRITA DE URL (PRÉ-NAVEGAÇÃO)
-    // Só processar URLs de produto real
-    if (!url.includes('/p?') && !url.includes('/p/')) {
+    // Só processar URLs de produto real (/p, /p/ ou /p?)
+    if (!url.includes('/p?') && !url.includes('/p/') && !url.endsWith('/p')) {
         console.log(`⏭️ [Skip] URL não é produto: ${url}`);
         return null;
     }
@@ -56,8 +56,13 @@ async function parseProduct(url) {
             const name = getSafeText(h1);
             if (!name) return { error: 'Nome não encontrado' };
 
-            // 2. PREÇO ORIGINAL (SELETOR ESPECÍFICO)
-            const listPriceEl = document.querySelector('span#list-price');
+            // 2. PREÇO ORIGINAL (SELETOR ESPECÍFICO + CLASS FALLBACK)
+            let listPriceEl = document.querySelector('span#list-price');
+            if (!listPriceEl) {
+                // Fallback para a classe de preço riscado vista na inspeção
+                listPriceEl = document.querySelector('.line-through');
+            }
+
             let precoOriginal = null;
             let listPriceRaw = '';
 
@@ -86,16 +91,32 @@ async function parseProduct(url) {
             }
 
             // 3. PREÇO ATUAL (BUSCA INTELIGENTE)
-            // Prioridade: Elementos no mesmo container que o #list-price
+            // Prioridade: Elementos com classe de destaque ou no mesmo container que o listPrice
             let currentPrices = [];
 
-            if (listPriceEl) {
-                const container = listPriceEl.closest('div, p, span.vtex-product-price-1-x-price-list');
+            // Tenta primeiro a classe de destaque vista na inspeção
+            const warningPriceEl = document.querySelector('.text-warning-content');
+            if (warningPriceEl) {
+                const txt = getSafeText(warningPriceEl);
+                const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                if (match) {
+                    let valStr = match[1].replace(/\./g, '');
+                    if (valStr.includes(',')) valStr = valStr.replace(',', '.');
+                    else valStr = valStr + '.00';
+                    const val = parseFloat(valStr);
+                    if (!isNaN(val) && val > 0) {
+                        currentPrices.push(val);
+                    }
+                }
+            }
+
+            if (listPriceEl && currentPrices.length === 0) {
+                const container = listPriceEl.closest('div, p, span.vtex-product-price-1-x-price-list') || listPriceEl.parentElement;
                 if (container) {
                     const localPrices = Array.from(container.querySelectorAll('*'))
                         .filter(el => {
                             if (el.children.length > 0) return false;
-                            if (el.id === 'list-price') return false;
+                            if (el === listPriceEl) return false;
                             const txt = getSafeText(el);
                             return txt && txt.includes('R$') && !/x\s*de|parcel|sem\s*juros|ou\s+\d+x/i.test(txt);
                         });
@@ -108,7 +129,7 @@ async function parseProduct(url) {
                             if (valStr.includes(',')) valStr = valStr.replace(',', '.');
                             else valStr = valStr + '.00';
                             const val = parseFloat(valStr);
-                            if (!isNaN(val) && val > 0 && val < precoOriginal) {
+                            if (!isNaN(val) && val > 0 && (!precoOriginal || val < precoOriginal)) {
                                 currentPrices.push(val);
                             }
                         }

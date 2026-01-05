@@ -39,47 +39,51 @@ async function scanCategory(categoryUrl, categoryName) {
         const foundUrls = await page.evaluate(() => {
             const candidates = new Set();
 
-            // Helper Safe
-            const getSafeText = (el) => {
-                if (!el) return '';
-                const txt = el.innerText || el.textContent || '';
-                return (typeof txt === 'string') ? txt : ''; // Não trim aqui para preservar espaços se necessário, ou trim se preferir
-            };
+            // Pega todos os cards de produto
+            const productCards = document.querySelectorAll('a.card');
 
-            const allEls = Array.from(document.querySelectorAll('*'));
+            productCards.forEach(card => {
+                // Heurística de Promoção: Procura por preço riscado ou cor de destaque (amarelo/laranja na Farm)
+                const hasLineThrough = !!card.querySelector('.line-through');
+                const hasWarningPrice = !!card.querySelector('.text-warning-content');
 
-            // Encontra elementos de preço com segurança
-            const priceElements = allEls.filter(el => {
-                if (el.children.length > 0) return false; // Apenas folhas
-                const txt = getSafeText(el);
-                return txt.includes('R$');
-            });
-
-            priceElements.forEach(priceEl => {
-                // Sobe até achar um container que tenha link para produto (/p)
-                let parent = priceEl.parentElement;
-                let link = null;
-                let sanityCounter = 0;
-
-                while (parent && sanityCounter < 8) { // Reduzido profundidade
-                    const foundLink = parent.querySelector('a[href*="/p"]');
-                    if (foundLink) {
-                        link = foundLink;
-
-                        // Verifica se neste container (o card) existem dois preços
-                        const containerText = getSafeText(parent).replace(/\s+/g, ' ');
-                        const pricesFound = containerText.match(/R\$\s*[\d.,]+/g);
-
-                        // SE tiver 2 ou mais preços
-                        if (pricesFound && pricesFound.length >= 2) {
-                            candidates.add(link.href);
+                // Se o card tem indício de promoção e um link válido de produto
+                let href = card.href;
+                if ((hasLineThrough || hasWarningPrice) && href && (href.includes('/p?') || href.includes('/p/'))) {
+                    // Limpeza de URL: Garante que termina em /p e remove lixo
+                    // Exemplo: .../nome-do-produto/p?brand=farm -> .../nome-do-produto/p
+                    try {
+                        const baseUrl = href.split('?')[0];
+                        if (baseUrl.endsWith('/p')) {
+                            href = baseUrl;
                         }
-                        break;
-                    }
-                    parent = parent.parentElement;
-                    sanityCounter++;
+                    } catch (e) { }
+
+                    candidates.add(href);
                 }
             });
+
+            // Fallback para estrutura antiga ou caso mudem as classes base:
+            // Se não achou nada com a seletor de classe, tenta a busca por texto de preço
+            if (candidates.size === 0) {
+                const getSafeText = (el) => el ? (el.innerText || el.textContent || '').trim() : '';
+                const allLinks = Array.from(document.querySelectorAll('a[href*="/p"]'));
+
+                allLinks.forEach(link => {
+                    const txt = getSafeText(link).replace(/\s+/g, ' ');
+                    const pricesFound = txt.match(/R\$\s*[\d.,]+/g);
+
+                    // Só aceita como promoção se tiver 2 preços E não for apenas o parcelamento
+                    // Geralmente o parcelamento vem com "ou X de"
+                    if (pricesFound && pricesFound.length >= 2) {
+                        // Verifica se um dos preços é "riscado" via estilo se possível, ou se não é "ou X de"
+                        const hasInstallments = /ou\s+\d+x\s+de/i.test(txt);
+                        if (pricesFound.length > 2 || !hasInstallments) {
+                            candidates.add(link.href);
+                        }
+                    }
+                });
+            }
 
             return Array.from(candidates);
         });

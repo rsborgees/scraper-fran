@@ -116,7 +116,6 @@ async function scrapeDressTo(quota = 18) {
                 product.loja = 'dressto';
                 product.desconto = 0;
                 product.imagePath = imagePath;
-                markAsSent([product.id]);
                 products.push(product);
             }
 
@@ -152,6 +151,10 @@ async function scrapeDressTo(quota = 18) {
     }
 
     console.log(`\n✅ DRESS TO: ${selected.length}/${quota} produtos capturados`);
+
+    if (selected.length > 0) {
+        markAsSent(selected.map(p => p.id));
+    }
 
     if (selected.length < quota) {
         console.warn(`⚠️ quota_not_reached: DRESS TO (${selected.length}/${quota})`);

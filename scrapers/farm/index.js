@@ -51,10 +51,20 @@ async function scrapeFarm(quota = 84) {
         for (const url of candidates) {
             if (confirmedPromotions.length >= quota) break;
 
+            // Extração precoce de ID para evitar processamento de duplicados
+            const idMatch = url.match(/(\d{5,})/);
+            const earlyId = idMatch ? idMatch[1].substring(0, 6) : null;
+
+            if (earlyId && isDuplicate(earlyId)) {
+                console.log(`   ⏭️  Pulo (Match ID precoce): ${earlyId}`);
+                continue;
+            }
+
             // 1. Parse Product PRIMEIRO para garantir que estamos na página certa e ter o ID
             const product = await parseProduct(url);
 
             if (product) {
+                // Se o parser extraiu um ID diferente ou mais preciso, re-checa
                 if (isDuplicate(product.id)) {
                     console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
                     continue;
@@ -81,8 +91,12 @@ async function scrapeFarm(quota = 84) {
                     console.log(`   ❌ Erro download imagem: ${err.message}`);
                 }
 
-                // O link simplificado é passado para o MessageBuilder que adicionará os parâmetros
-                product.url = url;
+                // Adiciona parâmetros de vendedora na URL de forma robusta
+                // Isso garante que o link tenha o código mesmo se não usar a mensagem formatada
+                const { appendQueryParams } = require('../../urlUtils');
+                product.url = appendQueryParams(url, {
+                    utm_campaign: "7B1313"
+                });
 
                 // Adiciona campo 'loja' e 'desconto'
                 // Adiciona informações extras para o MessageBuilder
@@ -91,7 +105,6 @@ async function scrapeFarm(quota = 84) {
                 product.imagePath = imagePath;
                 product.timerData = timerData;
 
-                markAsSent([product.id]);
                 confirmedPromotions.push(product);
             }
         }
@@ -150,6 +163,9 @@ async function scrapeFarm(quota = 84) {
 
     console.log(`\n✅ FARM: ${selectedProducts.length}/${quota} produtos capturados`);
 
+    if (selectedProducts.length > 0) {
+        markAsSent(selectedProducts.map(p => p.id));
+    }
 
     if (selectedProducts.length < quota) {
         console.warn(`⚠️ quota_not_reached: FARM (${selectedProducts.length}/${quota})`);

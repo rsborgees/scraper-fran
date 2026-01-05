@@ -133,10 +133,7 @@ function buildFarmMessage(produto, timerData = null) {
 
     // Adiciona parâmetros de vendedora na URL de forma robusta usando utilitário
     const finalUrl = appendQueryParams(produto.url, {
-        brand: 'farm',
-        utm_campaign: SELLER_CODE,
-        utm_source: 'vendedoras',
-        utm_medium: 'organico'
+        utm_campaign: SELLER_CODE
     });
 
     // Monta a mensagem final: Progressivo (se houver) -> Nome -> Tamanhos -> Preço -> Cupom -> Código -> Link -> Grupo

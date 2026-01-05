@@ -22,13 +22,23 @@ function saveHistory(ids) {
 }
 
 function isDuplicate(id) {
+    if (!id) return false;
     const history = loadHistory();
-    return history.includes(id);
+    const targetId = String(id);
+
+    return history.some(item => {
+        const historyId = String(item);
+        // Match exato ou um é prefixo do outro (ex: 350754-123 vs 350754)
+        return historyId === targetId ||
+            historyId.startsWith(targetId) ||
+            targetId.startsWith(historyId);
+    });
 }
 
 function markAsSent(ids) {
     const history = loadHistory();
-    const newHistory = [...new Set([...history, ...ids])];
+    const stringIds = ids.map(id => String(id));
+    const newHistory = [...new Set([...history, ...stringIds])];
     saveHistory(newHistory);
 }
 
