@@ -124,6 +124,10 @@ async function parseProduct(url) {
                     if (el.id === 'list-price') return false;
                     const txt = getSafeText(el);
                     if (!txt || !txt.includes('R$')) return false;
+                    // CRITICAL: Exclude promotional text patterns
+                    // Patterns like "50% off", "1 peça 50", "2 peças 100", etc.
+                    if (/%\s*(off|desconto)/i.test(txt)) return false;
+                    if (/\d+\s*peças?\s*\d+/i.test(txt)) return false;
                     if (/x\s*de\s*R\$|parcel|sem\s+juros|ou\s+\d+x/i.test(txt)) return false;
                     return (el.offsetWidth > 0 && el.offsetHeight > 0);
                 });
@@ -149,7 +153,21 @@ async function parseProduct(url) {
             // O preço atual é o primeiro encontrado no container (que geralmente é o selling price)
             // Se houver múltiplos, pegamos o menor para ser conservador
             const uniqueCurrentPrices = [...new Set(currentPrices)].sort((a, b) => a - b);
-            const precoAtual = uniqueCurrentPrices.length > 0 ? uniqueCurrentPrices[0] : null;
+
+            // CRITICAL FILTER: Remove promotional values
+            // If we have the exact pattern [50, 100, 200, 300, 399] or subset, it's from "Desconto Progressivo"
+            const suspiciousPatterns = [50, 100, 200, 300, 399];
+            const filteredPrices = uniqueCurrentPrices.filter(price => {
+                // If this price is in the suspicious list AND we have multiple suspicious values
+                if (suspiciousPatterns.includes(price)) {
+                    const suspiciousCount = uniqueCurrentPrices.filter(p => suspiciousPatterns.includes(p)).length;
+                    // If we have 3+ suspicious values, they're likely from promotional text
+                    if (suspiciousCount >= 3) return false;
+                }
+                return true;
+            });
+
+            const precoAtual = filteredPrices.length > 0 ? filteredPrices[0] : null;
 
             // DEBUG INFO
             const debugInfo = {

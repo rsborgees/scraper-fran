@@ -1,6 +1,7 @@
 const SELLER_CODE = "7B1313";
 const LINKTREE = "https://linktr.ee/FranNaFarm";
 const WHATSAPP_LINK = "https://chat.whatsapp.com/B5NunogKsnMIoyJSxMAtcN";
+const { appendQueryParams } = require('./urlUtils');
 
 function formatPrice(price) {
     if (!price || isNaN(price)) return 'R$ 0,00';
@@ -130,12 +131,13 @@ function buildFarmMessage(produto, timerData = null) {
         cupomText = "10% off comprando pelo link e usando código da vendedora";
     }
 
-    // Adiciona parâmetros de vendedora na URL de forma robusta
-    let finalUrl = produto.url;
-    if (!finalUrl.includes('utm_campaign')) {
-        const separator = finalUrl.includes('?') ? '&' : '?';
-        finalUrl += `${separator}brand=farm&utm_campaign=${SELLER_CODE}&utm_source=vendedoras&utm_medium=organico`;
-    }
+    // Adiciona parâmetros de vendedora na URL de forma robusta usando utilitário
+    const finalUrl = appendQueryParams(produto.url, {
+        brand: 'farm',
+        utm_campaign: SELLER_CODE,
+        utm_source: 'vendedoras',
+        utm_medium: 'organico'
+    });
 
     // Monta a mensagem final: Progressivo (se houver) -> Nome -> Tamanhos -> Preço -> Cupom -> Código -> Link -> Grupo
     const parts = [

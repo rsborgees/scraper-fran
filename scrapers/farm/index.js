@@ -81,9 +81,8 @@ async function scrapeFarm(quota = 84) {
                     console.log(`   ❌ Erro download imagem: ${err.message}`);
                 }
 
-                // Adiciona field 'url' com parâmetros de vendedora
-                const sellerParams = 'utm_campaign=7b1313&utm_source=vendedoras&utm_medium=organico';
-                product.url = url.includes('?') ? `${url}&${sellerParams}` : `${url}?${sellerParams}`;
+                // O link simplificado é passado para o MessageBuilder que adicionará os parâmetros
+                product.url = url;
 
                 // Adiciona campo 'loja' e 'desconto'
                 // Adiciona informações extras para o MessageBuilder
