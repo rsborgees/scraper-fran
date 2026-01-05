@@ -69,19 +69,50 @@ async function scrapeLive(quota = 6) {
         // Coleta URLs de produtos (Links terminando em /p ou contendo /p/)
         const productUrls = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll('a[href]'));
+            console.log(`Total links found on page: ${links.length}`);
+
+            // Log a few links to see what they look like
+            const sampleLinks = links.slice(0, 10).map(a => a.href);
+            console.log(`Sample links: ${JSON.stringify(sampleLinks)}`);
+
             return [...new Set(links.map(a => a.href))]
                 .filter(url => {
-                    const path = new URL(url).pathname;
-                    // URLs de produtos na Live geralmente terminam em /p ou /p/ e são longas
-                    return (path.endsWith('/p') || path.includes('/p/')) &&
-                        path.length > 15 &&
-                        !path.includes('/carrinho') &&
-                        !path.includes('/login') &&
-                        path !== '/produtos/p'; // Exclui links genéricos se houver
+                    try {
+                        const parsed = new URL(url);
+                        if (parsed.hostname !== window.location.hostname && !url.startsWith('/')) return false;
+
+                        const path = parsed.pathname;
+
+                        // URLs de produtos na Live geralmente terminam em /p ou /p/ e são longas
+                        // Mas vamos ser mais flexíveis se não acharmos nada
+                        const isProductPattern = (path.endsWith('/p') || path.includes('/p/')) && path.length > 10;
+                        const isExcluded = path.includes('/carrinho') || path.includes('/login') || path === '/produtos/p';
+
+                        return isProductPattern && !isExcluded;
+                    } catch (e) {
+                        return false;
+                    }
                 });
         });
 
         console.log(`   🔎 Encontrados ${productUrls.length} produtos candidatos.`);
+        if (productUrls.length === 0) {
+            const totalA = await page.evaluate(() => document.querySelectorAll('a').length);
+            console.log(`   ⚠️ Nenhum produto encontrado com padrão /p. Total de links na página: ${totalA}`);
+            // Fallback: Pega todos os links longos que não são categorias conhecidas
+            const fallbackUrls = await page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('a[href]'));
+                return [...new Set(links.map(a => a.href))].filter(url => {
+                    try {
+                        const path = new URL(url).pathname;
+                        return path.split('/').length >= 2 && path.length > 25 &&
+                            !['/carrinho', '/login', '/checkout', '/account'].some(s => path.includes(s));
+                    } catch (e) { return false; }
+                });
+            });
+            console.log(`   💡 Fallback encontrou ${fallbackUrls.length} links longos.`);
+            productUrls.push(...fallbackUrls.slice(0, 20)); // Limita fallback
+        }
 
         for (const url of productUrls) {
             if (products.length >= quota * 3) break;

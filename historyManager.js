@@ -57,4 +57,4 @@ function markAsSent(ids) {
     saveHistory(newHistory);
 }
 
-module.exports = { isDuplicate, markAsSent, loadHistory };
+module.exports = { isDuplicate, markAsSent, loadHistory, normalizeId };

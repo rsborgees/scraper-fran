@@ -272,7 +272,7 @@ async function parseProductKJU(page, url) {
         });
 
         if (data) {
-            console.log(`✅ KJU: ${data.nome} | R$${data.preco} (${data.categoria})`);
+            console.log(`✅ KJU: ${data.nome} | R$${data.precoAtual} (${data.categoria})`);
         }
 
         return data;

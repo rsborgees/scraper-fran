@@ -21,21 +21,27 @@ async function scrapeDressTo(quota = 18) {
 
     try {
         await page.goto('https://www.dressto.com.br/nossas-novidades', {
-            waitUntil: 'domcontentloaded',
-            timeout: 45000
+            waitUntil: 'load',
+            timeout: 60000
         });
+
+        await page.waitForTimeout(3000);
 
         // 📜 Rolagem lenta e parcial (simulando humano)
         console.log('   📜 Rolando página suavemente (parcial)...');
-        await page.evaluate(async () => {
-            const distance = 150;
-            const delay = 350;
-            const maxScrolls = 15;
-            for (let i = 0; i < maxScrolls; i++) {
-                window.scrollBy(0, distance);
-                await new Promise(r => setTimeout(r, delay));
-            }
-        });
+        try {
+            await page.evaluate(async () => {
+                const distance = 150;
+                const delay = 350;
+                const maxScrolls = 15;
+                for (let i = 0; i < maxScrolls; i++) {
+                    window.scrollBy(0, distance);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+            });
+        } catch (e) {
+            console.warn(`   ⚠️ Erro durante rolagem (contexto destruído?), continuando...`);
+        }
         await page.waitForTimeout(2000);
 
         // Coleta URLs de produtos (Dress To usa estrutura VTEX onde links de produtos terminam em /p)

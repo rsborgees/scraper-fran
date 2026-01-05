@@ -249,7 +249,7 @@ async function parseProductZZMall(page, url) {
         });
 
         if (data) {
-            console.log(`✅ ZZMall: ${data.nome} | R$${data.preco}`);
+            console.log(`✅ ZZMall: ${data.nome} | R$${data.precoAtual}`);
         }
 
         return data;
