@@ -16,6 +16,8 @@ async function scrapeZZMall(quota = 6) {
     console.log('\n🟠 INICIANDO SCRAPER ZZMALL (Quota: ' + quota + ')');
 
     const products = [];
+    const seenInRun = new Set();
+    const { normalizeId } = require('../../historyManager');
     const { browser, page } = await initBrowser();
 
     try {
@@ -41,15 +43,19 @@ async function scrapeZZMall(quota = 6) {
         for (const url of productUrls) {
             if (products.length >= quota) break;
 
-            // Parse Product PRIMEIRO para garantir dados consistentes
+            // Parse Product
             const product = await parseProductZZMall(page, url);
 
             if (product) {
-                if (isDuplicate(product.id)) {
-                    console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                const normId = normalizeId(product.id);
+                if (normId && (seenInRun.has(normId) || isDuplicate(normId))) {
+                    console.log(`   ⏭️  Duplicado (Histórico/Run): ${normId}`);
                     continue;
                 }
-                // Image Download Integration (usando o ID já extraído)
+
+                if (normId) seenInRun.add(normId);
+
+                // Image Download
                 console.log(`🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
                 try {

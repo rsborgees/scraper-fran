@@ -16,6 +16,8 @@ async function scrapeKJU(quota = 6) {
     console.log('\n💎 INICIANDO SCRAPER KJU (Quota: ' + quota + ')');
 
     const products = [];
+    const seenInRun = new Set();
+    const { normalizeId } = require('../../historyManager');
     const { browser, page } = await initBrowser();
 
     try {
@@ -69,60 +71,46 @@ async function scrapeKJU(quota = 6) {
 
             console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
 
-            // Simula o clique/interação
+            // Interaction/Navigation Logic
             try {
                 const relativePath = new URL(url).pathname;
                 const element = await page.$(`.prod a[href*="${relativePath}"]`);
                 if (element) {
-                    console.log(`   🖱️  Clicando no elemento do produto...`);
                     await element.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
                     await element.click();
-                    // Espera carregar a página do produto
                     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
                 } else {
-                    console.log(`   🔗 Elemento não encontrado diretamente, navegando via URL...`);
                     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
                 }
             } catch (err) {
-                console.log(`   ⚠️ Falha na interação: ${err.message}`);
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             }
 
-            // Parse Product PRIMEIRO para garantir que estamos na página certa
+            // Parse Product
             const product = await parseProductKJU(page, url);
 
             if (product && product.nome && !product.nome.includes('LANÇAMENTO')) {
-                if (isDuplicate(product.id)) {
-                    console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                const normId = normalizeId(product.id);
+                if (normId && (seenInRun.has(normId) || isDuplicate(normId))) {
+                    console.log(`   ⏭️  Duplicado (Histórico/Run): ${normId}`);
                     continue;
                 }
 
-                // Image Download Integration (usando o ID já extraído)
+                if (normId) seenInRun.add(normId);
+
+                // Image Download
                 console.log(`   🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
                 try {
                     const imgResult = await processProductUrl(url, product.id);
-                    if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                    if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls?.length > 0) {
                         imagePath = imgResult.cloudinary_urls[0];
-                        console.log(`      ✔️  Imagem salva: ${imagePath}`);
                     }
-                } catch (err) {
-                    console.log(`      ❌ Erro imagem: ${err.message}`);
-                }
+                } catch (err) { }
 
-                // Adiciona parâmetro de vendedora
                 product.url = url.includes('?') ? `${url}&ref=7B1313` : `${url}?ref=7B1313`;
-
                 product.loja = 'kju';
-
-                // Calcula desconto se houver preço original
-                if (product.preco_original && product.preco_original > product.preco) {
-                    product.desconto = Math.round(((product.preco_original - product.preco) / product.preco_original) * 100);
-                } else {
-                    product.desconto = 0;
-                }
-
                 product.imagePath = imagePath;
                 products.push(product);
             }

@@ -15,6 +15,8 @@ async function scrapeDressTo(quota = 18) {
     console.log('\n👗 INICIANDO SCRAPER DRESS TO (Quota: ' + quota + ')');
 
     const products = [];
+    const seenInRun = new Set();
+    const { normalizeId } = require('../../historyManager');
     const { browser, page } = await initBrowser();
 
     try {
@@ -43,7 +45,6 @@ async function scrapeDressTo(quota = 18) {
             return [...new Set(links.map(a => a.href))]
                 .filter(url => {
                     const path = new URL(url).pathname;
-                    // Links de produtos na Dress To terminam em /p e costumam ter o nome do produto no path
                     return path.endsWith('/p') && path.length > 20;
                 });
         }, productSelector);
@@ -51,50 +52,45 @@ async function scrapeDressTo(quota = 18) {
         console.log(`   🔎 Encontrados ${productUrls.length} produtos na listagem.`);
 
         for (const url of productUrls) {
-            // Coletamos o dobro da quota para ter margem de manobra nas categorias
+            // Coletamos margem para categorias
             if (products.length >= (quota * 2)) break;
 
             console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
 
-            // Simula o clique/interação
+            // Interação opcional ou navegação direta
             try {
                 const relativePath = new URL(url).pathname;
-                // Busca o link específico para clicar
                 const element = await page.$(`a[href*="${relativePath}"]`);
                 if (element) {
-                    console.log(`   🖱️  Clicando no elemento do produto...`);
                     await element.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(500);
-
-                    // Tenta clique forçado primeiro (Playwright)
                     try {
                         await element.click({ force: true, timeout: 5000 });
-                    } catch (clickErr) {
-                        // Fallback: Clique via JavaScript (ignorando overlays)
-                        console.log('   ⚠️ Click padrão falhou, tentando via JS...');
+                    } catch (e) {
                         await page.evaluate((el) => el.click(), element);
                     }
-
-                    // Espera carregar a página do produto
                     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
                 } else {
-                    console.log(`   🔗 Elemento não encontrado diretamente, navegando via URL...`);
                     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
                 }
             } catch (err) {
-                console.log(`   ⚠️ Falha na interação: ${err.message}, forçando navegação direta.`);
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             }
 
-            // 1. Parse Product PRIMEIRO para ter o ID
+            // 1. Parse Product
             const product = await parseProductDressTo(page, url);
 
             if (product) {
-                if (isDuplicate(product.id)) {
-                    console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                const normId = normalizeId(product.id);
+
+                if (normId && (seenInRun.has(normId) || isDuplicate(normId))) {
+                    console.log(`   ⏭️  Duplicado (Histórico/Run): ${normId}`);
                     continue;
                 }
-                // 2. Image Download Integration (usando o ID já extraído)
+
+                if (normId) seenInRun.add(normId);
+
+                // 2. Image Download
                 console.log(`   🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
                 try {
@@ -104,14 +100,10 @@ async function scrapeDressTo(quota = 18) {
                     } else {
                         imgResult = await processProductUrl(url, product.id);
                     }
-
-                    if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls && imgResult.cloudinary_urls.length > 0) {
+                    if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls?.length > 0) {
                         imagePath = imgResult.cloudinary_urls[0];
-                        console.log(`      ✔️  Imagem salva: ${imagePath}`);
                     }
-                } catch (err) {
-                    console.log(`      ❌ Erro imagem: ${err.message}`);
-                }
+                } catch (err) { }
 
                 product.loja = 'dressto';
                 product.desconto = 0;
@@ -131,33 +123,23 @@ async function scrapeDressTo(quota = 18) {
         await browser.close();
     }
 
-    // Aplicar prioridade: 80% vestidos, 20% macacões (ou preencher com o que houver)
+    // Aplicar prioridade
     const vestidos = products.filter(p => p.categoria === 'vestido');
     const macacoes = products.filter(p => p.categoria === 'macacão');
     const outros = products.filter(p => p.categoria !== 'vestido' && p.categoria !== 'macacão');
 
-    const vestidosQuota = Math.round(quota * 0.8);
-    const macacoesQuota = Math.round(quota * 0.2);
-
     let selected = [
-        ...vestidos.slice(0, vestidosQuota),
-        ...macacoes.slice(0, macacoesQuota)
+        ...vestidos.slice(0, Math.round(quota * 0.8)),
+        ...macacoes.slice(0, Math.round(quota * 0.2))
     ];
 
-    // Se as categorias prioritárias não preencherem a quota total, pega do 'outros'
     if (selected.length < quota) {
         const gap = quota - selected.length;
         selected = [...selected, ...outros.slice(0, gap)];
     }
 
-    console.log(`\n✅ DRESS TO: ${selected.length}/${quota} produtos capturados`);
-
     if (selected.length > 0) {
         markAsSent(selected.map(p => p.id));
-    }
-
-    if (selected.length < quota) {
-        console.warn(`⚠️ quota_not_reached: DRESS TO (${selected.length}/${quota})`);
     }
 
     return selected.slice(0, quota);

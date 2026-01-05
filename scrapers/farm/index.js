@@ -32,31 +32,28 @@ async function scrapeFarm(quota = 84) {
     } catch (e) { console.error('Error checking timer:', e); }
 
     const confirmedPromotions = [];
+    const seenInRun = new Set();
 
     // Importa funções auxiliares locais
     const { scanCategory } = require('./scanner');
     const { parseProduct } = require('./parser');
 
+    const { normalizeId } = require('../../historyManager');
+
     for (const cat of CATEGORIES) {
-        if (confirmedPromotions.length >= quota) break;
+        if (confirmedPromotions.length >= (quota * 2)) break; // Pega margem para quotas
 
         console.log(`\n📂 Processando Categoria: ${cat.name}`);
         const candidates = await scanCategory(cat.url, cat.name);
 
-        if (candidates.length === 0) {
-            console.log(`  -> Nenhum candidato encontrado em ${cat.name}.`);
-            continue;
-        }
-
         for (const url of candidates) {
-            if (confirmedPromotions.length >= quota) break;
-
             // Extração precoce de ID para evitar processamento de duplicados
             const idMatch = url.match(/(\d{5,})/);
             const earlyId = idMatch ? idMatch[1].substring(0, 6) : null;
+            const normEarlyId = normalizeId(earlyId);
 
-            if (earlyId && isDuplicate(earlyId)) {
-                console.log(`   ⏭️  Pulo (Match ID precoce): ${earlyId}`);
+            if (normEarlyId && (seenInRun.has(normEarlyId) || isDuplicate(normEarlyId))) {
+                console.log(`   ⏭️  Pulo (Match ID precoce): ${normEarlyId}`);
                 continue;
             }
 
@@ -64,12 +61,16 @@ async function scrapeFarm(quota = 84) {
             const product = await parseProduct(url);
 
             if (product) {
+                const normId = normalizeId(product.id);
                 // Se o parser extraiu um ID diferente ou mais preciso, re-checa
-                if (isDuplicate(product.id)) {
-                    console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
+                if (seenInRun.has(normId) || isDuplicate(normId)) {
+                    console.log(`   ⏭️  Duplicado (Histórico/Run): ${normId}`);
                     continue;
                 }
-                // 2. Image Download Integration (usando o ID já extraído)
+
+                seenInRun.add(normId);
+
+                // 2. Image Download Integration
                 console.log(`\n🖼️  Baixando imagem com ID: ${product.id}...`);
                 let imagePath = null;
                 try {
@@ -111,13 +112,14 @@ async function scrapeFarm(quota = 84) {
     }
 
 
-    // Deduplicação
+    // Deduplicação FINAL por ID (mais seguro que URL)
     const uniquePromotions = [];
-    const seenUrls = new Set();
+    const seenFinalIds = new Set();
 
     confirmedPromotions.forEach(product => {
-        if (!seenUrls.has(product.url)) {
-            seenUrls.add(product.url);
+        const normId = normalizeId(product.id);
+        if (!seenFinalIds.has(normId)) {
+            seenFinalIds.add(normId);
             uniquePromotions.push(product);
         }
     });
