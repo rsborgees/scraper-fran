@@ -9,7 +9,7 @@ async function initBrowser() {
     console.log('🚀 [V2.2] Iniciando navegador Chromium (MODO VISUAL)...');
 
     const browser = await chromium.launch({
-        headless: false, // Voltando para modo visual para o usuário ver
+        headless: process.env.HEADLESS === 'false' ? false : true, // Headless por padrão para Easypanel
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',

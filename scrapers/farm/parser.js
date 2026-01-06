@@ -56,84 +56,52 @@ async function parseProduct(url) {
             const name = getSafeText(h1);
             if (!name) return { error: 'Nome não encontrado' };
 
-            // 2. PREÇO ORIGINAL (SELETOR ESPECÍFICO + CLASS FALLBACK)
-            let listPriceEl = document.querySelector('span#list-price');
-            if (!listPriceEl) {
-                // Fallback para a classe de preço riscado vista na inspeção
-                listPriceEl = document.querySelector('.line-through');
-            }
-
+            // 2. PREÇO ORIGINAL (#list-price)
             let precoOriginal = null;
             let listPriceRaw = '';
 
-            if (listPriceEl) {
+            const listPriceEl = document.querySelector('span#list-price');
+            // Só considera o listPrice se ele estiver visível (style hidden desconsiderado)
+            if (listPriceEl && (listPriceEl.offsetWidth > 0 || listPriceEl.offsetHeight > 0)) {
                 listPriceRaw = getSafeText(listPriceEl);
-                // Regex flexível: aceita com ou sem centavos
-                // R$ 1.698,00 ou R$ 1.698 ou R$ 449,99
                 const match = listPriceRaw.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
-                    let valStr = match[1];
-                    // Remove pontos de milhar
-                    valStr = valStr.replace(/\./g, '');
-                    // Se tiver vírgula, substitui por ponto
-                    if (valStr.includes(',')) {
-                        valStr = valStr.replace(',', '.');
-                    }
-                    // Se não tiver centavos, adiciona .00
-                    if (!valStr.includes('.')) {
-                        valStr = valStr + '.00';
-                    }
+                    let valStr = match[1].replace(/\./g, '').replace(',', '.');
+                    if (!valStr.includes('.')) valStr = valStr + '.00';
                     const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0) {
-                        precoOriginal = val;
-                    }
+                    if (!isNaN(val) && val > 0) precoOriginal = val;
                 }
             }
 
-            // 3. PREÇO ATUAL (BUSCA INTELIGENTE)
-            // Prioridade: Elementos com classe de destaque ou no mesmo container que o listPrice
+            // 3. PREÇO ATUAL (Prioridade #price)
             let currentPrices = [];
 
-            // Tenta primeiro a classe de destaque vista na inspeção
+            // Tenta o seletor oficial de preço de venda
+            const priceEl = document.querySelector('span#price');
+            if (priceEl) {
+                const txt = getSafeText(priceEl);
+                const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                if (match) {
+                    let valStr = match[1].replace(/\./g, '').replace(',', '.');
+                    if (!valStr.includes('.')) valStr = valStr + '.00';
+                    const val = parseFloat(valStr);
+                    if (!isNaN(val) && val > 0) currentPrices.push(val);
+                }
+            }
+
+            // Fallback para text-warning (destaque de promo) se o #price não foi conclusivo ou é o mesmo que o #list-price
             const warningPriceEl = document.querySelector('.text-warning-content');
             if (warningPriceEl) {
                 const txt = getSafeText(warningPriceEl);
                 const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
-                    let valStr = match[1].replace(/\./g, '');
+                    let valStr = match[1].replace(/\./g, '').replace(',', '.');
                     if (valStr.includes(',')) valStr = valStr.replace(',', '.');
                     else valStr = valStr + '.00';
                     const val = parseFloat(valStr);
                     if (!isNaN(val) && val > 0) {
                         currentPrices.push(val);
                     }
-                }
-            }
-
-            if (listPriceEl && currentPrices.length === 0) {
-                const container = listPriceEl.closest('div, p, span.vtex-product-price-1-x-price-list') || listPriceEl.parentElement;
-                if (container) {
-                    const localPrices = Array.from(container.querySelectorAll('*'))
-                        .filter(el => {
-                            if (el.children.length > 0) return false;
-                            if (el === listPriceEl) return false;
-                            const txt = getSafeText(el);
-                            return txt && txt.includes('R$') && !/x\s*de|parcel|sem\s*juros|ou\s+\d+x/i.test(txt);
-                        });
-
-                    localPrices.forEach(el => {
-                        const txt = getSafeText(el);
-                        const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-                        if (match) {
-                            let valStr = match[1].replace(/\./g, '');
-                            if (valStr.includes(',')) valStr = valStr.replace(',', '.');
-                            else valStr = valStr + '.00';
-                            const val = parseFloat(valStr);
-                            if (!isNaN(val) && val > 0 && (!precoOriginal || val < precoOriginal)) {
-                                currentPrices.push(val);
-                            }
-                        }
-                    });
                 }
             }
 
@@ -145,11 +113,10 @@ async function parseProduct(url) {
                     if (el.id === 'list-price') return false;
                     const txt = getSafeText(el);
                     if (!txt || !txt.includes('R$')) return false;
-                    // CRITICAL: Exclude promotional text patterns
-                    // Patterns like "50% off", "1 peça 50", "2 peças 100", etc.
+                    // CRITICAL: Exclude promotional text patterns and ANY installment pattern
                     if (/%\s*(off|desconto)/i.test(txt)) return false;
                     if (/\d+\s*peças?\s*\d+/i.test(txt)) return false;
-                    if (/x\s*de\s*R\$|parcel|sem\s+juros|ou\s+\d+x/i.test(txt)) return false;
+                    if (/\d+\s*x\s*de|parcel|sem\s*juros|ou\s*\d+x/i.test(txt)) return false;
                     return (el.offsetWidth > 0 && el.offsetHeight > 0);
                 });
 
