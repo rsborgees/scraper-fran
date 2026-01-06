@@ -114,7 +114,9 @@ async function scrapeDressTo(quota = 18) {
                 product.loja = 'dressto';
                 product.desconto = 0;
                 product.imagePath = imagePath;
+                markAsSent([product.id]); // MARCA IMEDIATAMENTE
                 products.push(product);
+
             }
 
             // Volta para a lista
@@ -144,9 +146,8 @@ async function scrapeDressTo(quota = 18) {
         selected = [...selected, ...outros.slice(0, gap)];
     }
 
-    if (selected.length > 0) {
-        markAsSent(selected.map(p => p.id));
-    }
+    // markAsSent já foi chamado para cada produto
+
 
     return selected.slice(0, quota);
 }

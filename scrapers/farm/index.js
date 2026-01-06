@@ -69,6 +69,8 @@ async function scrapeFarm(quota = 84) {
                 }
 
                 seenInRun.add(normId);
+                markAsSent([product.id]); // MARCA IMEDIATAMENTE NO HISTÓRICO
+
 
                 // 2. Image Download Integration
                 console.log(`\n🖼️  Baixando imagem com ID: ${product.id}...`);
@@ -165,9 +167,8 @@ async function scrapeFarm(quota = 84) {
 
     console.log(`\n✅ FARM: ${selectedProducts.length}/${quota} produtos capturados`);
 
-    if (selectedProducts.length > 0) {
-        markAsSent(selectedProducts.map(p => p.id));
-    }
+    // markAsSent já foi chamado para cada produto aceito
+
 
     if (selectedProducts.length < quota) {
         console.warn(`⚠️ quota_not_reached: FARM (${selectedProducts.length}/${quota})`);

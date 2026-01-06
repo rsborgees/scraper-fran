@@ -221,36 +221,51 @@ async function parseProduct(url) {
                 'label'
             ];
 
-            const potentialSizes = Array.from(document.querySelectorAll(sizeSelectors.join(',')));
+            const sizeContainers = Array.from(document.querySelectorAll('li.group\\/zoom-sku, [class*=\"skuSelector\"], .size-item'));
             const validSizes = [];
-            // Regex mais flexível: permite "Tamanho P", "Tam: 38", etc.
-            const sizePattern = /\b(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])\b/i;
 
-            potentialSizes.forEach(el => {
-                let txt = getSafeText(el).toUpperCase();
-                // Limpeza básica
+            sizeContainers.forEach(container => {
+                const label = container.querySelector('label, button');
+                if (!label) return;
+
+                let txt = getSafeText(label).toUpperCase();
                 txt = txt.replace(/TAMANHO|TAM|[:]/g, '').trim();
 
-                // Pega apenas o primeiro "token" que pareça um tamanho
                 const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
                 if (!match) return;
 
                 const normalizedSize = match[0].toUpperCase();
 
-                const classStr = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
-                const isDisabled = classStr.includes('unavailable') ||
-                    classStr.includes('disable') ||
-                    classStr.includes('after:bg-white') || // Padrão Farm para riscado
-                    el.getAttribute('aria-disabled') === 'true';
+                // CRITÉRIOS DE DISPONIBILIDADE
+                const radio = container.querySelector('input[type=\"radio\"]');
+                const isRadioValid = radio && !radio.disabled;
 
-                const isVisible = (el.offsetWidth > 0 || el.offsetHeight > 0);
+                const classStr = (label.getAttribute('class') || '').toLowerCase();
+                const hasDiagonalLine = classStr.includes('after:rotate') || classStr.includes('rotate-45');
 
-                if (!isDisabled && isVisible) {
+                const containerText = container.innerText.toLowerCase();
+                const hasNotifyMe = containerText.includes('avise-me') || containerText.includes('me avise');
+
+                const isVisible = (label.offsetWidth > 0 || label.offsetHeight > 0);
+
+                if (isRadioValid && !hasDiagonalLine && !hasNotifyMe && isVisible) {
                     validSizes.push(normalizedSize);
                 }
             });
 
+
+
             const uniqueSizes = [...new Set(validSizes)];
+
+            // Re-ordena tamanhos PP, P, M, G, GG, GGG
+            const sizeOrder = ['PP', 'P', 'M', 'G', 'GG', 'GGG', 'UN', 'ÚNICO'];
+            uniqueSizes.sort((a, b) => {
+                const idxA = sizeOrder.indexOf(a);
+                const idxB = sizeOrder.indexOf(b);
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                return a.localeCompare(b);
+            });
+
             // Se não achou em seletores específicos, tenta uma busca bruta no body
             if (uniqueSizes.length === 0) {
                 // ... fallback se necessário, mas os seletores acima cobrem quase tudo
@@ -299,7 +314,6 @@ async function parseProduct(url) {
                     precoOriginal: precoOriginal,
                     precoAtual: precoAtual,
                     tamanhos: uniqueSizes,
-                    tamanhos: uniqueSizes,
                     categoria: category,
                     imageUrl: (function () {
                         const gallerySelectors = [
@@ -330,7 +344,7 @@ async function parseProduct(url) {
                         return bestImg ? (bestImg.currentSrc || bestImg.src) : (ogImg ? ogImg.content : null);
                     })()
                 },
-                debugInfo: debugInfo
+                debugInfo: { ...debugInfo, sizeDebugs: window.sizeDebugs }
             };
         });
 

@@ -36,15 +36,35 @@ function isDuplicate(id) {
 
     const history = loadHistory();
 
-    return history.some(item => {
+    const duplicate = history.find(item => {
         const historyId = normalizeId(item);
         if (!historyId) return false;
 
-        // Match exato ou um é prefixo do outro (ex: 350754-123 vs 350754)
-        return historyId === normId ||
-            historyId.startsWith(normId) ||
-            normId.startsWith(historyId);
+        // Match exato
+        if (historyId === normId) return true;
+
+        // Se ambos forem puramente numéricos e curtos (ex: 351062), não usamos startsWith
+        // para evitar que "351" bloqueie "351062".
+        // Só usamos startsWith se um deles for um ID de SKU completo (com traço ou longo)
+        const isNumeric = /^\d+$/.test(normId) && /^\d+$/.test(historyId);
+
+        if (isNumeric) {
+            // Para números puros, exigimos match exato ou que um seja muito maior que o outro 
+            // e contenha o outro como prefixo (ex: 351062-001 vs 351062)
+            // Mas IDs da Farm são truncados para 6, então match exato é o padrão.
+            return false;
+        }
+
+        // Para IDs complexos (ex: SKU-COLOR-SIZE), permitimos match de prefixo
+        return historyId.startsWith(normId) || normId.startsWith(historyId);
     });
+
+    if (duplicate) {
+        console.log(`   🚫 ID Duplicado detectado: ${normId} (Encontrado no histórico como: ${duplicate})`);
+        return true;
+    }
+
+    return false;
 }
 
 function markAsSent(ids) {

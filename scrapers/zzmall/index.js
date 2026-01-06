@@ -82,7 +82,9 @@ async function scrapeZZMall(quota = 6) {
                 product.loja = 'zzmall';
                 product.desconto = 0; // Explicitly 0
                 product.imagePath = imagePath;
+                markAsSent([product.id]); // MARCA IMEDIATAMENTE
                 products.push(product);
+
             }
         }
 
@@ -92,9 +94,8 @@ async function scrapeZZMall(quota = 6) {
         await browser.close();
     }
 
-    if (products.length > 0) {
-        markAsSent(products.map(p => p.id));
-    }
+    // markAsSent já foi chamado para cada produto
+
 
     return products;
 }

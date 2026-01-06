@@ -112,7 +112,9 @@ async function scrapeKJU(quota = 6) {
                 product.url = url.includes('?') ? `${url}&ref=7B1313` : `${url}?ref=7B1313`;
                 product.loja = 'kju';
                 product.imagePath = imagePath;
+                markAsSent([product.id]); // MARCA IMEDIATAMENTE
                 products.push(product);
+
             }
 
             // Volta para a lista
@@ -127,9 +129,8 @@ async function scrapeKJU(quota = 6) {
         await browser.close();
     }
 
-    if (products.length > 0) {
-        markAsSent(products.map(p => p.id));
-    }
+    // markAsSent já foi chamado para cada produto
+
 
     return products;
 }

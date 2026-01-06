@@ -10,16 +10,29 @@
  * Distribuição: FARM 84, Dress To 18, KJU 6, Live 6, ZZMall 6
  */
 
-const { processProductUrl } = require('./imageDownloader');
-const {
-    buildFarmMessage,
-    buildDressMessage,
-    buildKjuMessage,
-    buildLiveMessage,
-    buildZzMallMessage
-} = require('./messageBuilder');
+const fs = require('fs');
+const path = require('path');
+const LOCK_FILE = path.join(__dirname, 'scraper.lock');
 
 async function runAllScrapers(overrideQuotas = null) {
+    // 🔒 Trava de execução para evitar sobreposição
+    if (fs.existsSync(LOCK_FILE)) {
+        const stats = fs.statSync(LOCK_FILE);
+        const hoursOld = (new Date() - stats.mtime) / (1000 * 60 * 60);
+
+        // Se a trava tiver mais de 2 horas, assumimos que o processo anterior travou e limpamos
+        if (hoursOld > 2) {
+            console.log('⚠️ Trava antiga detectada (>2h), removendo...');
+            fs.unlinkSync(LOCK_FILE);
+        } else {
+            console.log('🚫 Scraper já está em execução. Abortando nova instância.');
+            return [];
+        }
+    }
+
+    fs.writeFileSync(LOCK_FILE, process.pid.toString());
+    console.log(`🔒 Trava de execução criada (PID: ${process.pid})`);
+
     console.log('🚀 INICIANDO ORCHESTRATOR - 120 PRODUTOS TOTAL (ou override)\n');
     console.log('Distribuição: FARM (7), Dress To (2), KJU (1), Live (1), ZZMall (1)\n');
 
@@ -95,7 +108,12 @@ async function runAllScrapers(overrideQuotas = null) {
     console.log('Todas as mensagens foram geradas com sucesso.');
     console.log('==================================================');
 
-    return allProducts;
+} finally {
+    if (fs.existsSync(LOCK_FILE)) {
+        fs.unlinkSync(LOCK_FILE);
+        console.log('🔓 Trava de execução removida.');
+    }
+}
 }
 
 module.exports = { runAllScrapers };
