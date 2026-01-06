@@ -10,7 +10,7 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
  * Scraper KJU
  * URL: https://www.kjubrasil.com/?ref=7B1313
  * Quota: 6 produtos
- * Classificação: com tamanhos = roupa, sem tamanhos = acessório
+ * @param {number} quota - Número máximo de produtos a retornar
  */
 async function scrapeKJU(quota = 6) {
     console.log('\n💎 INICIANDO SCRAPER KJU (Quota: ' + quota + ')');
@@ -41,10 +41,6 @@ async function scrapeKJU(quota = 6) {
         });
         await page.waitForTimeout(2000);
 
-        // Screenshot DEBUG
-        if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
-        await page.screenshot({ path: path.join(DEBUG_DIR, 'kju_list_refined.png') });
-
         // Identifica seletores de cards de produtos
         const productSelector = '.prod a';
 
@@ -56,10 +52,10 @@ async function scrapeKJU(quota = 6) {
                     const path = new URL(url).pathname;
                     if (path === '/' || path === '') return false;
 
-                    // Filtra links que parecem ser de produtos (longos e sem palavras de sistema/categoria)
+                    // Filtra links que parecem ser de produtos
                     const isSystem = ['/carrinho', '/checkout', '/conta', '/atendimento', '/politica', '/troca', '/ajuda', '/contato', '/quem-somos'].some(s => path.includes(s));
                     const isCategory = ['/categoria/', '/selo/', '/colecao/', '/novidades/', '/loja/', '/acessorios/'].some(s => path.includes(s));
-                    const isLongEnough = path.length > 20; // Produtos reais têm nomes descritivos longos
+                    const isLongEnough = path.length > 20;
                     return !isSystem && !isCategory && isLongEnough;
                 });
         }, productSelector);
@@ -71,26 +67,15 @@ async function scrapeKJU(quota = 6) {
 
             console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
 
-            // Interaction/Navigation Logic
-            try {
-                const relativePath = new URL(url).pathname;
-                const element = await page.$(`.prod a[href*="${relativePath}"]`);
-                if (element) {
-                    await element.scrollIntoViewIfNeeded();
-                    await page.waitForTimeout(500);
-                    await element.click();
-                    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
-                } else {
-                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                }
-            } catch (err) {
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            }
-
-            // Parse Product
             const product = await parseProductKJU(page, url);
 
             if (product && product.nome) {
+                // RESTRIÇÃO ESTRITA: KJU SÓ ACESSÓRIOS
+                if (product.categoria !== 'acessório') {
+                    console.log(`   ⏭️  KJU: Descartando ${product.categoria} (Solicitado apenas acessórios)`);
+                    continue;
+                }
+
                 const normId = normalizeId(product.id);
                 if (normId && (seenInRun.has(normId) || isDuplicate(normId))) {
                     console.log(`   ⏭️  Duplicado (Histórico/Run): ${normId}`);
@@ -112,9 +97,8 @@ async function scrapeKJU(quota = 6) {
                 product.url = url.includes('?') ? `${url}&ref=7B1313` : `${url}?ref=7B1313`;
                 product.loja = 'kju';
                 product.imagePath = imagePath;
-                markAsSent([product.id]); // MARCA IMEDIATAMENTE
+                markAsSent([product.id]);
                 products.push(product);
-
             }
 
             // Volta para a lista
@@ -124,13 +108,10 @@ async function scrapeKJU(quota = 6) {
         }
 
     } catch (error) {
-        console.error(`Erro no scraper KJU: ${error.message}`);
+        console.error(`❌ Erro no scraper KJU: ${error.message}`);
     } finally {
         await browser.close();
     }
-
-    // markAsSent já foi chamado para cada produto
-
 
     return products;
 }
@@ -147,7 +128,6 @@ async function parseProductKJU(page, url) {
                 return (typeof txt === 'string') ? txt.trim() : '';
             };
 
-            // Nome (Limpeza: remove "Comprar" e a parte "Loja KJU")
             const h1 = document.querySelector('h1');
             let nome = getSafeText(h1);
             if (!nome) return null;
@@ -156,97 +136,61 @@ async function parseProductKJU(page, url) {
                 .replace(/\s*-\s*Loja KJU.*$/i, '')
                 .trim();
 
-            // Preço (Estratégia Robusta v2)
-            // Tenta focar no container do produto principal para evitar preços de "aproveite também"
             let container = document.querySelector('.produto-info') || document.querySelector('.info') || document.querySelector('#product-container') || document.body;
-
             const priceElements = Array.from(container.querySelectorAll('.price, .current-price, .old-price, span, div, strong, b'));
-
             const numericPrices = [];
 
             priceElements.forEach(el => {
                 const txt = getSafeText(el);
-                if (!txt.includes('R$')) return;
-
-                // Ignora textos de parcelamento (ex: "3x de")
-                if (/x\s*de|parcel|juros/i.test(txt)) return;
-
+                if (!txt.includes('R$') || /x\s*de|parcel|juros/i.test(txt)) return;
                 const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
-                    let valStr = match[1].replace(/\./g, '');
-                    valStr = valStr.replace(',', '.');
+                    let valStr = match[1].replace(/\./g, '').replace(',', '.');
                     const val = parseFloat(valStr);
                     if (!isNaN(val) && val > 0) numericPrices.push(val);
                 }
             });
 
             if (numericPrices.length === 0) return null;
-
-            // Remove duplicatas exatas
             const uniquePrices = [...new Set(numericPrices)];
-
-            // Se houver muitos preços diferentes (> 3), perigo de pegar cross-sell.
-            // Os preços do produto principal costumam aparecer primeiro no DOM.
-            // Vamos pegar apenas os primeiros candidatos.
-            let candidatePrices = uniquePrices;
-            if (uniquePrices.length > 3) {
-                candidatePrices = uniquePrices.slice(0, 3);
-            }
-
+            let candidatePrices = uniquePrices.length > 3 ? uniquePrices.slice(0, 3) : uniquePrices;
             const maxP = Math.max(...candidatePrices);
             const validP = candidatePrices.filter(p => p > (maxP * 0.3));
 
             const precoOriginal = Math.max(...validP);
             const precoAtual = Math.min(...validP);
 
-            const preco = precoAtual;
-            const preco_original = precoOriginal;
-
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
             const tamanhos = [];
-
             sizeEls.forEach(el => {
-                let txt = getSafeText(el).toUpperCase();
-                // Limpeza: "TAMANHO P" -> "P", "TAM: 38" -> "38"
-                txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
-
+                let txt = getSafeText(el).toUpperCase().replace(/TAMANHO|TAM|[:\n]/g, '').trim();
                 const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
                 if (match) {
                     const normalizedSize = match[0].toUpperCase();
-                    const isDisabled = el.className.toLowerCase().includes('disable') ||
-                        el.className.toLowerCase().includes('unavailable') ||
-                        el.getAttribute('aria-disabled') === 'true';
+                    const isDisabled = el.className.toLowerCase().includes('disable') || el.className.toLowerCase().includes('unavailable');
                     if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
                         tamanhos.push(normalizedSize);
                     }
                 }
             });
 
-            // Deduplicação final
-            const uniqueTamanhos = [...new Set(tamanhos)];
-
-            // Classificação: com tamanhos = roupa, sem tamanhos = acessório
             const categoria = tamanhos.length > 0 ? 'roupa' : 'acessório';
 
-            // ID (Extração refinada: números logo abaixo do nome)
             let id = 'unknown';
-
-            // Tenta seletores específicos primeiro
             const specificIdEl = document.querySelector('.codigo_produto, [itemprop="identifier"], .productReference');
             if (specificIdEl) {
                 const text = getSafeText(specificIdEl);
-                const match = text.match(/\d+/); // Pega apenas a primeira sequência de números
+                const match = text.match(/\d+/);
                 if (match) id = match[0];
             }
 
-            // Fallback: Busca nos arredores do nome (H1)
             if (id === 'unknown' && h1) {
                 let current = h1.nextElementSibling;
                 for (let i = 0; i < 5 && current; i++) {
                     const text = getSafeText(current);
                     const match = text.match(/\d+/);
-                    if (match && match[0].length >= 4) { // IDs costumam ter pelo menos 4 dígitos
+                    if (match && match[0].length >= 4) {
                         id = match[0];
                         break;
                     }
@@ -254,18 +198,11 @@ async function parseProductKJU(page, url) {
                 }
             }
 
-            // Fallback final: Corpo
-            if (id === 'unknown') {
-                const bodyText = getSafeText(document.body);
-                const matchBody = bodyText.match(/Cód\.?:?\s*(\d+)/i) || bodyText.match(/Ref\.?:?\s*(\d+)/i);
-                if (matchBody) id = matchBody[1];
-            }
-
             return {
                 id,
                 nome,
-                precoAtual: preco,
-                precoOriginal: preco_original,
+                precoAtual: precoAtual,
+                precoOriginal: precoOriginal,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href
@@ -275,7 +212,6 @@ async function parseProductKJU(page, url) {
         if (data) {
             console.log(`✅ KJU: ${data.nome} | R$${data.precoAtual} (${data.categoria})`);
         }
-
         return data;
 
     } catch (error) {

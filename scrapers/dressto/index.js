@@ -131,25 +131,39 @@ async function scrapeDressTo(quota = 18) {
         await browser.close();
     }
 
-    // Aplicar prioridade
-    const vestidos = products.filter(p => p.categoria === 'vestido');
-    const macacoes = products.filter(p => p.categoria === 'macacão');
-    const outros = products.filter(p => p.categoria !== 'vestido' && p.categoria !== 'macacão');
+    // Aplicar cotas internas (65% vestido, 15% macacão, 5% saia, 5% short, 5% blusa, 5% acessório)
+    const quotas = {
+        'vestido': Math.round(quota * 0.65),
+        'macacão': Math.round(quota * 0.15),
+        'saia': Math.max(1, Math.round(quota * 0.05)),
+        'short': Math.max(1, Math.round(quota * 0.05)),
+        'blusa': Math.max(1, Math.round(quota * 0.05)),
+        'acessório': Math.max(1, Math.round(quota * 0.05))
+    };
 
-    let selected = [
-        ...vestidos.slice(0, Math.round(quota * 0.8)),
-        ...macacoes.slice(0, Math.round(quota * 0.2))
-    ];
+    const byCategory = {};
+    products.forEach(p => {
+        const cat = p.categoria || 'outros';
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push(p);
+    });
 
-    if (selected.length < quota) {
-        const gap = quota - selected.length;
-        selected = [...selected, ...outros.slice(0, gap)];
+    const selectedProducts = [];
+    Object.keys(quotas).forEach(cat => {
+        const available = byCategory[cat] || [];
+        const catQuota = quotas[cat];
+        selectedProducts.push(...available.slice(0, catQuota));
+    });
+
+    // Fallback se não atingiu a quota total
+    if (selectedProducts.length < quota) {
+        const remainingQuota = quota - selectedProducts.length;
+        const alreadySelectedIds = new Set(selectedProducts.map(p => normalizeId(p.id)));
+        const pool = products.filter(p => !alreadySelectedIds.has(normalizeId(p.id)));
+        selectedProducts.push(...pool.slice(0, remainingQuota));
     }
 
-    // markAsSent já foi chamado para cada produto
-
-
-    return selected.slice(0, quota);
+    return selectedProducts.slice(0, quota);
 }
 
 async function parseProductDressTo(page, url) {
@@ -204,8 +218,6 @@ async function parseProductDressTo(page, url) {
             const precoOriginal = Math.max(...validPrices);
             const precoAtual = Math.min(...validPrices);
 
-            // Compatibilidade com lógica antiga de extração que retornava 'preco' como max
-            // Vamos usar o atual para exibição principal
             const preco = precoAtual;
 
             // Tamanhos
@@ -241,7 +253,8 @@ async function parseProductDressTo(page, url) {
             else if (fullText.includes('macacão') || fullText.includes('macaquinho')) categoria = 'macacão';
             else if (fullText.includes('saia')) categoria = 'saia';
             else if (fullText.includes('short')) categoria = 'short';
-            else if (fullText.includes('blusa') || fullText.includes('top') || fullText.includes('camisa')) categoria = 'blusa';
+            else if (fullText.includes('blusa') || fullText.includes('top') || fullText.includes('camisa') || fullText.includes('regata')) categoria = 'blusa';
+            else if (fullText.includes('brinco') || fullText.includes('bolsa') || fullText.includes('colar') || fullText.includes('cinto') || fullText.includes('acessório')) categoria = 'acessório';
             else if (fullText.includes('calça')) categoria = 'calça';
 
             // ID (Referência VTEX)
@@ -257,8 +270,8 @@ async function parseProductDressTo(page, url) {
             return {
                 id,
                 nome,
-                precoAtual: preco,
-                precoOriginal: preco, // Assume fallback logic if needed
+                precoAtual: precoAtual,
+                precoOriginal: precoOriginal,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href,

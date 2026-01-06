@@ -178,13 +178,18 @@ async function scrapeLive(quota = 6) {
         if (!usedIndices.has(i)) singles.push(p);
     });
 
-    // Prioriza Conjuntos
+    // Prioriza APENAS Conjuntos (Pairs) - Descartando singles se forem short/blusa/calça/top
     const finalSelection = [...sets];
 
-    // Completa com singles se precisar
+    // Se a quota ainda permitir mais produtos e tivermos singles que NÃO são dessas categorias
+    // (ex: acessórios), poderíamos adicionar, mas o usuário pediu "sempre 2 peças" para essas.
+    // Para simplificar e garantir a meta, vamos focar nos pares.
+
     if (finalSelection.length < quota) {
-        const remaining = quota - finalSelection.length;
-        finalSelection.push(...singles.slice(0, remaining));
+        // Se após pareamento faltarem itens, NÃO preenche com singles de roupa
+        // Só preencheria se fossem categorias fora da regra (ex: acessórios)
+        const nonSetSingles = singles.filter(p => !['short', 'blusa', 'calça', 'top'].some(c => p.categoria.includes(c)));
+        finalSelection.push(...nonSetSingles.slice(0, quota - finalSelection.length));
     }
 
     // Processa imagens (apenas dos selecionados) e marca como enviado
@@ -309,11 +314,14 @@ async function parseProductLive(page, url) {
                             }
                         }
 
-                        return {
+                        const result = {
                             id,
                             nome,
                             preco,
-                            preco_original: Math.max(...numericPrices, preco),
+                            preco_original: (function () {
+                                const max = Math.max(...numericPrices, preco);
+                                return max;
+                            })(),
                             tamanhos: [...new Set(tamanhos)],
                             categoria,
                             url: window.location.href,
@@ -333,6 +341,8 @@ async function parseProductLive(page, url) {
                                 return fallback ? fallback.src : null;
                             })()
                         };
+
+                        return result;
                     }
                 }
             }
@@ -453,6 +463,8 @@ async function parseProductLive(page, url) {
                     return fallback ? fallback.src : null;
                 })()
             };
+
+            return finalData;
         });
 
         if (data) {

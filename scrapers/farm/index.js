@@ -20,7 +20,7 @@ async function scrapeFarm(quota = 84) {
         { name: 'Shorts', url: 'https://www.farmrio.com.br/short' },
         { name: 'Blusas', url: 'https://www.farmrio.com.br/blusa' },
         { name: 'Camisas', url: 'https://www.farmrio.com.br/camisa' },
-        // { name: 'Bazar', url: 'https://www.farmrio.com.br/bazar' }, // REMOVIDO A PEDIDO
+        { name: 'Acessórios', url: 'https://www.farmrio.com.br/acessorios' },
         { name: 'Praia', url: 'https://www.farmrio.com.br/praia' }
     ];
 

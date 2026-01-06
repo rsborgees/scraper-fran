@@ -219,6 +219,14 @@ async function parseProduct(url) {
                 precoOriginal = precoAtual;
             }
 
+            // NOVO FILTRO: Descarta se tiver 50% ou mais de desconto (Itens de Bazar)
+            if (precoOriginal > 0) {
+                const percentualDesconto = (desconto / precoOriginal) * 100;
+                if (percentualDesconto >= 50) {
+                    return { error: `Produto de Bazar descartado (${percentualDesconto.toFixed(0)}% OFF)`, debugInfo };
+                }
+            }
+
             // 4. TAMANHOS (Sincronização Refinada)
             const sizeContainers = Array.from(document.querySelectorAll('li.group\\/zoom-sku, [class*=\"skuSelector\"], .size-item, .vtex-store-components-3-x-skuSelectorItem'));
             const validSizes = [];
@@ -256,25 +264,17 @@ async function parseProduct(url) {
 
             // 5. CATEGORIA (INFERÊNCIA INTELIGENTE)
             let category = 'outros';
-            const url = window.location.href.toLowerCase();
+            const urlLower = window.location.href.toLowerCase();
+            const bodyText = getSafeText(document.body).substring(0, 3000).toLowerCase();
+            const combinedText = (urlLower + ' ' + bodyText);
 
-            // Prioridade 1: URL do produto
-            if (url.includes('/vestido-')) category = 'vestido';
-            else if (url.includes('/macacao-') || url.includes('/macaquinho-')) category = 'macacão';
-            else if (url.includes('/saia-')) category = 'saia';
-            else if (url.includes('/short-')) category = 'short';
-            else if (url.includes('/blusa-') || url.includes('/camisa-')) category = 'blusa';
-            else if (url.includes('/calca-')) category = 'calça';
-            else {
-                // Fallback: texto do body
-                const bodyText = getSafeText(document.body).substring(0, 3000).toLowerCase();
-                if (bodyText.includes('vestido')) category = 'vestido';
-                else if (bodyText.includes('macacão') || bodyText.includes('macaquinho')) category = 'macacão';
-                else if (bodyText.includes('saia')) category = 'saia';
-                else if (bodyText.includes('short')) category = 'short';
-                else if (bodyText.includes('blusa') || bodyText.includes('camisa')) category = 'blusa';
-                else if (bodyText.includes('calça')) category = 'calça';
-            }
+            if (combinedText.includes('/vestido-') || combinedText.includes(' vestido ')) category = 'vestido';
+            else if (combinedText.includes('/macacao-') || combinedText.includes('/macaquinho-') || combinedText.includes(' macacão ') || combinedText.includes(' macaquinho ')) category = 'macacão';
+            else if (combinedText.includes('/saia-') || combinedText.includes(' saia ')) category = 'saia';
+            else if (combinedText.includes('/short-') || combinedText.includes(' short ')) category = 'short';
+            else if (combinedText.includes('/blusa-') || combinedText.includes('/camisa-') || combinedText.includes(' blusa ') || combinedText.includes(' camisa ')) category = 'blusa';
+            else if (combinedText.includes('/brinco-') || combinedText.includes('/bolsa-') || combinedText.includes('/colar-') || combinedText.includes('/cinto-') || combinedText.includes('/acessorio-') || combinedText.includes(' brinco ') || combinedText.includes(' bolsa ') || combinedText.includes(' colar ') || combinedText.includes(' acessório ')) category = 'acessório';
+            else if (combinedText.includes('/calca-') || combinedText.includes(' calça ')) category = 'calça';
 
             // 6. ID (Referência)
             let id = 'unknown';

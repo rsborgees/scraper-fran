@@ -37,9 +37,9 @@ async function runAllScrapers(overrideQuotas = null) {
     const allProducts = [];
     const quotas = overrideQuotas || {
         farm: 7,
-        dressto: 2,
+        dressto: 1,
         kju: 1,
-        live: 1,
+        live: 2,
         zzmall: 1
     };
 

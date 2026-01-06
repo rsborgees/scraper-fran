@@ -113,8 +113,8 @@ async function parseProductZZMall(page, url) {
                 return (typeof txt === 'string') ? txt.trim() : '';
             };
 
-            // Marcas confiáveis
-            const trustedBrands = ['arezzo', 'schutz', 'anacapri', 'fiever', 'vans', 'reserva'];
+            // Marcas confiáveis (Rigoroso: Arezzo, Schutz prioritários)
+            const trustedBrands = ['arezzo', 'schutz'];
             const bodyText = getSafeText(document.body).toLowerCase();
 
             const isTrusted = trustedBrands.some(brand => bodyText.includes(brand));
@@ -169,7 +169,6 @@ async function parseProductZZMall(page, url) {
             // Filtra parcelas (<30% do max)
             const valid = numericPrices.filter(v => v > (maxVal * 0.3));
 
-            // ZZMall geralmente tem um unico preço válido ou (De/Por)
             const precoOriginal = Math.max(...valid); // De
             const precoAtual = Math.min(...valid);    // Por
 
@@ -223,7 +222,8 @@ async function parseProductZZMall(page, url) {
             return {
                 id,
                 nome,
-                precoAtual: preco,
+                precoAtual: precoAtual,
+                precoOriginal: precoOriginal,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href,
