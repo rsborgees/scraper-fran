@@ -186,10 +186,10 @@ async function parseProduct(url) {
                 precoOriginal = precoAtual;
             }
 
-            // NOVO FILTRO: Descarta se tiver 50% ou mais de desconto (Itens de Bazar)
+            // NOVO FILTRO: Descarta se tiver 70% ou mais de desconto (Itens de Bazar muito agressivos)
             if (precoOriginal > 0) {
                 const percentualDesconto = (desconto / precoOriginal) * 100;
-                if (percentualDesconto >= 50) {
+                if (percentualDesconto >= 70) {
                     return { error: `Produto de Bazar descartado (${percentualDesconto.toFixed(0)}% OFF)`, debugInfo };
                 }
             }

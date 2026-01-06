@@ -95,26 +95,37 @@ async function runAllScrapers(overrideQuotas = null) {
         } catch (e) { console.error(`❌ LIVE Error: ${e.message}`); }
 
         // 3. REDISTRIBUIÇÃO (Garantir 12 produtos)
-        const totalTarget = Object.values(quotas).reduce((a, b) => a + b, 0);
-        if (allProducts.length < totalTarget) {
-            const gap = totalTarget - allProducts.length;
+        let totalTarget = Object.values(quotas).reduce((a, b) => a + b, 0);
+        let gap = totalTarget - allProducts.length;
+
+        if (gap > 0) {
             console.log(`\n⚖️ Cota não atingida (${allProducts.length}/${totalTarget}). Tentando preencher lacuna de ${gap} produtos com a FARM...`);
 
-            try {
-                const { scrapeFarm } = require('./scrapers/farm');
-                // Pede os produtos que faltam + margem de erro
-                let extraProducts = await scrapeFarm(gap + 5);
+            let attempts = 0;
+            const maxAttempts = 3; // Tentamos até 3 vezes com a Farm em diferentes categorias/buscas se necessário
 
-                // Filtra o que já pegamos nesta rodada (por ID)
-                const alreadyPickedIds = new Set(allProducts.map(p => p.id));
-                const filteredExtra = extraProducts.filter(p => !alreadyPickedIds.has(p.id)).slice(0, gap);
+            while (gap > 0 && attempts < maxAttempts) {
+                attempts++;
+                console.log(`\n🔄 Tentativa de redistribuição #${attempts}...`);
 
-                filteredExtra.forEach(p => p.message = buildFarmMessage(p, p.timerData));
-                allProducts.push(...filteredExtra);
+                try {
+                    const { scrapeFarm } = require('./scrapers/farm');
+                    // Pede uma margem bem maior (gap * 3) para garantir que após filtros tenhamos o necessário
+                    let extraProducts = await scrapeFarm(gap * 3);
 
-                console.log(`♻️ Redistribuição concluída: +${filteredExtra.length} produtos da FARM`);
-            } catch (e) {
-                console.error(`❌ Falha na redistribuição: ${e.message}`);
+                    // Filtra o que já pegamos nesta rodada (por ID)
+                    const alreadyPickedIds = new Set(allProducts.map(p => p.id));
+                    const filteredExtra = extraProducts.filter(p => !alreadyPickedIds.has(p.id)).slice(0, gap);
+
+                    filteredExtra.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+                    allProducts.push(...filteredExtra);
+
+                    gap = totalTarget - allProducts.length;
+                    console.log(`♻️ Redistribuição: +${filteredExtra.length} produtos (Total atual: ${allProducts.length}/${totalTarget})`);
+                } catch (e) {
+                    console.error(`❌ Falha na redistribuição (tentativa ${attempts}): ${e.message}`);
+                    break; // Sai do loop em caso de erro crítico
+                }
             }
         }
 

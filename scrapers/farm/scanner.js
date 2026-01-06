@@ -19,11 +19,11 @@ async function scanCategory(categoryUrl, categoryName) {
     try {
         await page.goto(categoryUrl, { waitUntil: 'domcontentloaded' });
 
-        // Scroll gradual para carregar lazy loading
+        // Scroll gradual para carregar lazy loading (AUMENTADO para encontrar mais peças)
         console.log('Rolando página para carregar produtos...');
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < 5; i++) {
             await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-            await page.waitForTimeout(800);
+            await page.waitForTimeout(1000);
         }
 
         // Espera de estabilidade visual
