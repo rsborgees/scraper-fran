@@ -6,10 +6,10 @@ const { chromium } = require('playwright');
  * @returns {Promise<{browser: import('playwright').Browser, context: import('playwright').BrowserContext, page: import('playwright').Page}>}
  */
 async function initBrowser() {
-    console.log('🚀 [V2.1] Iniciando navegador Chromium (MODO HEADLESS FORÇADO)...');
+    console.log('🚀 [V2.2] Iniciando navegador Chromium (MODO VISUAL)...');
 
     const browser = await chromium.launch({
-        headless: true, // ESTA LINHA DEVE SER TRUE PARA O EASYPANEL
+        headless: false, // Voltando para modo visual para o usuário ver
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -27,17 +27,16 @@ async function initBrowser() {
 
     const page = await context.newPage();
 
-    // 🚀 OTIMIZAÇÃO: Bloqueia recursos desnecessários para economizar banda e processamento
+    // 🚀 OTIMIZAÇÃO: Mantemos o bloqueio de MEDIA e FONT, mas permitimos IMAGE para o usuário ver
     await page.route('**/*', (route) => {
         const type = route.request().resourceType();
-        // Mantemos 'stylesheet' e 'script' pois são essenciais para o funcionamento (React/VTEX hydration)
-        if (['image', 'media', 'font'].includes(type)) {
+        if (['media', 'font'].includes(type)) {
             return route.abort();
         }
         return route.continue();
     });
 
-    console.log('✅ [V2.1] Navegador iniciado com sucesso (Imagens/Fonts bloqueadas).');
+    console.log('✅ [V2.2] Navegador iniciado com sucesso.');
     return { browser, context, page };
 }
 

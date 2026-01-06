@@ -90,7 +90,7 @@ async function scrapeKJU(quota = 6) {
             // Parse Product
             const product = await parseProductKJU(page, url);
 
-            if (product && product.nome && !product.nome.includes('LANÇAMENTO')) {
+            if (product && product.nome) {
                 const normId = normalizeId(product.id);
                 if (normId && (seenInRun.has(normId) || isDuplicate(normId))) {
                     console.log(`   ⏭️  Duplicado (Histórico/Run): ${normId}`);

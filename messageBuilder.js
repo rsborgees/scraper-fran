@@ -18,7 +18,8 @@ function getInstallments(price) {
  * KJU TEMPLATE
  */
 function buildKjuMessage(produto) {
-    const original = produto.precoOriginal ? `De ~${formatPrice(produto.precoOriginal)}~ ` : '';
+    const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
+    const original = isPromotional ? `De ~${formatPrice(produto.precoOriginal)}~ ` : '';
 
     return `
 ⭕️ Lançamento na Kju 🤩‼️
@@ -141,7 +142,12 @@ function buildFarmMessage(produto, timerData = null) {
         progressiveHeader,
         produto.nome,
         sizes,
-        `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`,
+        (function () {
+            const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
+            return isPromotional
+                ? `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`
+                : `Por *${formatPrice(produto.precoAtual)}* 🔥`;
+        })(),
         cupomText,
         `Código Vendedora ${SELLER_CODE}`,
         finalUrl,

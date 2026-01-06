@@ -129,7 +129,9 @@ async function scrapeLive(quota = 6) {
 
             product.loja = 'live';
             product.precoAtual = product.preco;
-            product.precoOriginal = null; // Garante que não tem preço 'De'
+            product.precoOriginal = product.preco_original || product.preco;
+            product.desconto = product.precoOriginal - product.precoAtual;
+            if (product.desconto < 0) product.desconto = 0;
 
             products.push(product);
         }
@@ -311,6 +313,7 @@ async function parseProductLive(page, url) {
                             id,
                             nome,
                             preco,
+                            preco_original: Math.max(...numericPrices, preco),
                             tamanhos: [...new Set(tamanhos)],
                             categoria,
                             url: window.location.href,
@@ -425,6 +428,7 @@ async function parseProductLive(page, url) {
                 id,
                 nome,
                 preco,
+                preco_original: Math.max(...numericPrices, preco),
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href,

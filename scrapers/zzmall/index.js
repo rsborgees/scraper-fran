@@ -80,7 +80,8 @@ async function scrapeZZMall(quota = 6) {
                 product.url = url.includes('?') ? `${url}&influ=cupomdafran` : `${url}?influ=cupomdafran`;
 
                 product.loja = 'zzmall';
-                product.desconto = 0; // Explicitly 0
+                product.desconto = product.precoOriginal - product.precoAtual;
+                if (product.desconto < 0) product.desconto = 0;
                 product.imagePath = imagePath;
                 markAsSent([product.id]); // MARCA IMEDIATAMENTE
                 products.push(product);
@@ -196,13 +197,18 @@ async function parseProductZZMall(page, url) {
             });
             const uniqueTamanhos = [...new Set(tamanhos)];
 
-            // Categoria
-            let categoria = 'outros';
-            if (bodyText.includes('vestido')) categoria = 'vestido';
-            else if (bodyText.includes('sapato') || bodyText.includes('calçado') || bodyText.includes('tênis') || bodyText.includes('rasteira') || bodyText.includes('sandália')) categoria = 'calçado';
-            else if (bodyText.includes('bolsa') || bodyText.includes('carteira') || bodyText.includes('cinto') || bodyText.includes('acessório')) categoria = 'acessório';
-            else if (bodyText.includes('blusa') || bodyText.includes('top') || bodyText.includes('regata')) categoria = 'blusa';
-            else if (bodyText.includes('macacão') || bodyText.includes('macaquinho')) categoria = 'macacão';
+            // Categoria (Restrito a Calçados e Acessórios)
+            let categoria = null;
+            if (bodyText.includes('sapato') || bodyText.includes('calçado') || bodyText.includes('tênis') || bodyText.includes('rasteira') || bodyText.includes('sandália') || bodyText.includes('scarpin') || bodyText.includes('bota')) {
+                categoria = 'calçado';
+            } else if (bodyText.includes('bolsa') || bodyText.includes('carteira') || bodyText.includes('cinto') || bodyText.includes('acessório') || bodyText.includes('mochila')) {
+                categoria = 'acessório';
+            }
+
+            // Se for roupa ou não identificado, descarta
+            if (!categoria || bodyText.includes('vestido') || bodyText.includes('blusa') || bodyText.includes('calça') || bodyText.includes('regata') || bodyText.includes('macacão')) {
+                return null;
+            }
 
             // ID
             let id = 'unknown';

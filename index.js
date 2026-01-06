@@ -19,7 +19,7 @@ const { runAllScrapers } = require('./orchestrator');
     console.log(`\nTotal de produtos capturados: ${allProducts.length}/12\n`);
 
     if (allProducts.length > 0) {
-        console.log(JSON.stringify(allProducts, null, 2));
+        console.log(`Enviando ${allProducts.length} produtos...`);
     } else {
         console.log('Nenhum produto capturado.');
     }

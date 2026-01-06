@@ -1,5 +1,7 @@
 const cron = require('node-cron');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 const { runAllScrapers } = require('./orchestrator');
 
 // Webhook Configuration
@@ -49,10 +51,22 @@ async function sendToWebhook(products) {
     }
 }
 
+const LOCK_FILE = path.join(__dirname, 'scraper.lock');
+
 /**
  * Executa o scraper completo e envia para webhook
  */
 async function runScheduledScraping() {
+    // 🔒 Verifica se já existe uma execução em andamento
+    if (fs.existsSync(LOCK_FILE)) {
+        const stats = fs.statSync(LOCK_FILE);
+        const hoursOld = (new Date() - stats.mtime) / (1000 * 60 * 60);
+        if (hoursOld <= 2) {
+            console.log('🚫 [CRON] Ignorando execução: Scraper já está em andamento ou travado.');
+            return { skipped: true };
+        }
+    }
+
     console.log('\n' + '='.repeat(60));
     console.log(`⏰ SCRAPING AGENDADO INICIADO - ${new Date().toLocaleString('pt-BR')}`);
     console.log('='.repeat(60) + '\n');
@@ -64,7 +78,7 @@ async function runScheduledScraping() {
         console.log('\n' + '='.repeat(60));
         console.log('📊 RESULTADO DO SCRAPING');
         console.log('='.repeat(60));
-        console.log(`Total de produtos coletados: ${allProducts.length}/120\n`);
+        console.log(`Total de produtos coletados: ${allProducts.length}\n`);
 
         // 2. Envia para webhook
         const webhookResult = await sendToWebhook(allProducts);

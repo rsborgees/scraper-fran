@@ -114,9 +114,16 @@ async function scrapeFarm(quota = 84) {
     }
 
 
-    // Deduplicação FINAL por ID (mais seguro que URL)
+    // Deduplicação FINAL por ID e Ordenação por Prioridade (Promoção Primeiro)
     const uniquePromotions = [];
     const seenFinalIds = new Set();
+
+    // Ordena por maior desconto primeiro (percentual ou absoluto)
+    confirmedPromotions.sort((a, b) => {
+        const descA = a.precoOriginal - a.precoAtual;
+        const descB = b.precoOriginal - b.precoAtual;
+        return descB - descA; // Maior desconto primeiro
+    });
 
     confirmedPromotions.forEach(product => {
         const normId = normalizeId(product.id);
@@ -157,15 +164,15 @@ async function scrapeFarm(quota = 84) {
     });
 
     // Se ainda não atingiu a quota total (por falta de produtos em categorias específicas)
-    // Preenche com o que sobrar de outras categorias
+    // Preenche com o que sobrar de outras categorias (já ordenadas por prioridade de desconto)
     if (selectedProducts.length < quota) {
         const remainingQuota = quota - selectedProducts.length;
-        const alreadySelectedUrls = new Set(selectedProducts.map(p => p.url));
-        const pool = uniquePromotions.filter(p => !alreadySelectedUrls.has(p.url));
+        const alreadySelectedIds = new Set(selectedProducts.map(p => normalizeId(p.id)));
+        const pool = uniquePromotions.filter(p => !alreadySelectedIds.has(normalizeId(p.id)));
         selectedProducts.push(...pool.slice(0, remainingQuota));
     }
 
-    console.log(`\n✅ FARM: ${selectedProducts.length}/${quota} produtos capturados`);
+    console.log(`\n✅ FARM: ${selectedProducts.length}/${quota} produtos capturados (Priorizando promoções)`);
 
     // markAsSent já foi chamado para cada produto aceito
 

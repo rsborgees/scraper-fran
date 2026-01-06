@@ -21,9 +21,9 @@ async function scanCategory(categoryUrl, categoryName) {
 
         // Scroll gradual para carregar lazy loading
         console.log('Rolando página para carregar produtos...');
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 2; i++) {
             await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-            await page.waitForTimeout(1000);
+            await page.waitForTimeout(800);
         }
 
         // Espera de estabilidade visual
@@ -47,11 +47,9 @@ async function scanCategory(categoryUrl, categoryName) {
                 const hasLineThrough = !!card.querySelector('.line-through');
                 const hasWarningPrice = !!card.querySelector('.text-warning-content');
 
-                // Se o card tem indício de promoção e um link válido de produto
+                // EXTRAÇÃO DE URL: Garante que é um link de produto válido (/p)
                 let href = card.href;
-                if ((hasLineThrough || hasWarningPrice) && href && (href.includes('/p?') || href.includes('/p/'))) {
-                    // Limpeza de URL: Garante que termina em /p e remove lixo
-                    // Exemplo: .../nome-do-produto/p?brand=farm -> .../nome-do-produto/p
+                if (href && (href.includes('/p?') || href.includes('/p/'))) {
                     try {
                         const baseUrl = href.split('?')[0];
                         if (baseUrl.endsWith('/p')) {
@@ -63,24 +61,13 @@ async function scanCategory(categoryUrl, categoryName) {
                 }
             });
 
-            // Fallback para estrutura antiga ou caso mudem as classes base:
-            // Se não achou nada com a seletor de classe, tenta a busca por texto de preço
+            // Se não achou nada com a seletor de classe, tenta a busca por links de produto
             if (candidates.size === 0) {
-                const getSafeText = (el) => el ? (el.innerText || el.textContent || '').trim() : '';
                 const allLinks = Array.from(document.querySelectorAll('a[href*="/p"]'));
-
                 allLinks.forEach(link => {
-                    const txt = getSafeText(link).replace(/\s+/g, ' ');
-                    const pricesFound = txt.match(/R\$\s*[\d.,]+/g);
-
-                    // Só aceita como promoção se tiver 2 preços E não for apenas o parcelamento
-                    // Geralmente o parcelamento vem com "ou X de"
-                    if (pricesFound && pricesFound.length >= 2) {
-                        // Verifica se um dos preços é "riscado" via estilo se possível, ou se não é "ou X de"
-                        const hasInstallments = /ou\s+\d+x\s+de/i.test(txt);
-                        if (pricesFound.length > 2 || !hasInstallments) {
-                            candidates.add(link.href);
-                        }
+                    const href = link.href;
+                    if (href && (href.includes('/p?') || href.includes('/p/'))) {
+                        candidates.add(href);
                     }
                 });
             }
@@ -88,7 +75,7 @@ async function scanCategory(categoryUrl, categoryName) {
             return Array.from(candidates);
         });
 
-        console.log(`Encontrados ${foundUrls.length} produtos candidatos em ${categoryName}.`);
+        console.log(`Encontrados ${foundUrls.length} produtos em ${categoryName}.`);
         potentials.push(...foundUrls);
 
     } catch (error) {

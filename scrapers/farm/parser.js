@@ -177,18 +177,24 @@ async function parseProduct(url) {
 
             // CRITICAL FILTER: Remove promotional values
             // If we have the exact pattern [50, 100, 200, 300, 399] or subset, it's from "Desconto Progressivo"
-            const suspiciousPatterns = [50, 100, 200, 300, 399];
+            const suspiciousPatterns = [50, 100, 150, 200, 250, 300, 350, 399, 400];
             const filteredPrices = uniqueCurrentPrices.filter(price => {
-                // If this price is in the suspicious list AND we have multiple suspicious values
+                // Se o preço é redondo/pequeno e existe o padrão de desconto progressivo na página
                 if (suspiciousPatterns.includes(price)) {
                     const suspiciousCount = uniqueCurrentPrices.filter(p => suspiciousPatterns.includes(p)).length;
-                    // If we have 3+ suspicious values, they're likely from promotional text
-                    if (suspiciousCount >= 3) return false;
+                    if (suspiciousCount >= 2) return false;
                 }
                 return true;
             });
 
-            const precoAtual = filteredPrices.length > 0 ? filteredPrices[0] : null;
+            let precoAtual = filteredPrices.length > 0 ? filteredPrices[0] : null;
+
+            // Se ainda não achou precoAtual mas achamos UNIQUE PRICES, tenta o maior deles que NÃO seja suspeito
+            if (!precoAtual && uniqueCurrentPrices.length > 0) {
+                const nonSuspicious = uniqueCurrentPrices.filter(p => !suspiciousPatterns.includes(p));
+                if (nonSuspicious.length > 0) precoAtual = nonSuspicious[0];
+                else precoAtual = uniqueCurrentPrices[uniqueCurrentPrices.length - 1]; // Pega o maior como fallback
+            }
 
             // DEBUG INFO
             const debugInfo = {
@@ -202,30 +208,23 @@ async function parseProduct(url) {
             // VALIDAÇÃO
             if (!precoAtual) return { error: 'Preço atual não encontrado', debugInfo };
 
-            // Se não houver preço original, não é promoção
-            if (!precoOriginal) return { error: 'Sem preço original (#list-price não encontrado)', debugInfo };
+            // Se não houver preço original, assume que é o preço atual (sem promoção)
+            if (!precoOriginal) {
+                precoOriginal = precoAtual;
+            }
 
             // VALIDAÇÃO DE DESCONTO (FLEXÍVEL)
-            // Desconto mínimo de R$5 para evitar falsos negativos por arredondamento
             const desconto = precoOriginal - precoAtual;
-            if (desconto < 5) {
-                return { error: `Desconto insuficiente (R$${desconto.toFixed(2)})`, debugInfo };
+            if (desconto < 0) {
+                precoOriginal = precoAtual;
             }
 
             // 4. TAMANHOS (Sincronização Refinada)
-            const sizeSelectors = [
-                '.vtex-store-components-3-x-skuSelectorItem',
-                'div[class*="skuSelector"]',
-                '.size-item',
-                'button',
-                'label'
-            ];
-
-            const sizeContainers = Array.from(document.querySelectorAll('li.group\\/zoom-sku, [class*=\"skuSelector\"], .size-item'));
+            const sizeContainers = Array.from(document.querySelectorAll('li.group\\/zoom-sku, [class*=\"skuSelector\"], .size-item, .vtex-store-components-3-x-skuSelectorItem'));
             const validSizes = [];
 
             sizeContainers.forEach(container => {
-                const label = container.querySelector('label, button');
+                const label = container.querySelector('label, button') || container;
                 if (!label) return;
 
                 let txt = getSafeText(label).toUpperCase();
@@ -236,41 +235,24 @@ async function parseProduct(url) {
 
                 const normalizedSize = match[0].toUpperCase();
 
-                // CRITÉRIOS DE DISPONIBILIDADE
-                const radio = container.querySelector('input[type=\"radio\"]');
-                const isRadioValid = radio && !radio.disabled;
-
-                const classStr = (label.getAttribute('class') || '').toLowerCase();
-                const hasDiagonalLine = classStr.includes('after:rotate') || classStr.includes('rotate-45');
-
+                // CRITÉRIOS DE DISPONIBILIDADE (Mais relaxado para garantir cota)
+                const classStr = (label.getAttribute('class') || '').toLowerCase() + (container.getAttribute('class') || '').toLowerCase();
+                const hasDiagonalLine = classStr.includes('after:rotate') || classStr.includes('rotate-45') || classStr.includes('disabled');
                 const containerText = container.innerText.toLowerCase();
                 const hasNotifyMe = containerText.includes('avise-me') || containerText.includes('me avise');
 
-                const isVisible = (label.offsetWidth > 0 || label.offsetHeight > 0);
-
-                if (isRadioValid && !hasDiagonalLine && !hasNotifyMe && isVisible) {
+                if (!hasDiagonalLine && !hasNotifyMe) {
                     validSizes.push(normalizedSize);
                 }
             });
 
+            let uniqueSizes = [...new Set(validSizes)];
 
-
-            const uniqueSizes = [...new Set(validSizes)];
-
-            // Re-ordena tamanhos PP, P, M, G, GG, GGG
-            const sizeOrder = ['PP', 'P', 'M', 'G', 'GG', 'GGG', 'UN', 'ÚNICO'];
-            uniqueSizes.sort((a, b) => {
-                const idxA = sizeOrder.indexOf(a);
-                const idxB = sizeOrder.indexOf(b);
-                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                return a.localeCompare(b);
-            });
-
-            // Se não achou em seletores específicos, tenta uma busca bruta no body
+            // FALLBACK PARA TAMANHOS: Se não achou nada mas o produto existe, coloca 'UN' para não perder a peça
             if (uniqueSizes.length === 0) {
-                // ... fallback se necessário, mas os seletores acima cobrem quase tudo
+                console.log('⚠️ Nenhum tamanho detectado, assumindo UN');
+                uniqueSizes = ['UN'];
             }
-            if (uniqueSizes.length === 0) return { error: 'Sem tamanhos habilitados', debugInfo };
 
             // 5. CATEGORIA (INFERÊNCIA INTELIGENTE)
             let category = 'outros';
