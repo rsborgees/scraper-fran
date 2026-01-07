@@ -186,11 +186,11 @@ async function parseProduct(url) {
                 precoOriginal = precoAtual;
             }
 
-            // NOVO FILTRO: Descarta se tiver 70% ou mais de desconto (Itens de Bazar muito agressivos)
+            // NOVO FILTRO: Descarta se tiver mais de 40% de desconto (Regra: >40% é Bazar)
             if (precoOriginal > 0) {
                 const percentualDesconto = (desconto / precoOriginal) * 100;
-                if (percentualDesconto >= 70) {
-                    return { error: `Produto de Bazar descartado (${percentualDesconto.toFixed(0)}% OFF)`, debugInfo };
+                if (percentualDesconto > 40) {
+                    return { error: `Produto de Bazar descartado (>40% OFF: ${percentualDesconto.toFixed(0)}%)`, debugInfo };
                 }
             }
 
@@ -249,11 +249,26 @@ async function parseProduct(url) {
             if (refEl) {
                 const rawId = getSafeText(refEl).replace(/\D/g, '');
                 if (rawId.length >= 6) id = rawId.substring(0, 6);
-                else id = rawId;
-            } else {
+                else if (rawId.length > 0) id = rawId;
+            }
+
+            if (id === 'unknown') {
                 // Fallback URL: tenta pegar os primeiros 6 dígitos do SKU
                 const urlMatch = window.location.href.match(/(\d{6,})/);
-                if (urlMatch) id = urlMatch[1].substring(0, 6);
+                if (urlMatch) {
+                    id = urlMatch[1].substring(0, 6);
+                } else {
+                    // Fallback Final: Hash da URL (pathname)
+                    // Garante unicidade para produtos sem ID explícito no DOM/URL
+                    let hash = 0;
+                    const str = window.location.pathname;
+                    for (let i = 0; i < str.length; i++) {
+                        const char = str.charCodeAt(i);
+                        hash = ((hash << 5) - hash) + char;
+                        hash |= 0; // Convert to 32bit integer
+                    }
+                    id = Math.abs(hash).toString();
+                }
             }
 
             return {

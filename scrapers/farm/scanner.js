@@ -19,11 +19,35 @@ async function scanCategory(categoryUrl, categoryName) {
     try {
         await page.goto(categoryUrl, { waitUntil: 'domcontentloaded' });
 
-        // Scroll gradual para carregar lazy loading (AUMENTADO para encontrar mais peças)
-        console.log('Rolando página para carregar produtos...');
-        for (let i = 0; i < 5; i++) {
-            await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-            await page.waitForTimeout(1000);
+        // MEGA SCROLL ROBUSTO (Slow & Steady)
+        // Rola 50 vezes, mas espera o carregamento real da página
+        console.log('Rolando página... (Modo: Lento e Confiável)');
+
+        let lastHeight = await page.evaluate('document.body.scrollHeight');
+        let unchangedCount = 0;
+
+        for (let i = 0; i < 50; i++) {
+            // Rola até o rodapé atual
+            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+            // ESPERA DE CARREGAMENTO (2 segundos)
+            // Dá tempo para o ícone de loading girar e os produtos aparecerem
+            await page.waitForTimeout(2000);
+
+            let newHeight = await page.evaluate('document.body.scrollHeight');
+
+            if (newHeight === lastHeight) {
+                unchangedCount++;
+                console.log(`   ⏳ Carregando... (${unchangedCount}/3)`);
+                if (unchangedCount >= 3) {
+                    console.log('   🛑 Fim da página detectado e confirmado.');
+                    break;
+                }
+            } else {
+                unchangedCount = 0; // Reset se carregou coisa nova
+                lastHeight = newHeight;
+                console.log(`   📜 Scroll #${i + 1}: Novos produtos carregados.`);
+            }
         }
 
         // Espera de estabilidade visual

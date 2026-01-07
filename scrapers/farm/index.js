@@ -41,7 +41,7 @@ async function scrapeFarm(quota = 84) {
     const { normalizeId } = require('../../historyManager');
 
     for (const cat of CATEGORIES) {
-        if (confirmedPromotions.length >= (quota * 2)) break; // Pega margem para quotas
+        if (confirmedPromotions.length >= (quota * 10)) break; // PRECISA DE MARGEM ENORME pois filtro 40% descarta 90% dos itens
 
         console.log(`\n📂 Processando Categoria: ${cat.name}`);
         const candidates = await scanCategory(cat.url, cat.name);
@@ -172,7 +172,7 @@ async function scrapeFarm(quota = 84) {
         selectedProducts.push(...pool.slice(0, remainingQuota));
     }
 
-    console.log(`\n✅ FARM: ${selectedProducts.length}/${quota} produtos capturados (Priorizando promoções)`);
+    console.log(`\n✅ FARM: ${selectedProducts.length}/${quota} produtos capturados (Promos leves + Preço Cheio)`);
 
     // markAsSent já foi chamado para cada produto aceito
 
