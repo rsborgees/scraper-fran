@@ -7,15 +7,22 @@ const { chromium } = require('playwright');
  */
 async function initBrowser() {
     // Força modo NÃO-headless por padrão (pode ser sobrescrito com HEADLESS=true no .env)
-    // Por padrão: HEADLESS (para rodar no servidor sem crashar)
-    // Para rodar visual (localmente), use HEADLESS=false no .env
-    const isHeadless = process.env.HEADLESS !== 'false';
-    const mode = isHeadless ? 'HEADLESS (vNew)' : 'VISUAL';
+    // Detecta ambiente (Linux = Servidor/Easypanel, Windows/Darwin = Local)
+    const isLinux = process.platform === 'linux';
 
-    console.log(`🚀 [V3.0] Iniciando navegador Chromium (MODO ${mode})...`);
+    // Lógica de decisão:
+    // 1. Se for Linux (Servidor), FORÇA Headless (true) para evitar crash de "Missing X Server".
+    // 2. Se for Local, obedece a variável HEADLESS (padrão true se não definida).
+    const envHeadless = process.env.HEADLESS !== 'false';
+    const isHeadless = isLinux ? true : envHeadless;
+
+    const mode = isHeadless ? 'HEADLESS (Server Safe)' : 'VISUAL';
+
+    console.log(`🚀 [V3.1] Iniciando navegador Chromium (MODO ${mode})...`);
+    if (isLinux) console.log('   ℹ️  Ambiente Linux detectado: Forçando modo Headless.');
 
     const launchOptions = {
-        headless: isHeadless ? 'new' : false, // Usa o novo modo headless do Chrome
+        headless: isHeadless, // true ou false
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -31,7 +38,8 @@ async function initBrowser() {
     };
 
     if (isHeadless) {
-        // Argumentos extras para mascarar headless
+        // Tenta usar o novo modo headless se disponível (melhor para anti-bot)
+        // Mas deixa o Playwright gerenciar via opção 'headless: true' ou args
         launchOptions.args.push('--headless=new');
     }
 
