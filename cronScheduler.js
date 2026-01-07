@@ -4,8 +4,47 @@ const fs = require('fs');
 const path = require('path');
 const { runAllScrapers } = require('./orchestrator');
 
+const { getPromoSummary } = require('./scrapers/farm/promoScanner');
+
 // Webhook Configuration
 const WEBHOOK_URL = 'https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa';
+const DAILY_WEBHOOK_URL = "https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/922595b8-a675-4e9e-8493-f3e734f236af";
+
+/**
+ * Envia o resumo diário de promoções (Job das 09h)
+ */
+async function runDailyPromoJob() {
+    console.log('\n' + '='.repeat(60));
+    console.log(`🌞 DAILY PROMO JOB INICIADO - ${new Date().toLocaleString('pt-BR')}`);
+    console.log('='.repeat(60) + '\n');
+
+    try {
+        console.log('📝 Gerando copy de promoções...');
+        const copy = await getPromoSummary();
+
+        if (!copy || copy.includes('Erro')) {
+            throw new Error('Falha ao gerar copy');
+        }
+
+        console.log('✅ Copy gerada. Enviando para Webhook específico...');
+
+        const payload = {
+            message: copy,
+            type: 'daily_summary',
+            timestamp: new Date().toISOString()
+        };
+
+        await axios.post(DAILY_WEBHOOK_URL, payload, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        console.log('✅ Daily Promo enviado com sucesso!');
+
+    } catch (error) {
+        console.error('❌ Erro no Daily Promo Job:', error.message);
+        // Opcional: Notificar erro no webhook principal
+    }
+}
 
 /**
  * Envia os dados coletados para o webhook
@@ -107,23 +146,29 @@ async function runScheduledScraping() {
 }
 
 /**
- * Configura o agendamento diário às 7h da manhã
+ * Configura o agendamento diário
  */
 function setupDailySchedule() {
-    console.log('\n🕐 Configurando agendamento diário...');
+    console.log('\n🕐 Configurando agendamentos...');
+    const timezone = "America/Sao_Paulo";
 
-    // Cron: De 1h em 1h, das 7h às 21h (Horário de Brasília)
-    const cronExpression = '0 7-21 * * *';
+    // 1. Scraping Horário: De 1h em 1h, das 7h às 21h (Horário de Brasília)
+    const scrapingCron = '0 7-21 * * *';
+    console.log(`   📅 Scraping: ${scrapingCron} (Horário)`);
 
-    cron.schedule(cronExpression, async () => {
+    cron.schedule(scrapingCron, async () => {
         await runScheduledScraping();
-        console.log(`\n✅ Execução concluída. Próxima agendada para: ${getNextRunTime()}\n`);
-    }, {
-        timezone: "America/Sao_Paulo"
-    });
+    }, { timezone });
 
-    console.log('✅ Agendamento configurado: Das 7h às 21h, a cada 1 hora (horário de Brasília)');
-    console.log(`   Próxima execução: ${getNextRunTime()}\n`);
+    // 2. Daily Promo Job: Todo dia às 09:00
+    const promoCron = '0 9 * * *';
+    console.log(`   📅 Daily Promo: ${promoCron} (09:00)`);
+
+    cron.schedule(promoCron, async () => {
+        await runDailyPromoJob();
+    }, { timezone });
+
+    console.log('✅ Cron Jobs Iniciados! (Timezone: São Paulo)\n');
 }
 
 /**
