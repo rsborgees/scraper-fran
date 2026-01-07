@@ -229,7 +229,7 @@ async function parseProductDressTo(page, url) {
                 // Limpeza: "TAMANHO P" -> "P", "TAM: 38" -> "38"
                 txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
 
-                const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
+                const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO)$/i);
                 if (match) {
                     const normalizedSize = match[0].toUpperCase();
                     const isDisabled = el.className.toLowerCase().includes('disable') ||
