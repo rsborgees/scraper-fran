@@ -7,13 +7,15 @@ const { chromium } = require('playwright');
  */
 async function initBrowser() {
     // Força modo NÃO-headless por padrão (pode ser sobrescrito com HEADLESS=true no .env)
-    const isHeadless = process.env.HEADLESS === 'true';
-    const mode = isHeadless ? 'HEADLESS' : 'VISUAL';
+    // Por padrão: HEADLESS (para rodar no servidor sem crashar)
+    // Para rodar visual (localmente), use HEADLESS=false no .env
+    const isHeadless = process.env.HEADLESS !== 'false';
+    const mode = isHeadless ? 'HEADLESS (vNew)' : 'VISUAL';
 
     console.log(`🚀 [V3.0] Iniciando navegador Chromium (MODO ${mode})...`);
 
-    const browser = await chromium.launch({
-        headless: isHeadless,
+    const launchOptions = {
+        headless: isHeadless ? 'new' : false, // Usa o novo modo headless do Chrome
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -26,7 +28,14 @@ async function initBrowser() {
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process'
         ]
-    });
+    };
+
+    if (isHeadless) {
+        // Argumentos extras para mascarar headless
+        launchOptions.args.push('--headless=new');
+    }
+
+    const browser = await chromium.launch(launchOptions);
 
     const context = await browser.newContext({
         viewport: { width: 1280, height: 800 },

@@ -160,9 +160,9 @@ function setupDailySchedule() {
         await runScheduledScraping();
     }, { timezone });
 
-    // 2. Daily Promo Job: Todo dia às 09:00
-    const promoCron = '0 9 * * *';
-    console.log(`   📅 Daily Promo: ${promoCron} (09:00)`);
+    // 2. Daily Promo Job: Todo dia às 08:00
+    const promoCron = '0 8 * * *';
+    console.log(`   📅 Daily Promo: ${promoCron} (08:00)`);
 
     cron.schedule(promoCron, async () => {
         await runDailyPromoJob();
