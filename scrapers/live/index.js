@@ -153,16 +153,28 @@ async function scrapeLive(quota = 6) {
     const tops = products.filter((p, i) => !usedIndices.has(i) && (p.nome.includes('Top') || p.nome.includes('Cropped') || p.nome.includes('Sutiã')));
     const bottoms = products.filter((p, i) => !usedIndices.has(i) && (p.nome.includes('Legging') || p.nome.includes('Short') || p.nome.includes('Saia')));
 
-    // Tenta pares por nome similar
+    // Tenta pares por nome similar (MATCH ESTRITO DE COLEÇÃO)
     for (const top of tops) {
-        // Encontra bottom com maior similaridade de nome (ex: "Legging Fit" e "Top Fit")
-        // Simplificado: 2 palavras em comum (ignora 'Top', 'Legging', 'de', 'para')
-        const topWords = top.nome.toLowerCase().split(' ').filter(w => w.length > 3 && !['top', 'cropped'].includes(w));
+        // Limpa nome para pegar só a "Coleção"
+        // Ex: "Top LIVE! Hydefit® Adaptiv" -> "Hydefit Adaptiv"
+        const cleanName = (name) => {
+            return name.toLowerCase()
+                .replace(/top|cropped|sutiã|legging|calça|short|saia|bermuda|live!|live/g, '')
+                .replace(/[®™]/g, '')
+                .trim();
+        };
+
+        const topCollection = cleanName(top.nome);
+        const topWords = topCollection.split(' ').filter(w => w.length > 2);
 
         const match = bottoms.find(b => {
-            const bWords = b.nome.toLowerCase().split(' ');
-            const intersections = topWords.filter(w => bWords.includes(w));
-            return intersections.length >= 1; // Pelo menos 1 palavra chave igual (ex: "Nebulosa", "Velvet")
+            const bottomCollection = cleanName(b.nome);
+            const bottomWords = bottomCollection.split(' ');
+
+            // Verifica se TODAS as palavras chaves do Top estão no Bottom (ou vice-versa)
+            // Isso garante que "Hydefit Adaptiv" case com "Hydefit Adaptiv"
+            const matchCount = topWords.filter(w => bottomWords.includes(w)).length;
+            return matchCount === topWords.length && topWords.length > 0;
         });
 
         if (match) {
@@ -170,6 +182,7 @@ async function scrapeLive(quota = 6) {
             sets.push(match);
             usedIndices.add(products.indexOf(top));
             usedIndices.add(products.indexOf(match));
+            console.log(`   💕 Conjunto Formado: ${top.nome} + ${match.nome}`);
         }
     }
 
