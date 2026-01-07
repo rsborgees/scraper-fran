@@ -116,8 +116,6 @@ async function getPromoSummary() {
 
         // --- FINAL COPY ASSEMBLY ---
         const copy = `
-PRIMEIRA MENSAGEM DO DIA - 09H:
-
 Bom diaa meninas ❤️
 
 RESUMO DAS PROMOÇÕES

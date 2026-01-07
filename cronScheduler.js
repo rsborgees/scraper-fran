@@ -208,6 +208,7 @@ async function runManualTest() {
 module.exports = {
     setupDailySchedule,
     runScheduledScraping,
+    runDailyPromoJob,
     runManualTest,
     sendToWebhook
 };
