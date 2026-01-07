@@ -1,12 +1,22 @@
 const fs = require('fs');
 const path = require('path');
 
-const HISTORY_FILE = path.join(__dirname, 'history.json');
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const MAX_AGE_HOURS = 72; // 3 days
 
 // Initialize if not exists
 if (!fs.existsSync(HISTORY_FILE)) {
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify({ sent_ids: {}, format_version: 2 }));
+    // Tenta migrar do antigo se existir
+    const OLD_FILE = path.join(__dirname, 'history.json');
+    if (fs.existsSync(OLD_FILE)) {
+        console.log('📦 Migrando histórico antigo para pasta data/...');
+        fs.renameSync(OLD_FILE, HISTORY_FILE);
+    } else {
+        fs.writeFileSync(HISTORY_FILE, JSON.stringify({ sent_ids: {}, format_version: 2 }));
+    }
 }
 
 function loadHistory() {
