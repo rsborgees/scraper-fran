@@ -293,9 +293,19 @@ async function parseProductDressTo(page, url) {
             let id = 'unknown';
             const refEl = document.querySelector('.vtex-product-identifier, .vtex-product-identifier--product-reference');
             if (refEl) {
-                id = getSafeText(refEl).replace(/\D/g, '');
-            } else {
-                const urlMatch = window.location.href.match(/(\d{6,})/);
+                // Formato esperado: 01.33.2394_198 -> Queremos 01332394
+                let rawText = getSafeText(refEl);
+                if (rawText.includes('_')) {
+                    rawText = rawText.split('_')[0];
+                }
+                id = rawText.replace(/\D/g, '');
+            }
+
+            if (id === 'unknown' || id.length < 6) {
+                // Fallback para URL se o ID extraído for inválido ou muito curto
+                // Tenta achar padrão de 8 digitos na URL também
+                // Ex: .../vestido-longo-01332394/p
+                const urlMatch = window.location.href.match(/(\d{7,})/);
                 if (urlMatch) id = urlMatch[1];
             }
 

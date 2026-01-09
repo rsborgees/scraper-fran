@@ -43,4 +43,5 @@ function clearRecentHistory(minutes = 60) {
 }
 
 // Executa limpeza de 1 hora por padrão
-clearRecentHistory(60);
+// Executa limpeza de 4 horas (240 min)
+clearRecentHistory(240);
