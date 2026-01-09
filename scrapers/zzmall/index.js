@@ -70,10 +70,16 @@ async function scrapeZZMall(quota = 6) {
 
                 // Coleta URLs da marca
                 const brandProductUrls = await page.evaluate(() => {
-                    const links = Array.from(document.querySelectorAll('a'));
-                    return [...new Set(links
+                    // Seletores de containers comuns no ZZMall para produtos
+                    const anchors = Array.from(document.querySelectorAll('a'));
+                    return [...new Set(anchors
                         .map(a => a.href)
-                        .filter(url => (url.includes('/p/') || url.includes('/produto/')) && !url.includes('login') && !url.includes('cart'))
+                        .filter(url => {
+                            if (!url) return false;
+                            const isProd = (url.includes('/p/') || url.includes('/produto/'));
+                            const isExcluded = url.includes('login') || url.includes('cart') || url.includes('checkout');
+                            return isProd && !isExcluded;
+                        })
                     )];
                 });
 
@@ -156,12 +162,9 @@ async function parseProductZZMall(page, url) {
                 return (typeof txt === 'string') ? txt.trim() : '';
             };
 
-            // Marcas confiáveis (Rigoroso: Arezzo, Schutz prioritários)
-            const trustedBrands = ['arezzo', 'schutz'];
+            // NÃO DESCARTA MAIS POR MARCA (Confiamos nas marcas visitadas na lista brandLinks)
             const bodyText = getSafeText(document.body).toLowerCase();
-
-            const isTrusted = trustedBrands.some(brand => bodyText.includes(brand));
-            if (!isTrusted) return null;
+            const isTrusted = true;
 
             // Nome
             const h1 = document.querySelector('h1');

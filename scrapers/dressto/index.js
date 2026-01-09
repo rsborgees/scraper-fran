@@ -20,120 +20,90 @@ async function scrapeDressTo(quota = 18) {
     const { browser, page } = await initBrowser();
 
     try {
-        await page.goto('https://www.dressto.com.br/nossas-novidades', {
-            waitUntil: 'load',
-            timeout: 60000
-        });
+        let pageNum = 1;
+        let consecEmptyPages = 0;
+        const maxPages = 5; // Suficiente para preencher a quota de Dress To
 
-        await page.waitForTimeout(3000);
+        while (products.length < quota && pageNum <= maxPages) {
+            const currentUrl = `https://www.dressto.com.br/nossas-novidades?page=${pageNum}`;
+            console.log(`   📄 Página ${pageNum}: ${currentUrl}`);
 
-        // 📜 Rolagem lenta e parcial (simulando humano)
-        console.log('   📜 Rolando página suavemente (parcial)...');
-        try {
-            await page.evaluate(async () => {
-                const distance = 150;
-                const delay = 350;
-                const maxScrolls = 15;
-                for (let i = 0; i < maxScrolls; i++) {
-                    window.scrollBy(0, distance);
-                    await new Promise(r => setTimeout(r, delay));
-                }
-            });
-        } catch (e) {
-            console.warn(`   ⚠️ Erro durante rolagem (contexto destruído?), continuando...`);
-        }
-        await page.waitForTimeout(2000);
-
-        // Coleta URLs de produtos (Dress To usa estrutura VTEX onde links de produtos terminam em /p)
-        const productSelector = 'a.vtex-product-summary-2-x-clearLink, a[href$="/p"]';
-        const productUrls = await page.evaluate((sel) => {
-            const links = Array.from(document.querySelectorAll(sel));
-            return [...new Set(links.map(a => a.href))]
-                .filter(url => {
-                    const path = new URL(url).pathname;
-                    return path.endsWith('/p') && path.length > 20;
-                });
-        }, productSelector);
-
-        console.log(`   🔎 Encontrados ${productUrls.length} produtos na listagem.`);
-
-        for (const url of productUrls) {
-            if (products.length >= quota) break;
-
-            // 🚀 OTIMIZAÇÃO: Check ID na URL antes de navegar
-            const idMatch = url.match(/(\d{6,})/);
-            if (idMatch) {
-                const earlyId = normalizeId(idMatch[1]);
-                if (earlyId && (seenInRun.has(earlyId) || isDuplicate(earlyId))) {
-                    // console.log(`   ⏭️  Skip Early (Duplicado): ${earlyId}`);
-                    continue;
-                }
-            }
-
-            console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
-
-            // Interação opcional ou navegação direta
             try {
-                const relativePath = new URL(url).pathname;
-                const element = await page.$(`a[href*="${relativePath}"]`);
-                if (element) {
-                    await element.scrollIntoViewIfNeeded();
-                    await page.waitForTimeout(500);
-                    try {
-                        await element.click({ force: true, timeout: 5000 });
-                    } catch (e) {
-                        await page.evaluate((el) => el.click(), element);
-                    }
-                    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
+                await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                await page.waitForTimeout(3000);
+
+                // Scroll suave para carregar lazy elements (VTEX IO)
+                await page.evaluate(async () => {
+                    window.scrollBy(0, 800);
+                    await new Promise(r => setTimeout(r, 1000));
+                    window.scrollBy(0, 800);
+                });
+
+                // Coleta URLs de produtos
+                const productUrls = await page.evaluate(() => {
+                    const sel = 'a.vtex-product-summary-2-x-clearLink, a[href$="/p"], a[href*="/p?"]';
+                    const links = Array.from(document.querySelectorAll(sel));
+                    return [...new Set(links.map(a => a.href))]
+                        .filter(url => {
+                            const parsed = new URL(url);
+                            return parsed.pathname.endsWith('/p') || parsed.pathname.includes('/p/');
+                        });
+                });
+
+                if (productUrls.length === 0) {
+                    console.log('      ⚠️ Nenhum produto encontrado nesta página.');
+                    consecEmptyPages++;
+                    if (consecEmptyPages >= 3) break;
                 } else {
-                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                }
-            } catch (err) {
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            }
+                    consecEmptyPages = 0;
+                    console.log(`      🔎 Analisando ${productUrls.length} produtos na página ${pageNum}...`);
 
-            // 1. Parse Product
-            const product = await parseProductDressTo(page, url);
+                    for (const url of productUrls) {
+                        if (products.length >= quota) break;
 
-            if (product) {
-                const normId = normalizeId(product.id);
+                        // Check ID na URL
+                        const idMatch = url.match(/(\d{6,})/);
+                        if (idMatch) {
+                            const earlyId = normalizeId(idMatch[1]);
+                            if (earlyId && (seenInRun.has(earlyId) || isDuplicate(earlyId))) continue;
+                        }
 
-                if (normId && (seenInRun.has(normId) || isDuplicate(normId))) {
-                    console.log(`   ⏭️  Duplicado (Histórico/Run): ${normId}`);
-                    continue;
-                }
+                        // Parse Product
+                        const product = await parseProductDressTo(page, url);
 
-                if (normId) seenInRun.add(normId);
+                        if (product) {
+                            const normId = normalizeId(product.id);
+                            if (normId && (seenInRun.has(normId) || isDuplicate(normId))) continue;
 
-                // 2. Image Download
-                console.log(`   🖼️  Baixando imagem com ID: ${product.id}...`);
-                let imagePath = null;
-                try {
-                    let imgResult;
-                    if (product.imageUrl) {
-                        imgResult = await processImageDirect(product.imageUrl, 'DRESSTO', product.id);
-                    } else {
-                        imgResult = await processProductUrl(url, product.id);
+                            if (normId) seenInRun.add(normId);
+
+                            // Image Download
+                            console.log(`      🖼️  Baixando imagem ${product.id}...`);
+                            let imagePath = null;
+                            try {
+                                const imgResult = product.imageUrl ?
+                                    await processImageDirect(product.imageUrl, 'DRESSTO', product.id) :
+                                    await processProductUrl(url, product.id);
+                                if (imgResult?.status === 'success' && imgResult.cloudinary_urls?.length) {
+                                    imagePath = imgResult.cloudinary_urls[0];
+                                }
+                            } catch (err) { }
+
+                            product.loja = 'dressto';
+                            product.desconto = 0;
+                            product.imagePath = imagePath || 'error.jpg';
+                            markAsSent([product.id]);
+                            products.push(product);
+                            console.log(`      ✅ [${products.length}/${quota}] Capturado: ${product.nome}`);
+                        }
                     }
-                    if (imgResult && imgResult.status === 'success' && imgResult.cloudinary_urls?.length > 0) {
-                        imagePath = imgResult.cloudinary_urls[0];
-                    }
-                } catch (err) { }
-
-                product.loja = 'dressto';
-                product.desconto = 0;
-                product.imagePath = imagePath;
-                markAsSent([product.id]); // MARCA IMEDIATAMENTE
-                products.push(product);
-
+                }
+            } catch (errPage) {
+                console.log(`      ⚠️ Erro ao acessar página ${pageNum}: ${errPage.message}`);
+                consecEmptyPages++;
             }
-
-            // Volta para a lista
-            await page.goto('https://www.dressto.com.br/nossas-novidades', { waitUntil: 'domcontentloaded' });
-            await page.evaluate(() => window.scrollBy(0, 800));
-            await page.waitForTimeout(1000);
+            pageNum++;
         }
-
     } catch (error) {
         console.error(`Erro no scraper Dress To: ${error.message}`);
     } finally {

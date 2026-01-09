@@ -26,32 +26,37 @@ async function scrapeLive(quota = 6) {
 
         await page.waitForTimeout(5000);
 
-        // 🛡️ Fecha popups/modais iniciais
+        // 🛡️ Fecha popups/modais iniciais (Refinado)
         console.log('   🛡️ Verificando popups...');
-        await page.evaluate(() => {
-            // Seletores identificados via inspeção
+        await page.evaluate(async () => {
             const closeSelectors = [
-                'button.sc-f0c9328e-3.dnwgCm', // Popup Perfis Falsos
+                'button.sc-f0c9328e-3.dnwgCm',
                 'button[class*="close"]',
                 '.modal-close',
                 'button:has(svg)',
-                '[aria-label="Close"]'
+                '[aria-label="Close"]',
+                '.sc-f0c9328e-0 i', // Ícone de fechar comum no site
+                'div[active="true"] button'
             ];
 
-            closeSelectors.forEach(sel => {
-                const btn = document.querySelector(sel);
-                if (btn && btn.offsetWidth > 0) {
-                    console.log(`      ✔️ Fechando popup: ${sel}`);
-                    btn.click();
-                }
-            });
+            for (const sel of closeSelectors) {
+                const els = document.querySelectorAll(sel);
+                els.forEach(el => {
+                    if (el && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
+                        el.click();
+                    }
+                });
+            }
 
-            // Tenta fechar por texto "×" se nada acima funcionar
-            const allButtons = Array.from(document.querySelectorAll('button'));
-            const xButton = allButtons.find(b => b.innerText.trim() === '×' || b.innerText.trim().toLowerCase() === 'fechar');
-            if (xButton) xButton.click();
+            // Tenta forçar o clique em botões de "Fechar" pelo texto
+            const buttons = Array.from(document.querySelectorAll('button, span, a'));
+            const closeBtn = buttons.find(b => {
+                const t = (b.innerText || '').toLowerCase().trim();
+                return t === 'x' || t === 'fechar' || t === 'close' || t === '×';
+            });
+            if (closeBtn) closeBtn.click();
         });
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
 
         // Screenshot
         if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
@@ -199,10 +204,11 @@ async function scrapeLive(quota = 6) {
     // Para simplificar e garantir a meta, vamos focar nos pares.
 
     if (finalSelection.length < quota) {
-        // Se após pareamento faltarem itens, NÃO preenche com singles de roupa
-        // Só preencheria se fossem categorias fora da regra (ex: acessórios)
-        const nonSetSingles = singles.filter(p => !['short', 'blusa', 'calça', 'top'].some(c => p.categoria.includes(c)));
-        finalSelection.push(...nonSetSingles.slice(0, quota - finalSelection.length));
+        // Se após pareamento faltarem itens, preenche com os singles que sobraram (Diferente de antes, agora aceita singles de qualquer categoria para bater a cota)
+        console.log(`   ⚖️ Preenchendo lacuna de ${quota - finalSelection.length} itens com singles...`);
+        const alreadySelectedIds = new Set(finalSelection.map(p => p.id));
+        const remainingSingles = singles.filter(p => !alreadySelectedIds.has(p.id));
+        finalSelection.push(...remainingSingles.slice(0, quota - finalSelection.length));
     }
 
     // Processa imagens (apenas dos selecionados) e marca como enviado
