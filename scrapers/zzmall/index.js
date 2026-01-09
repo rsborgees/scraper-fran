@@ -62,9 +62,9 @@ async function scrapeZZMall(quota = 6) {
                 }
 
                 await page.evaluate(async () => {
-                    for (let i = 0; i < 8; i++) { // Scroll moderado por marca
-                        window.scrollBy(0, 800);
-                        await new Promise(r => setTimeout(r, 800));
+                    for (let i = 0; i < 25; i++) { // Scroll profundo para superar duplicatas antigos
+                        window.scrollBy(0, 1000);
+                        await new Promise(r => setTimeout(r, 600));
                     }
                 });
 

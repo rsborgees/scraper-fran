@@ -58,8 +58,29 @@ async function scrapeDressTo(quota = 18) {
                     consecEmptyPages = 0;
                     console.log(`      🔎 Analisando ${productUrls.length} produtos na página ${pageNum}...`);
 
+                    // Priorização de URLs por keyword
+                    productUrls.sort((a, b) => {
+                        const score = (url) => {
+                            const lower = url.toLowerCase();
+                            if (lower.includes('vestido')) return 2;
+                            if (lower.includes('macacao') || lower.includes('macacão')) return 2;
+                            return 0;
+                        };
+                        return score(b) - score(a);
+                    });
+
+                    let collectedVestidos = products.filter(p => p.categoria === 'vestido').length;
+                    let collectedMacacoes = products.filter(p => p.categoria === 'macacão').length;
+
                     for (const url of productUrls) {
-                        if (products.length >= quota) break;
+                        // Critério de Parada Inteligente Check
+                        // Se quota for pequena (<=2), persegue 1 de cada.
+                        const isStrict = quota <= 3;
+                        if (isStrict) {
+                            if (collectedVestidos >= 1 && collectedMacacoes >= 1 && products.length >= quota) break;
+                        } else {
+                            if (products.length >= quota) break;
+                        }
 
                         // Check ID na URL
                         const idMatch = url.match(/(\d{6,})/);
@@ -76,6 +97,13 @@ async function scrapeDressTo(quota = 18) {
                             if (normId && (seenInRun.has(normId) || isDuplicate(normId))) continue;
 
                             if (normId) seenInRun.add(normId);
+
+                            // Validar categoria se Strict Mode
+                            if (isStrict) {
+                                // Se já temos vestido e este é vestido, skip? Não, excesso é bom pra garantir.
+                                // Mas se faltam apenas macacões, e isso é uma blusa, podemos pular para economizar?
+                                // Por enquanto, aceita tudo, filtramos no final.
+                            }
 
                             // Image Download
                             console.log(`      🖼️  Baixando imagem ${product.id}...`);
@@ -94,7 +122,11 @@ async function scrapeDressTo(quota = 18) {
                             product.imagePath = imagePath || 'error.jpg';
                             markAsSent([product.id]);
                             products.push(product);
-                            console.log(`      ✅ [${products.length}/${quota}] Capturado: ${product.nome}`);
+
+                            if (product.categoria === 'vestido') collectedVestidos++;
+                            if (product.categoria === 'macacão') collectedMacacoes++;
+
+                            console.log(`      ✅ [${products.length}/${quota}] Capturado: ${product.nome} (${product.categoria})`);
                         }
                     }
                 }
@@ -111,15 +143,7 @@ async function scrapeDressTo(quota = 18) {
     }
 
     // Aplicar cotas internas (65% vestido, 15% macacão, 5% saia, 5% short, 5% blusa, 5% acessório)
-    const quotas = {
-        'vestido': Math.round(quota * 0.65),
-        'macacão': Math.round(quota * 0.15),
-        'saia': Math.max(1, Math.round(quota * 0.05)),
-        'short': Math.max(1, Math.round(quota * 0.05)),
-        'blusa': Math.max(1, Math.round(quota * 0.05)),
-        'acessório': Math.max(1, Math.round(quota * 0.05))
-    };
-
+    // Aplicar cotas internas (Regra "1 macacão e 1 vestido" se quota permitir)
     const byCategory = {};
     products.forEach(p => {
         const cat = p.categoria || 'outros';
@@ -128,19 +152,48 @@ async function scrapeDressTo(quota = 18) {
     });
 
     const selectedProducts = [];
-    Object.keys(quotas).forEach(cat => {
-        const available = byCategory[cat] || [];
-        const catQuota = quotas[cat];
-        selectedProducts.push(...available.slice(0, catQuota));
-    });
+    const usedIds = new Set();
 
-    // Fallback se não atingiu a quota total
+    // 1. Garante 1 Macacão
+    if (byCategory['macacão'] && byCategory['macacão'].length > 0) {
+        const item = byCategory['macacão'][0];
+        selectedProducts.push(item);
+        usedIds.add(item.id);
+    }
+
+    // 2. Garante 1 Vestido
+    if (byCategory['vestido'] && byCategory['vestido'].length > 0) {
+        // Pega o primeiro que não foi usado
+        const item = byCategory['vestido'].find(p => !usedIds.has(p.id));
+        if (item) {
+            selectedProducts.push(item);
+            usedIds.add(item.id);
+        }
+    }
+
+    // 3. Preenche o restante da quota seguindo distribuição padrão ou aleatória
     if (selectedProducts.length < quota) {
+        // Se a quota for maior que 2 (ex: 18), precisamos preencher
+        // Se for exata (2), e já pegamos 1+1, ok.
+        // Se faltar algum (ex: não achou macacão), precisamos completar com qualquer coisa.
+
         const remainingQuota = quota - selectedProducts.length;
-        const alreadySelectedIds = new Set(selectedProducts.map(p => normalizeId(p.id)));
-        const pool = products.filter(p => !alreadySelectedIds.has(normalizeId(p.id)));
+        const pool = products.filter(p => !usedIds.has(p.id));
+
+        // Prioridade para Vestidos depois Macacões depois o resto
+        // Ordena pool: Vestido > Macacão > Outros
+        pool.sort((a, b) => {
+            const score = (c) => c.categoria === 'vestido' ? 3 : (c.categoria === 'macacão' ? 2 : 1);
+            return score(b) - score(a);
+        });
+
         selectedProducts.push(...pool.slice(0, remainingQuota));
     }
+
+    // Ordenação final no output? Não necessário.
+
+    console.log(`\n✅ Dress To Selecionados (${selectedProducts.length}):`);
+    selectedProducts.forEach(p => console.log(`   - ${p.nome} (${p.categoria}) | R$${p.precoAtual}`));
 
     return selectedProducts.slice(0, quota);
 }

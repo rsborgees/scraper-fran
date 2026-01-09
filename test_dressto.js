@@ -2,9 +2,9 @@ const { scrapeDressTo } = require('./scrapers/dressto');
 const { buildDressMessage } = require('./messageBuilder');
 
 async function test() {
-    console.log('--- TESTE ISOLADO DRESS TO (QUOTA: 3) ---');
+    console.log('--- TESTE ISOLADO DRESS TO (QUOTA: 2) ---');
     try {
-        const results = await scrapeDressTo(3);
+        const results = await scrapeDressTo(2);
         console.log(`\n--- RESULTADOS DO TESTE: ${results.length} PRODUTOS ---`);
 
         results.forEach((p, i) => {

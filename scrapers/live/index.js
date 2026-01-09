@@ -12,7 +12,7 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
  * Quota: 6 produtos
  * Usar SOMENTE preço à vista (ignorar parcelamento)
  */
-async function scrapeLive(quota = 6) {
+async function scrapeLive(quota = 6, ignoreDuplicates = false) {
     console.log('\n🔵 INICIANDO SCRAPER LIVE (Quota: ' + quota + ')');
 
     const products = [];
@@ -127,7 +127,7 @@ async function scrapeLive(quota = 6) {
 
             if (!product) continue;
 
-            if (isDuplicate(product.id)) {
+            if (!ignoreDuplicates && isDuplicate(product.id)) {
                 console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
                 continue;
             }
@@ -264,141 +264,76 @@ async function parseProductLive(page, url) {
             const nome = getSafeText(h1);
             if (!nome) return null;
 
-            // Preço - Estratégia Robusta
-            // 1. Busca por "Por R$" (preço de venda)
-            // 2. Filtra parcelas (valores pequenos ou com "x")
-            // 3. Usa menor preço válido (>= R$ 50)
+            // Preço - Estratégia Otimizada (Meta Tags + Seletores Específicos)
+            let numericPrices = [];
 
-            const allPrices = Array.from(document.querySelectorAll('*'))
-                .filter(el => el.children.length === 0 && getSafeText(el).includes('R$'))
-                .map(el => getSafeText(el));
-
-            // Prioridade 1: Buscar "Por R$" explicitamente
-            const porPriceText = allPrices.find(txt => /por\s+R\$/i.test(txt));
-            if (porPriceText) {
-                const match = porPriceText.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-                if (match) {
-                    let valStr = match[1].replace(/\./g, '');
-                    if (valStr.includes(',')) {
-                        valStr = valStr.replace(',', '.');
-                    } else {
-                        valStr = valStr + '.00';
-                    }
-                    const preco = parseFloat(valStr);
-                    if (!isNaN(preco) && preco >= 50) {
-                        // Encontrou preço "Por" válido - continua para extrair outros dados
-                        const tamanhos = [];
-                        const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
-
-                        sizeEls.forEach(el => {
-                            let txt = getSafeText(el).toUpperCase();
-                            txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
-                            const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
-                            if (match) {
-                                const normalizedSize = match[0].toUpperCase();
-                                const isDisabled = el.className.toLowerCase().includes('disable') ||
-                                    el.className.toLowerCase().includes('unavailable') ||
-                                    el.getAttribute('aria-disabled') === 'true';
-                                if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
-                                    tamanhos.push(normalizedSize);
-                                }
-                            }
-                        });
-
-                        let categoria = 'outros';
-                        const breadcrumb = getSafeText(document.querySelector('.breadcrumb, .vtex-breadcrumb-1-x-container')).toLowerCase();
-                        const lowerNome = nome.toLowerCase();
-                        const combinedText = (lowerNome + ' ' + breadcrumb).toLowerCase();
-
-                        if (combinedText.includes('vestido')) categoria = 'vestido';
-                        else if (combinedText.includes('macacão')) categoria = 'macacão';
-                        else if (combinedText.includes('blusa') || combinedText.includes('camiseta') || combinedText.includes('regata') || combinedText.includes('top')) categoria = 'blusa';
-                        else if (combinedText.includes('legging') || combinedText.includes('calça') || combinedText.includes('short') || combinedText.includes('saia')) categoria = 'roupa';
-                        else if (combinedText.includes('jaqueta') || combinedText.includes('casaco')) categoria = 'roupa';
-                        else categoria = 'roupa';
-
-                        let id = 'unknown';
-                        const refEl = document.querySelector('.vtex-product-identifier, .productReference, .sku');
-                        if (refEl) {
-                            id = getSafeText(refEl).replace(/\D/g, '');
-                        }
-
-                        if (id === 'unknown' || id === '') {
-                            const urlMatch = window.location.href.match(/(\d+)(AZ|00|BC|[\-\/])/);
-                            if (urlMatch) {
-                                id = urlMatch[1];
-                            } else {
-                                const longNumMatch = window.location.href.match(/(\d{5,})/);
-                                if (longNumMatch) id = longNumMatch[1];
-                            }
-                        }
-
-                        const result = {
-                            id,
-                            nome,
-                            preco,
-                            preco_original: (function () {
-                                const max = Math.max(...numericPrices, preco);
-                                return max;
-                            })(),
-                            tamanhos: [...new Set(tamanhos)],
-                            categoria,
-                            url: window.location.href,
-                            imageUrl: (function () {
-                                const ogImg = document.querySelector('meta[property="og:image"]');
-                                if (ogImg && ogImg.content) return ogImg.content;
-
-                                const imgs = Array.from(document.querySelectorAll('img'));
-                                const productImg = imgs.find(img =>
-                                    img.src &&
-                                    img.src.includes('/product/') &&
-                                    img.width > 200
-                                );
-                                if (productImg) return productImg.src;
-
-                                const fallback = imgs.find(img => img.width > 300 && img.height > 300);
-                                return fallback ? fallback.src : null;
-                            })()
-                        };
-
-                        return result;
-                    }
-                }
+            // 1. Meta Tags (CUIDADO: Em LIVE, meta tag as vezes aponta para produto errado '199.90' vs '489.90')
+            // Desabilitado temporariamente pois mostrou-se não confiável para este site específico no debug
+            /*
+            const metaPrice = document.querySelector('meta[property="product:price:amount"], meta[itemprop="price"]');
+            if (metaPrice) {
+                const val = parseFloat(metaPrice.content);
+                if (!isNaN(val) && val > 0) numericPrices.push(val);
             }
+            */
 
-            // Prioridade 2: Filtro robusto de parcelas
-            const realPrices = allPrices.filter(txt => {
-                // Exclui textos com indicadores de parcelamento
-                if (/\d+\s*x|x\s*de|\/|parcel|sem\s+juros|em\s+até/i.test(txt)) return false;
+            // 2. Busca Híbrida Inteligente (Prioriza DIVs limpas)
+            const allElements = Array.from(document.querySelectorAll('*'))
+                .filter(el => {
+                    // Pega apenas elementos folha (sem filhos diretos de texto misturado, mas aqui verificamos children.length)
+                    // DIVs podem ter filhos, então cuidado. O debug mostrou DIV com texto direto?
+                    // Debug: "tag": "DIV", "text": "R$ 489,90" -> significa que o innerText é esse.
+                    // Se tiver filhos, innerText é a soma.
+                    // Vamos pegar elementos cujo texto direto contenha R$
 
-                // Exclui se o texto completo contém "x" seguido de "R$"
-                if (/\d+\s*x\s*R\$/i.test(txt)) return false;
+                    const txt = (el.innerText || '').trim();
+                    return txt.includes('R$') && el.offsetWidth > 0;
+                });
 
-                return true;
-            });
+            // Separa em candidatos Fortes (DIV) e Fracos (STRONG, SPAN, P)
+            // No caso da Live, o preço principal apareceu em DIV. Recomendações em STRONG.
+            const strongCandidates = [];
+            const weakCandidates = [];
 
-            const numericPrices = [];
-            realPrices.forEach(txt => {
+            allElements.forEach(el => {
+                const txt = (el.innerText || '').trim();
+
+                // Filtros de Exclusão (Parcelamento / Juros)
+                if (/\d+\s*x|x\s*de|\/|parcel|sem\s+juros|em\s+até|juros|cashback/i.test(txt)) return;
+                // Exclui se o texto completo é muito longo (provavelmente um bloco de texto)
+                if (txt.length > 50) return;
+
                 const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
-                    let valStr = match[1].replace(/\./g, '');
-                    if (valStr.includes(',')) {
-                        valStr = valStr.replace(',', '.');
-                    } else {
-                        valStr = valStr + '.00';
-                    }
+                    let valStr = match[1].replace(/\./g, '').replace(',', '.');
                     const val = parseFloat(valStr);
-                    // Filtra valores muito baixos (provavelmente parcelas)
-                    if (!isNaN(val) && val >= 50) {
-                        numericPrices.push(val);
+
+                    if (!isNaN(val) && val >= 50) { // Filtro minimo R$50 to avoid installments
+                        if (el.tagName === 'DIV' || el.classList.contains('skuBestPrice') || el.classList.contains('vtex-product-price-1-x-sellingPriceValue')) {
+                            strongCandidates.push(val);
+                        } else {
+                            weakCandidates.push(val);
+                        }
                     }
                 }
             });
+
+            // Se tiver candidatos fortes (DIVs), usa eles.
+            if (strongCandidates.length > 0) {
+                // Remove duplicatas e ordena
+                const unique = [...new Set(strongCandidates)].sort((a, b) => a - b);
+                // Pega o menor preço forte (geralmente preço a vista/promocional dentro do bloco principal)
+                numericPrices = unique;
+            } else {
+                // Fallback para fracos
+                const unique = [...new Set(weakCandidates)].sort((a, b) => a - b);
+                numericPrices = unique;
+            }
 
             if (numericPrices.length === 0) return null;
 
-            // Se houver múltiplos preços, pega o menor (preço de venda após desconto)
-            const preco = Math.min(...numericPrices);
+            // O menor preço válido
+            const preco = numericPrices[0];
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
