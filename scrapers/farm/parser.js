@@ -199,7 +199,21 @@ async function parseProduct(page, url) {
                 }
             }
 
-            // 4. TAMANHOS (Sincronização Refinada)
+            // 4. CATEGORIA (Antecipado para ajudar na validação de tamanho)
+            let category = 'outros';
+            const urlLower = window.location.href.toLowerCase();
+            const bodyText = getSafeText(document.body).substring(0, 3000).toLowerCase();
+            const combinedText = (urlLower + ' ' + bodyText);
+
+            if (combinedText.includes('/vestido-') || combinedText.includes(' vestido ')) category = 'vestido';
+            else if (combinedText.includes('/macacao-') || combinedText.includes('/macaquinho-') || combinedText.includes(' macacão ') || combinedText.includes(' macaquinho ')) category = 'macacão';
+            else if (combinedText.includes('/saia-') || combinedText.includes(' saia ')) category = 'saia';
+            else if (combinedText.includes('/short-') || combinedText.includes(' short ')) category = 'short';
+            else if (combinedText.includes('/blusa-') || combinedText.includes('/camisa-') || combinedText.includes(' blusa ') || combinedText.includes(' camisa ')) category = 'blusa';
+            else if (combinedText.includes('/brinco-') || combinedText.includes('/bolsa-') || combinedText.includes('/colar-') || combinedText.includes('/cinto-') || combinedText.includes('/acessorio-') || combinedText.includes(' brinco ') || combinedText.includes(' bolsa ') || combinedText.includes(' colar ') || combinedText.includes(' acessório ')) category = 'acessório';
+            else if (combinedText.includes('/calca-') || combinedText.includes(' calça ')) category = 'calça';
+
+            // 5. TAMANHOS (Sincronização Refinada)
             const sizeContainers = Array.from(document.querySelectorAll('li.group\\/zoom-sku, [class*=\"skuSelector\"], .size-item, .vtex-store-components-3-x-skuSelectorItem'));
             const validSizes = [];
 
@@ -228,10 +242,18 @@ async function parseProduct(page, url) {
 
             let uniqueSizes = [...new Set(validSizes)];
 
-            // FALLBACK PARA TAMANHOS: Se não achou nada mas o produto existe, coloca 'UN' para não perder a peça
+            // FALLBACK PARA TAMANHOS
             if (uniqueSizes.length === 0) {
-                console.log('⚠️ Nenhum tamanho detectado, assumindo UN');
-                uniqueSizes = ['UN'];
+                // SÓ assume UN se for acessório ou categoria desconhecida que não parece roupa
+                const clothingCategories = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho'];
+
+                if (clothingCategories.includes(category)) {
+                    // É roupa e não tem tamanho -> Provavelmente ESGOTADO
+                    return { error: `Produto ESGOTADO (Sem tamanhos disponíveis para ${category})` };
+                } else {
+                    console.log(`⚠️ Nenhum tamanho detectado para ${category}, assumindo UN (Acessório/Outros)`);
+                    uniqueSizes = ['UN'];
+                }
             }
 
             // CHECK FINAL: Validação Rigorosa de Tamanho (Adulto vs Infantil)
@@ -261,20 +283,6 @@ async function parseProduct(page, url) {
             if (/bento|fábula|fabula/i.test(name)) {
                 return { error: 'Produto Infantil detectado (Marca proibida no nome)' };
             }
-
-            // 5. CATEGORIA (INFERÊNCIA INTELIGENTE)
-            let category = 'outros';
-            const urlLower = window.location.href.toLowerCase();
-            const bodyText = getSafeText(document.body).substring(0, 3000).toLowerCase();
-            const combinedText = (urlLower + ' ' + bodyText);
-
-            if (combinedText.includes('/vestido-') || combinedText.includes(' vestido ')) category = 'vestido';
-            else if (combinedText.includes('/macacao-') || combinedText.includes('/macaquinho-') || combinedText.includes(' macacão ') || combinedText.includes(' macaquinho ')) category = 'macacão';
-            else if (combinedText.includes('/saia-') || combinedText.includes(' saia ')) category = 'saia';
-            else if (combinedText.includes('/short-') || combinedText.includes(' short ')) category = 'short';
-            else if (combinedText.includes('/blusa-') || combinedText.includes('/camisa-') || combinedText.includes(' blusa ') || combinedText.includes(' camisa ')) category = 'blusa';
-            else if (combinedText.includes('/brinco-') || combinedText.includes('/bolsa-') || combinedText.includes('/colar-') || combinedText.includes('/cinto-') || combinedText.includes('/acessorio-') || combinedText.includes(' brinco ') || combinedText.includes(' bolsa ') || combinedText.includes(' colar ') || combinedText.includes(' acessório ')) category = 'acessório';
-            else if (combinedText.includes('/calca-') || combinedText.includes(' calça ')) category = 'calça';
 
             // 6. ID (Referência)
             let id = 'unknown';
