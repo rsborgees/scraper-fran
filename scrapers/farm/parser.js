@@ -5,10 +5,8 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
 
 /**
  * Parser Otimizado com Filtros Inteligentes
- * Filosofia: "Maximizar aproveitamento real, minimizar falsos positivos"
- * @param {string} url 
  */
-async function parseProduct(url) {
+async function parseProduct(page, url) {
     // VALIDAÇÃO ESTRITA DE URL (PRÉ-NAVEGAÇÃO)
     // Só processar URLs de produto real (/p, /p/ ou /p?)
     if (!url.includes('/p?') && !url.includes('/p/') && !url.endsWith('/p')) {
@@ -16,15 +14,20 @@ async function parseProduct(url) {
         return null;
     }
 
-    console.log(`--- [Optimized] Analisando: ${url} ---`);
-    const { browser, page } = await initBrowser();
+    // FILTRO ANTI-INFANTIL (Fábula / Bento / Teen / Mini / Kids)
+    if (/fabula|bento|teen|mini|kids|infantil|brincando/i.test(url)) {
+        console.log(`👶 [Skip] Produto Infantil detectado por URL: ${url}`);
+        return null;
+    }
+
+    console.log(`\n🔎 Analisando: ${url.split('/').pop()}`);
 
     try {
         // NAVEGAÇÃO
         try {
             await page.goto(url, {
                 waitUntil: 'domcontentloaded',
-                timeout: 45000
+                timeout: 30000
             });
         } catch (navError) {
             console.warn(`⚠️ [Nav] Timeout: ${navError.message}`);
@@ -186,11 +189,13 @@ async function parseProduct(url) {
                 precoOriginal = precoAtual;
             }
 
-            // NOVO FILTRO: Descarta se tiver mais de 40% de desconto (Regra: >40% é Bazar)
+            // FILTRO DE DESCONTO: Descarta se tiver 40% ou mais de desconto (Regra: >=40% é inválido)
             if (precoOriginal > 0) {
                 const percentualDesconto = (desconto / precoOriginal) * 100;
-                if (percentualDesconto > 40) {
-                    return { error: `Produto de Bazar descartado (>40% OFF: ${percentualDesconto.toFixed(0)}%)`, debugInfo };
+                if (percentualDesconto >= 40) {
+                    const msg = `Produto descartado (desconto >=40%: ${percentualDesconto.toFixed(0)}%)`;
+                    console.log(`⚠️ ${msg}`);
+                    return { error: msg, debugInfo };
                 }
             }
 
@@ -227,6 +232,34 @@ async function parseProduct(url) {
             if (uniqueSizes.length === 0) {
                 console.log('⚠️ Nenhum tamanho detectado, assumindo UN');
                 uniqueSizes = ['UN'];
+            }
+
+            // CHECK FINAL: Validação Rigorosa de Tamanho (Adulto vs Infantil)
+            const isAdultSize = (sizes) => {
+                const adultMarkers = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'UN', 'ÚNICO', '34', '36', '38', '40', '42', '44', '46', '48', '50'];
+                // Se array contém pelo menos UM marcador adulto, é considerado adulto
+                return sizes.some(s => adultMarkers.includes(s));
+            };
+
+            const isKidsSizeOnly = (sizes) => {
+                // Tamanhos numéricos pequenos (2 a 16)
+                const kidsMarkers = ['2', '4', '6', '8', '10', '12', '14', '16'];
+                // Retorna true se TODOS os tamanhos encontrados forem infantis
+                return sizes.length > 0 && sizes.every(s => kidsMarkers.includes(s));
+            };
+
+            // Lógica de Rejeição
+            if (isKidsSizeOnly(uniqueSizes)) {
+                return { error: `Produto Infantil detectado (Grade somente infantil: ${uniqueSizes.join(',')})` };
+            }
+
+            if (!isAdultSize(uniqueSizes) && /fábula|fabula|bento|teen|infantil|kids/i.test(name)) {
+                return { error: 'Produto Infantil detectado (Nome + Grade não-adulta)' };
+            }
+
+            // Reforço: Se contiver 'bento' ou 'fábula' explicitamente, mata
+            if (/bento|fábula|fabula/i.test(name)) {
+                return { error: 'Produto Infantil detectado (Marca proibida no nome)' };
             }
 
             // 5. CATEGORIA (INFERÊNCIA INTELIGENTE)
@@ -333,8 +366,6 @@ async function parseProduct(url) {
     } catch (error) {
         console.error(`💀 [DOMDriven] Erro: ${error.message}`);
         return null;
-    } finally {
-        await browser.close();
     }
 }
 

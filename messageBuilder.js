@@ -1,5 +1,5 @@
 const SELLER_CODE = "7B1313";
-const LINKTREE = "https://linktr.ee/FranNaFarm";
+const LINKTREE = "https://bio.site/FRANCALHEIRA";
 const WHATSAPP_LINK = "https://chat.whatsapp.com/B5NunogKsnMIoyJSxMAtcN";
 const { appendQueryParams } = require('./urlUtils');
 

@@ -1,12 +1,12 @@
 /**
  * Orchestrator - Coordena todos os scrapers de lojas
- * Total: 12 produtos
- * Distribuição: FARM 7, Dress To 2, KJU 1, Live 1, ZZMall 1
+ * Total: 17 produtos
+ * Distribuição: FARM 12, Dress To 1, KJU 1, Live 2, ZZMall 1
  */
 
 const fs = require('fs');
 const path = require('path');
-const LOCK_FILE = path.join(__dirname, 'scraper.lock');
+
 const {
     buildFarmMessage,
     buildDressMessage,
@@ -16,27 +16,11 @@ const {
 } = require('./messageBuilder');
 
 async function runAllScrapers(overrideQuotas = null) {
-    // 🔒 Trava de execução para evitar sobreposição
-    if (fs.existsSync(LOCK_FILE)) {
-        const stats = fs.statSync(LOCK_FILE);
-        const hoursOld = (new Date() - stats.mtime) / (1000 * 60 * 60);
 
-        // Se a trava tiver mais de 2 horas, assumimos que o processo anterior travou e limpamos
-        if (hoursOld > 2) {
-            console.log('⚠️ Trava antiga detectada (>2h), removendo...');
-            fs.unlinkSync(LOCK_FILE);
-        } else {
-            console.log('🚫 Scraper já está em execução. Abortando nova instância.');
-            return [];
-        }
-    }
-
-    fs.writeFileSync(LOCK_FILE, process.pid.toString());
-    console.log(`🔒 Trava de execução criada (PID: ${process.pid})`);
 
     const allProducts = [];
     const quotas = overrideQuotas || {
-        farm: 7,
+        farm: 12,
         dressto: 1,
         kju: 1,
         live: 2,
@@ -44,8 +28,7 @@ async function runAllScrapers(overrideQuotas = null) {
     };
 
     try {
-        console.log('🚀 INICIANDO ORCHESTRATOR - 12 PRODUTOS TOTAL (ou override)\n');
-        console.log(`Distribuição: FARM (${quotas.farm}), Dress To (${quotas.dressto}), KJU (${quotas.kju}), Live (${quotas.live}), ZZMall (${quotas.zzmall})\n`);
+        console.log(`🚀 ORCHESTRATOR: Meta 17 Itens [F:${quotas.farm} D:${quotas.dressto} K:${quotas.kju} L:${quotas.live} Z:${quotas.zzmall}]`);
 
         // 1. Scrapes
         try {
@@ -102,16 +85,16 @@ async function runAllScrapers(overrideQuotas = null) {
             console.log(`\n⚖️ Cota não atingida (${allProducts.length}/${totalTarget}). Tentando preencher lacuna de ${gap} produtos com a FARM...`);
 
             let attempts = 0;
-            const maxAttempts = 3; // Tentamos até 3 vezes com a Farm em diferentes categorias/buscas se necessário
+            const maxAttempts = 2; // Reduzi de 3 para 2 para ser mais rápido
 
             while (gap > 0 && attempts < maxAttempts) {
                 attempts++;
-                console.log(`\n🔄 Tentativa de redistribuição #${attempts}...`);
+                console.log(`\n🔄 Preenchendo lacuna com FARM (Tentativa #${attempts})...`);
 
                 try {
                     const { scrapeFarm } = require('./scrapers/farm');
-                    // Pede uma margem bem maior (gap * 3) para garantir que após filtros tenhamos o necessário
-                    let extraProducts = await scrapeFarm(gap * 3);
+                    // Pede apenas o necessário (+ margem pequena) para evitar Deep Scan infinito
+                    let extraProducts = await scrapeFarm(gap + 1);
 
                     // Filtra o que já pegamos nesta rodada (por ID)
                     const alreadyPickedIds = new Set(allProducts.map(p => p.id));
@@ -140,10 +123,7 @@ async function runAllScrapers(overrideQuotas = null) {
         console.error(`❌ Erro no Orchestrator: ${error.message}`);
         return allProducts;
     } finally {
-        if (fs.existsSync(LOCK_FILE)) {
-            fs.unlinkSync(LOCK_FILE);
-            console.log('🔓 Trava de execução removida.');
-        }
+
     }
 }
 

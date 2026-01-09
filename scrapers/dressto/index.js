@@ -58,8 +58,17 @@ async function scrapeDressTo(quota = 18) {
         console.log(`   🔎 Encontrados ${productUrls.length} produtos na listagem.`);
 
         for (const url of productUrls) {
-            // Coletamos margem para categorias
-            if (products.length >= (quota * 2)) break;
+            if (products.length >= quota) break;
+
+            // 🚀 OTIMIZAÇÃO: Check ID na URL antes de navegar
+            const idMatch = url.match(/(\d{6,})/);
+            if (idMatch) {
+                const earlyId = normalizeId(idMatch[1]);
+                if (earlyId && (seenInRun.has(earlyId) || isDuplicate(earlyId))) {
+                    // console.log(`   ⏭️  Skip Early (Duplicado): ${earlyId}`);
+                    continue;
+                }
+            }
 
             console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
 
