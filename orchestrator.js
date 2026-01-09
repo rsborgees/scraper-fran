@@ -64,17 +64,61 @@ async function runAllScrapers(overrideQuotas = null) {
         } catch (e) { console.error(`❌ ZZMall Error: ${e.message}`); }
 
         // 2. LIVE Special Handling (Sets)
+        // 2. LIVE Special Handling (Sets & One Pieces)
         try {
             const { scrapeLive } = require('./scrapers/live');
             let products = await scrapeLive(quotas.live);
 
-            for (let i = 0; i < products.length; i += 2) {
-                const chunk = products.slice(i, i + 2);
-                const msg = buildLiveMessage(chunk);
-                chunk.forEach(p => p.message = msg);
-                allProducts.push(...chunk);
+            let i = 0;
+            while (i < products.length) {
+                const current = products[i];
+                let chunk = [];
+
+                if (current.type === 'onepiece') {
+                    // Peça única -> Mantém objeto original
+                    chunk = [current];
+                    i++;
+                } else {
+                    // Par Top + Bottom (qualquer)
+                    const next = products[i + 1];
+                    if (next && next.type !== 'onepiece') {
+                        // MERGE 2 produtos em 1 objeto SET
+                        console.log(`   🔗 Merging ${current.nome} + ${next.nome}`);
+
+                        const mergedProduct = {
+                            ...current,
+                            id: `${current.id}_${next.id}`,
+                            nome: `${current.nome} + ${next.nome}`,
+                            preco: parseFloat((current.preco + next.preco).toFixed(2)),
+                            precoOriginal: parseFloat(((current.precoOriginal || current.preco) + (next.precoOriginal || next.preco)).toFixed(2)),
+                            // Mantém imagem do Top (geralmente mais representativo) ou poderia tentar outra estratégia
+                            // User não pediu imagem composta, apenas "não enviar 2 produtos"
+                            imageUrl: current.imageUrl,
+                            imagePath: current.imagePath,
+                            link: current.url, // Link do Top
+                            loja: 'live',
+                            set: true
+                        };
+
+                        chunk = [mergedProduct];
+                        i += 2;
+                    } else {
+                        // Órfão (Top/Bottom sem par) - Envia single ou descarta?
+                        // Se não tiver par, envia single.
+                        chunk = [current];
+                        i++;
+                    }
+                }
+
+                // Gera mensagem e adiciona ao output final
+                if (chunk.length > 0) {
+                    // Se for merge set, só tem 1 item no chunk
+                    const msg = buildLiveMessage(chunk);
+                    chunk.forEach(p => p.message = msg);
+                    allProducts.push(...chunk);
+                }
             }
-            console.log(`✅ LIVE: ${products.length} produtos agrupados em ${Math.ceil(products.length / 2)} msgs`);
+            console.log(`✅ LIVE: ${products.length} produtos processados`);
         } catch (e) { console.error(`❌ LIVE Error: ${e.message}`); }
 
         // 3. REDISTRIBUIÇÃO (Garantir 12 produtos)

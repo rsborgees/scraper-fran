@@ -148,68 +148,89 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false) {
         await browser.close();
     }
 
-    // LÓGICA DE PAREAMENTO (CONJUNTOS)
+    // LÓGICA DE PAREAMENTO (CONJUNTOS & PEÇA ÚNICA)
     console.log(`\n🧩 Tentando formar conjuntos com ${products.length} produtos...`);
     const sets = [];
-    const singles = [];
+    const onePieces = [];
     const usedIndices = new Set();
 
-    // Separa Tops e Bottoms
-    const tops = products.filter((p, i) => !usedIndices.has(i) && (p.nome.includes('Top') || p.nome.includes('Cropped') || p.nome.includes('Sutiã')));
-    const bottoms = products.filter((p, i) => !usedIndices.has(i) && (p.nome.includes('Legging') || p.nome.includes('Short') || p.nome.includes('Saia')));
+    // 1. Identificação de Categorias
+    products.forEach((p, i) => {
+        const nome = p.nome.toLowerCase();
+        if (nome.includes('macacão') || nome.includes('vestido') || nome.includes('macaquinho') || nome.includes('body')) {
+            p.type = 'onepiece';
+            onePieces.push(p);
+            usedIndices.add(i);
+        } else if (nome.includes('top') || nome.includes('cropped') || nome.includes('sutiã') || nome.includes('blusa') || nome.includes('t-shirt') || nome.includes('regata')) {
+            p.type = 'top';
+        } else if (nome.includes('legging') || nome.includes('short') || nome.includes('saia') || nome.includes('bermuda') || nome.includes('calça')) {
+            p.type = 'bottom';
+        } else {
+            p.type = 'other';
+        }
+    });
 
-    // Tenta pares por nome similar (MATCH ESTRITO DE COLEÇÃO)
+    // 2. Formação de Pares (Top + Bottom) - Lógica Relaxada (Greedy)
+    const tops = products.filter((p, i) => !usedIndices.has(i) && p.type === 'top');
+    const bottoms = products.filter((p, i) => !usedIndices.has(i) && p.type === 'bottom');
+
+    // Ordena por preço (maior primeiro) para formar conjuntos "premium" se possível, ou aleatório?
+    // User não especificou. Vamos apenas iterar.
+
     for (const top of tops) {
-        // Limpa nome para pegar só a "Coleção"
-        // Ex: "Top LIVE! Hydefit® Adaptiv" -> "Hydefit Adaptiv"
-        const cleanName = (name) => {
-            return name.toLowerCase()
-                .replace(/top|cropped|sutiã|legging|calça|short|saia|bermuda|live!|live/g, '')
-                .replace(/[®™]/g, '')
-                .trim();
-        };
+        if (usedIndices.has(products.indexOf(top))) continue;
 
-        const topCollection = cleanName(top.nome);
-        const topWords = topCollection.split(' ').filter(w => w.length > 2);
-
-        const match = bottoms.find(b => {
-            const bottomCollection = cleanName(b.nome);
-            const bottomWords = bottomCollection.split(' ');
-
-            // Verifica se TODAS as palavras chaves do Top estão no Bottom (ou vice-versa)
-            // Isso garante que "Hydefit Adaptiv" case com "Hydefit Adaptiv"
-            const matchCount = topWords.filter(w => bottomWords.includes(w)).length;
-            return matchCount === topWords.length && topWords.length > 0;
-        });
+        // Tenta achar qualquer bottom e disponível
+        const match = bottoms.find(b => !usedIndices.has(products.indexOf(b)));
 
         if (match) {
             sets.push(top);
             sets.push(match);
             usedIndices.add(products.indexOf(top));
             usedIndices.add(products.indexOf(match));
-            console.log(`   💕 Conjunto Formado: ${top.nome} + ${match.nome}`);
+            console.log(`   💕 Conjunto Formado (Relaxado): ${top.nome} + ${match.nome}`);
         }
     }
 
-    // Preenche o resto
-    products.forEach((p, i) => {
-        if (!usedIndices.has(i)) singles.push(p);
-    });
+    // 3. Montagem da Seleção Final
+    // A ordem importa para o Orchestrator (que agrupa de 2 em 2).
+    // MAS, como temos OnePieces (1 item) e Sets (2 itens), o Orchestrator precisa ser atualizado.
+    // Por enquanto, vamos retornar uma lista mista, mas vamos tentar garantir integridade.
 
-    // Prioriza APENAS Conjuntos (Pairs) - Descartando singles se forem short/blusa/calça/top
-    const finalSelection = [...sets];
+    let finalSelection = [];
 
-    // Se a quota ainda permitir mais produtos e tivermos singles que NÃO são dessas categorias
-    // (ex: acessórios), poderíamos adicionar, mas o usuário pediu "sempre 2 peças" para essas.
-    // Para simplificar e garantir a meta, vamos focar nos pares.
+    // Adiciona OnePieces
+    // Se quota 2: 2 OnePieces? Ou 1 Set?
+    // Vamos priorizar Sets se houver, depois OnePieces.
 
-    if (finalSelection.length < quota) {
-        // Se após pareamento faltarem itens, preenche com os singles que sobraram (Diferente de antes, agora aceita singles de qualquer categoria para bater a cota)
-        console.log(`   ⚖️ Preenchendo lacuna de ${quota - finalSelection.length} itens com singles...`);
-        const alreadySelectedIds = new Set(finalSelection.map(p => p.id));
-        const remainingSingles = singles.filter(p => !alreadySelectedIds.has(p.id));
-        finalSelection.push(...remainingSingles.slice(0, quota - finalSelection.length));
+    // Adiciona Sets (Pares)
+    finalSelection.push(...sets);
+
+    // Adiciona OnePieces
+    finalSelection.push(...onePieces);
+
+    // Se ainda faltar, podemos passar singles? O usuário disse: "não duas partes de cima".
+    // Então NÃO passamos singles soltos de Top/Bottom se não formarem par.
+    // A menos que seja muito necessário. Vamos evitar.
+
+    if (finalSelection.length > quota) {
+        // Corta para caber na quota
+        // Cuidado para não quebrar um Set no meio.
+        // Sets estão em índices pares (0,1), (2,3)...
+        if (sets.length >= quota) {
+            finalSelection = sets.slice(0, quota);
+            // Se quota for ímpar (ex: 3) e cortarmos um set (0,1,2), o item 2 fica órfão.
+            // Se o item na borda for parte de um set, removemos ele.
+            if (finalSelection.length % 2 !== 0 && finalSelection[finalSelection.length - 1].type !== 'onepiece') {
+                finalSelection.pop();
+            }
+        } else {
+            // Aceita todos os sets e preenche com OnePieces
+            finalSelection = finalSelection.slice(0, quota);
+        }
     }
+
+    console.log(`   ⚖️ Seleção: ${sets.length / 2} Conjuntos + ${onePieces.length} Peças Únicas`);
 
     // Processa imagens (apenas dos selecionados) e marca como enviado
     const output = [];
