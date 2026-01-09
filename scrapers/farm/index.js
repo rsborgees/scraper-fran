@@ -92,7 +92,7 @@ async function scrapeFarm(quota = 84, dryRun = false) {
                         const anchors = Array.from(document.querySelectorAll('a'));
                         return [...new Set(anchors
                             .map(a => a.href)
-                            .filter(href => (href.includes('/p') || href.includes('/produto')) && !href.includes('login') && !href.includes('cart') && !href.includes('wishlist'))
+                            .filter(href => (href.includes('/p?') || href.includes('/p/') || href.endsWith('/p')) && !href.includes('login') && !href.includes('cart') && !href.includes('wishlist'))
                         )];
                     });
 

@@ -55,9 +55,20 @@ async function parseProduct(page, url) {
             };
 
             // 1. NOME
-            const h1 = document.querySelector('h1');
-            const name = getSafeText(h1);
-            if (!name) return { error: 'Nome não encontrado' };
+            // Tenta seletor de classe específico primeiro, depois h1 genérico
+            let nameEl = document.querySelector('.vtex-store-components-3-x-productNameContainer span') || document.querySelector('h1.vtex-store-components-3-x-productName') || document.querySelector('h1');
+            let name = getSafeText(nameEl);
+
+            // Validação de Nome
+            if (!name || name.length < 3 || /^\d+(\n\d+)?$/.test(name)) {
+                // Fallback para meta title
+                const metaTitle = document.querySelector('meta[property="og:title"]');
+                if (metaTitle && metaTitle.content) {
+                    name = metaTitle.content.split('|')[0].trim();
+                }
+            }
+
+            if (!name || name.length < 3 || /^\d+(\n\d+)?$/.test(name)) return { error: `Nome inválido detectado: "${name}"` };
 
             // 2. PREÇO ORIGINAL (#list-price)
             let precoOriginal = null;
@@ -189,11 +200,11 @@ async function parseProduct(page, url) {
                 precoOriginal = precoAtual;
             }
 
-            // FILTRO DE DESCONTO: Descarta se tiver 40% ou mais de desconto (Regra: >=40% é inválido)
+            // FILTRO DE DESCONTO: Descarta se tiver mais que 45% de desconto (Regra: > 45% é inválido)
             if (precoOriginal > 0) {
                 const percentualDesconto = (desconto / precoOriginal) * 100;
-                if (percentualDesconto >= 40) {
-                    const msg = `Produto descartado (desconto >=40%: ${percentualDesconto.toFixed(0)}%)`;
+                if (percentualDesconto > 45) {
+                    const msg = `Produto descartado (desconto > 45%: ${percentualDesconto.toFixed(0)}%)`;
                     console.log(`⚠️ ${msg}`);
                     return { error: msg, debugInfo };
                 }
@@ -214,7 +225,7 @@ async function parseProduct(page, url) {
             else if (combinedText.includes('/calca-') || combinedText.includes(' calça ')) category = 'calça';
 
             // 5. TAMANHOS (Sincronização Refinada)
-            const sizeContainers = Array.from(document.querySelectorAll('li.group\\/zoom-sku, [class*=\"skuSelector\"], .size-item, .vtex-store-components-3-x-skuSelectorItem'));
+            const sizeContainers = Array.from(document.querySelectorAll('li.group\\/zoom-sku, [class*="skuSelector"], .size-item, .vtex-store-components-3-x-skuSelectorItem'));
             const validSizes = [];
 
             sizeContainers.forEach(container => {
@@ -345,7 +356,14 @@ async function parseProduct(page, url) {
                         const ogImg = document.querySelector('meta[property="og:image"]');
                         if (candidates.length === 0 && ogImg && ogImg.content) return ogImg.content;
 
-                        const bestImg = candidates.find(img => (img.currentSrc || img.src) && !(img.src || '').includes('svg'));
+                        const bestImg = candidates.find(img => {
+                            const src = img.currentSrc || img.src;
+                            if (!src) return false;
+                            const srcLower = src.toLowerCase();
+                            // CHECK STRICT: Reject cookie logos or common bad images
+                            if (srcLower.includes('cookielaw') || srcLower.includes('onetrust') || srcLower.includes('svg') || srcLower.includes('icon')) return false;
+                            return true;
+                        });
                         return bestImg ? (bestImg.currentSrc || bestImg.src) : (ogImg ? ogImg.content : null);
                     })()
                 },
