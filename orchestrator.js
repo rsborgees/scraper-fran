@@ -13,6 +13,7 @@ const { initBrowser } = require('./browser_setup'); // Necessário para passar b
 const { scrapeFarm } = require('./scrapers/farm');
 const { scrapeSpecificIds } = require('./scrapers/farm/idScanner'); // NOVO
 const { getExistingIdsFromDrive } = require('./driveManager');
+const { isDuplicate, normalizeId } = require('./historyManager'); // IMPORTADO PARA FILTRO PREVIO
 const {
     buildKjuMessage,
     buildDressMessage,
@@ -62,7 +63,11 @@ async function runAllScrapers(overrideQuotas = null) {
                 });
 
                 // FARM Drive Items (único scraper de ID implementado por enquanto)
-                const farmDriveItems = driveItemsByStore.farm;
+                const farmDriveItems = driveItemsByStore.farm.filter(item => {
+                    if (item.isFavorito) return true;
+                    return !isDuplicate(normalizeId(item.id));
+                });
+
                 if (farmDriveItems.length > 0) {
                     // Ordenar por Favorito primeiro e pegar apenas até o limite da quota
                     const limitedFarmDriveItems = farmDriveItems
@@ -78,7 +83,11 @@ async function runAllScrapers(overrideQuotas = null) {
                 }
 
                 // DRESS TO Drive Items
-                const dressToDriveItems = driveItemsByStore.dressto;
+                const dressToDriveItems = driveItemsByStore.dressto.filter(item => {
+                    if (item.isFavorito) return true;
+                    return !isDuplicate(normalizeId(item.id));
+                });
+
                 if (dressToDriveItems.length > 0) {
                     const { scrapeSpecificIdsDressTo } = require('./scrapers/dressto/idScanner');
                     // Ordenar por Favorito

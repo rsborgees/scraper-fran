@@ -56,7 +56,9 @@ async function parseProductDressTo(page, url) {
             const tamanhos = [];
 
             sizeEls.forEach(el => {
-                const txt = getSafeText(el).trim();
+                // Pega apenas o primeiro nó de texto (o nome do tamanho) para evitar "PP1 DISPONÍVEL"
+                const txt = el.childNodes[0] ? el.childNodes[0].textContent.trim() : '';
+
                 const isUnavailable = el.className.includes('--unavailable') ||
                     el.className.includes('disabled') ||
                     el.getAttribute('aria-disabled') === 'true';

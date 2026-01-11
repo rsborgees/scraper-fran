@@ -80,65 +80,70 @@ function normalizeId(id) {
  * @param {string} id 
  * @param {object} options { force: boolean }
  */
-function isDuplicate(id, options = {}) {
-    if (!id) return false;
+const history = loadHistory();
+const now = Date.now();
 
-    // Se force=true (ex: Favorito do Drive), ignora duplicação
-    if (options.force) return false;
+// 1. Lógica Especial para Favoritos (repetem a cada 24h)
+if (options.force && history[id]) {
+    const ageMs = now - history[id].timestamp;
+    const ageHours = ageMs / (1000 * 60 * 60);
 
-    const normId = normalizeId(id);
-    if (!normId) return false;
-
-    const history = loadHistory();
-    const now = Date.now();
-    const maxAgeMs = MAX_AGE_HOURS * 60 * 60 * 1000; // 72 hours in milliseconds
-
-    // 0. Check Session Blocklist (Drive)
-    if (sessionBlocklist.has(normId)) {
-        console.log(`   🚫 ID Existente no Drive (Bloqueio de Sessão): ${normId}`);
+    if (ageHours < 24) {
+        console.log(`   🚫 Favorito ignorado: enviado há apenas ${ageHours.toFixed(1)}h (mínimo 24h)`);
         return true;
     }
-
-    // Match exato por ID normalizado
-    if (history[normId]) {
-        const ageMs = now - history[normId].timestamp;
-        const ageHours = ageMs / (1000 * 60 * 60);
-
-        if (ageMs < maxAgeMs) {
-            console.log(`   🚫 ID Duplicado detectado: ${normId} (Encontrado no histórico como: ${normId})`);
-            console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (max: ${MAX_AGE_HOURS}h)`);
-            return true;
-        } else {
-            console.log(`   ♻️  ID ${normId} expirado (${ageHours.toFixed(1)}h) - pode ser re-scraped`);
-            return false;
-        }
-    }
-
-    // Verifica match de prefixo para IDs complexos (SKU-COLOR-SIZE)
-    const duplicate = Object.keys(history).find(historyId => {
-        // Se ambos forem puramente numéricos, exigimos match exato
-        const isNumeric = /^\d+$/.test(normId) && /^\d+$/.test(historyId);
-        if (isNumeric) return false;
-
-        // Para IDs complexos, permitimos match de prefixo
-        return historyId.startsWith(normId) || normId.startsWith(historyId);
-    });
-
-    if (duplicate) {
-        const ageMs = now - history[duplicate].timestamp;
-        const ageHours = ageMs / (1000 * 60 * 60);
-
-        if (ageMs < maxAgeMs) {
-            console.log(`   🚫 ID Duplicado detectado: ${normId} (Encontrado no histórico como: ${duplicate})`);
-            console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (max: ${MAX_AGE_HOURS}h)`);
-            return true;
-        } else {
-            console.log(`   ♻️  ID ${duplicate} expirado (${ageHours.toFixed(1)}h) - pode ser re-scraped`);
-            return false;
-        }
-    }
-
+    console.log(`   ✅ Favorito liberado: enviado há ${ageHours.toFixed(1)}h.`);
     return false;
+}
+
+const maxAgeMs = MAX_AGE_HOURS * 60 * 60 * 1000; // 72 hours in milliseconds
+
+// 0. Check Session Blocklist (Drive)
+if (sessionBlocklist.has(normId)) {
+    console.log(`   🚫 ID Existente no Drive (Bloqueio de Sessão): ${normId}`);
+    return true;
+}
+
+// Match exato por ID normalizado
+if (history[normId]) {
+    const ageMs = now - history[normId].timestamp;
+    const ageHours = ageMs / (1000 * 60 * 60);
+
+    if (ageMs < maxAgeMs) {
+        console.log(`   🚫 ID Duplicado detectado: ${normId} (Encontrado no histórico como: ${normId})`);
+        console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (max: ${MAX_AGE_HOURS}h)`);
+        return true;
+    } else {
+        console.log(`   ♻️  ID ${normId} expirado (${ageHours.toFixed(1)}h) - pode ser re-scraped`);
+        return false;
+    }
+}
+
+// Verifica match de prefixo para IDs complexos (SKU-COLOR-SIZE)
+const duplicate = Object.keys(history).find(historyId => {
+    // Se ambos forem puramente numéricos, exigimos match exato
+    const isNumeric = /^\d+$/.test(normId) && /^\d+$/.test(historyId);
+    if (isNumeric) return false;
+
+    // Para IDs complexos, permitimos match de prefixo
+    return historyId.startsWith(normId) || normId.startsWith(historyId);
+});
+
+if (duplicate) {
+    const ageMs = now - history[duplicate].timestamp;
+    const ageHours = ageMs / (1000 * 60 * 60);
+
+    if (ageMs < maxAgeMs) {
+        console.log(`   🚫 ID Duplicado detectado: ${normId} (Encontrado no histórico como: ${duplicate})`);
+        console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (max: ${MAX_AGE_HOURS}h)`);
+        return true;
+    } else {
+        console.log(`   ♻️  ID ${duplicate} expirado (${ageHours.toFixed(1)}h) - pode ser re-scraped`);
+        return false;
+    }
+}
+
+return false;
 }
 
 /**
