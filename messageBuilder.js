@@ -102,7 +102,8 @@ function buildFarmMessage(produto, timerData = null) {
     // Bloco do Desconto Progressivo (Campanha Atual)
     let progressiveHeader = "";
     // Exibe se o scraper detectou a campanha OU se não temos dados (assume ativo por segurança/padrão recente)
-    if (!timerData || timerData.progressive) {
+    // Exibe SOMENTE se a campanha for explicitamente detectada
+    if (timerData && timerData.progressive) {
         progressiveHeader = `Desconto Progressivo🔥
 
 1️⃣ peça  20% off

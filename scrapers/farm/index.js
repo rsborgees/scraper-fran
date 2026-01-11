@@ -10,7 +10,7 @@ const { isDuplicate, markAsSent } = require('../../historyManager');
  * @param {number} quota - Meta de produtos
  * @param {boolean} dryRun - Se true, não salva no banco nem baixa imagens
  */
-async function scrapeFarm(quota = 84, dryRun = false) {
+async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
     console.log(`\n🌸 INICIANDO SCRAPER FARM (Quota: ${quota}, DryRun: ${dryRun})`);
 
     const CATEGORIES = [
@@ -36,8 +36,17 @@ async function scrapeFarm(quota = 84, dryRun = false) {
     const { parseProduct } = require('./parser');
     const { normalizeId } = require('../../historyManager');
 
-    // 🚀 Browser Compartilhado para Performance Extrema
-    const { browser, page } = await initBrowser();
+    // 🚀 Browser Management
+    let browser, page;
+    let shouldCloseBrowser = false;
+
+    if (parentBrowser) {
+        browser = parentBrowser;
+        page = await browser.newPage();
+    } else {
+        ({ browser, page } = await initBrowser());
+        shouldCloseBrowser = true;
+    }
 
     try {
         for (const cat of CATEGORIES) {
@@ -169,8 +178,13 @@ async function scrapeFarm(quota = 84, dryRun = false) {
     } catch (error) {
         console.error('❌ Erro crítico no Scraper Farm:', error.message);
     } finally {
-        await browser.close();
-        console.log('🔓 Navegador Farm encerrado.');
+        if (shouldCloseBrowser) {
+            await browser.close();
+            console.log('🔓 Navegador Farm encerrado.');
+        } else {
+            if (page) await page.close();
+            console.log('🔓 Página Farm fechada.');
+        }
     }
 
     // Ordenação e Distribuição Final

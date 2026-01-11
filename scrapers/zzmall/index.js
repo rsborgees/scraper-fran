@@ -12,13 +12,23 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
  * Quota: 6 produtos
  * Filtrar por marcas confiáveis (Arezzo, Schutz, etc)
  */
-async function scrapeZZMall(quota = 6) {
+async function scrapeZZMall(quota = 6, parentBrowser = null) {
     console.log('\n🟠 INICIANDO SCRAPER ZZMALL (Quota: ' + quota + ')');
 
     const products = [];
     const seenInRun = new Set();
     const { normalizeId } = require('../../historyManager');
-    const { browser, page } = await initBrowser();
+
+    let browser, page;
+    let shouldCloseBrowser = false;
+
+    if (parentBrowser) {
+        browser = parentBrowser;
+        page = await browser.newPage();
+    } else {
+        ({ browser, page } = await initBrowser());
+        shouldCloseBrowser = true;
+    }
 
     try {
         // 2. Define URLs de Marcas Prioritárias (Hardcoded para Robustez)
@@ -144,7 +154,11 @@ async function scrapeZZMall(quota = 6) {
     } catch (error) {
         console.error(`Erro no scraper ZZMall: ${error.message}`);
     } finally {
-        await browser.close();
+        if (shouldCloseBrowser) {
+            await browser.close();
+        } else {
+            if (page) await page.close();
+        }
     }
 
     return products;

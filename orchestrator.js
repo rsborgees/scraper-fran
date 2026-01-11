@@ -13,19 +13,31 @@ const { initBrowser } = require('./browser_setup'); // Necessário para passar b
 const { scrapeFarm } = require('./scrapers/farm');
 const { scrapeSpecificIds } = require('./scrapers/farm/idScanner'); // NOVO
 const { getExistingIdsFromDrive } = require('./driveManager');
+const {
+    buildKjuMessage,
+    buildDressMessage,
+    buildLiveMessage,
+    buildFarmMessage,
+    buildZzMallMessage
+} = require('./messageBuilder');
 
 async function runAllScrapers(overrideQuotas = null) {
     const allProducts = [];
     const quotas = overrideQuotas || {
-        farm: 12,
+        farm: 7,
         dressto: 2,
         kju: 1,
-        live: 2,
+        live: 1,
         zzmall: 1
     };
 
+    // 🚀 SINGLE BROWSER INSTANCE SHARING
+    // Inicializa o navegador uma única vez para todos os scrapers
+    const { browser } = await initBrowser();
+
     try {
-        console.log(`🚀 ORCHESTRATOR: Meta 17 Itens [F:${quotas.farm} D:${quotas.dressto} K:${quotas.kju} L:${quotas.live} Z:${quotas.zzmall}]`);
+        const calculatedTotalTarget = Object.values(quotas).reduce((a, b) => a + b, 0);
+        console.log(`🚀 ORCHESTRATOR: Meta ${calculatedTotalTarget} Itens [F:${quotas.farm} D:${quotas.dressto} K:${quotas.kju} L:${quotas.live} Z:${quotas.zzmall}]`);
 
         // =================================================================
         // PHASE 1: GOOGLE DRIVE PRIORITY
@@ -52,22 +64,36 @@ async function runAllScrapers(overrideQuotas = null) {
                 // FARM Drive Items (único scraper de ID implementado por enquanto)
                 const farmDriveItems = driveItemsByStore.farm;
                 if (farmDriveItems.length > 0) {
-                    const { browser } = await initBrowser();
+                    // Ordenar por Favorito primeiro e pegar apenas até o limite da quota
+                    const limitedFarmDriveItems = farmDriveItems
+                        .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0))
+                        .slice(0, 50); // Passa mais candidatos para compensar falhas/duplicados
 
-                    try {
-                        const scrapedDriveItems = await scrapeSpecificIds(browser, farmDriveItems);
-                        scrapedDriveItems.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+                    // Reutiliza o browser instanciado
+                    const scrapedDriveItems = await scrapeSpecificIds(browser, limitedFarmDriveItems, quotas.farm);
+                    scrapedDriveItems.forEach(p => p.message = buildFarmMessage(p, p.timerData));
 
-                        allProducts.push(...scrapedDriveItems);
-                        driveProducts.push(...scrapedDriveItems);
-
-                    } finally {
-                        await browser.close();
-                    }
+                    allProducts.push(...scrapedDriveItems);
+                    driveProducts.push(...scrapedDriveItems);
                 }
 
-                // TODO: Implementar idScanner para outras lojas quando necessário
-                // dressto, kju, zzmall, live - por enquanto só Farm tem scraper de ID específico
+                // DRESS TO Drive Items
+                const dressToDriveItems = driveItemsByStore.dressto;
+                if (dressToDriveItems.length > 0) {
+                    const { scrapeSpecificIdsDressTo } = require('./scrapers/dressto/idScanner');
+                    // Ordenar por Favorito
+                    const limitedDressItems = dressToDriveItems
+                        .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0))
+                        .slice(0, 50);
+
+                    const scrapedDressItems = await scrapeSpecificIdsDressTo(browser, limitedDressItems, quotas.dressto);
+                    scrapedDressItems.forEach(p => p.message = buildDressMessage(p));
+
+                    allProducts.push(...scrapedDressItems);
+                    driveProducts.push(...scrapedDressItems);
+                }
+
+                // TODO: Implementar idScanner para outras lojas quando necessário (KJU, Live, ZZMall)
             }
         } catch (driveErr) {
             console.error('❌ Erro Phase 1 (Drive):', driveErr.message);
@@ -83,27 +109,34 @@ async function runAllScrapers(overrideQuotas = null) {
         // PHASE 2: REGULAR SCRAPING
         // =================================================================
 
-        // 1. Scrapes
+        // 1. Scrapes (Passando o objeto browser)
         if (remainingQuotaFarm > 0) {
             try {
-                let products = await scrapeFarm(remainingQuotaFarm);
+                let products = await scrapeFarm(remainingQuotaFarm, false, browser);
                 products.forEach(p => p.message = buildFarmMessage(p, p.timerData));
                 allProducts.push(...products);
                 console.log(`✅ FARM (Regular): ${products.length} msgs geradas`);
             } catch (e) { console.error(`❌ FARM Error: ${e.message}`); }
         }
 
-        try {
-            const { scrapeDressTo } = require('./scrapers/dressto');
-            let products = await scrapeDressTo(quotas.dressto);
-            products.forEach(p => p.message = buildDressMessage(p));
-            allProducts.push(...products);
-            console.log(`✅ DressTo: ${products.length} msgs geradas`);
-        } catch (e) { console.error(`❌ DressTo Error: ${e.message}`); }
+        const driveCountDressTo = driveProducts.filter(p => p.loja === 'dressto').length;
+        const remainingQuotaDressTo = Math.max(0, quotas.dressto - driveCountDressTo);
+
+        if (remainingQuotaDressTo > 0) {
+            try {
+                const { scrapeDressTo } = require('./scrapers/dressto');
+                let products = await scrapeDressTo(remainingQuotaDressTo, browser);
+                products.forEach(p => p.message = buildDressMessage(p));
+                allProducts.push(...products);
+                console.log(`✅ DressTo: ${products.length} msgs geradas`);
+            } catch (e) { console.error(`❌ DressTo Error: ${e.message}`); }
+        } else {
+            console.log(`✅ DressTo: Cota preenchida pelo Drive (${driveCountDressTo}/${quotas.dressto})`);
+        }
 
         try {
             const { scrapeKJU } = require('./scrapers/kju');
-            let products = await scrapeKJU(quotas.kju);
+            let products = await scrapeKJU(quotas.kju, browser);
             products.forEach(p => p.message = buildKjuMessage(p));
             allProducts.push(...products);
             console.log(`✅ KJU: ${products.length} msgs geradas`);
@@ -111,17 +144,16 @@ async function runAllScrapers(overrideQuotas = null) {
 
         try {
             const { scrapeZZMall } = require('./scrapers/zzmall');
-            let products = await scrapeZZMall(quotas.zzmall);
+            let products = await scrapeZZMall(quotas.zzmall, browser);
             products.forEach(p => p.message = buildZzMallMessage(p));
             allProducts.push(...products);
             console.log(`✅ ZZMall: ${products.length} msgs geradas`);
         } catch (e) { console.error(`❌ ZZMall Error: ${e.message}`); }
 
         // 2. LIVE Special Handling (Sets)
-        // 2. LIVE Special Handling (Sets & One Pieces)
         try {
             const { scrapeLive } = require('./scrapers/live');
-            let products = await scrapeLive(quotas.live);
+            let products = await scrapeLive(quotas.live, false, browser);
 
             let i = 0;
             while (i < products.length) {
@@ -192,7 +224,7 @@ async function runAllScrapers(overrideQuotas = null) {
                 try {
                     const { scrapeFarm } = require('./scrapers/farm');
                     // Pede apenas o necessário (+ margem pequena) para evitar Deep Scan infinito
-                    let extraProducts = await scrapeFarm(gap + 1);
+                    let extraProducts = await scrapeFarm(gap + 1, false, browser);
 
                     // Filtra o que já pegamos nesta rodada (por ID)
                     const alreadyPickedIds = new Set(allProducts.map(p => p.id));
@@ -221,7 +253,10 @@ async function runAllScrapers(overrideQuotas = null) {
         console.error(`❌ Erro no Orchestrator: ${error.message}`);
         return allProducts;
     } finally {
-
+        if (browser) {
+            console.log('🔒 Encerrando Navegador Mestre...');
+            await browser.close();
+        }
     }
 }
 

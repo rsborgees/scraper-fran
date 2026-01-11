@@ -12,11 +12,21 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
  * Quota: 6 produtos
  * Usar SOMENTE preço à vista (ignorar parcelamento)
  */
-async function scrapeLive(quota = 6, ignoreDuplicates = false) {
+async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = null) {
     console.log('\n🔵 INICIANDO SCRAPER LIVE (Quota: ' + quota + ')');
 
     const products = [];
-    const { browser, page } = await initBrowser();
+
+    let browser, page;
+    let shouldCloseBrowser = false;
+
+    if (parentBrowser) {
+        browser = parentBrowser;
+        page = await browser.newPage();
+    } else {
+        ({ browser, page } = await initBrowser());
+        shouldCloseBrowser = true;
+    }
 
     try {
         await page.goto('https://www.liveoficial.com.br/outlet', {
@@ -145,7 +155,11 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false) {
     } catch (error) {
         console.error(`Erro no scraper Live: ${error.message}`);
     } finally {
-        await browser.close();
+        if (shouldCloseBrowser) {
+            await browser.close();
+        } else {
+            if (page) await page.close();
+        }
     }
 
     // LÓGICA DE PAREAMENTO (CONJUNTOS & PEÇA ÚNICA)

@@ -12,13 +12,23 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
  * Quota: 6 produtos
  * @param {number} quota - Número máximo de produtos a retornar
  */
-async function scrapeKJU(quota = 6) {
+async function scrapeKJU(quota = 6, parentBrowser = null) {
     console.log('\n💎 INICIANDO SCRAPER KJU (Quota: ' + quota + ')');
 
     const products = [];
     const seenInRun = new Set();
     const { normalizeId } = require('../../historyManager');
-    const { browser, page } = await initBrowser();
+
+    let browser, page;
+    let shouldCloseBrowser = false;
+
+    if (parentBrowser) {
+        browser = parentBrowser;
+        page = await browser.newPage();
+    } else {
+        ({ browser, page } = await initBrowser());
+        shouldCloseBrowser = true;
+    }
 
     try {
         await page.goto('https://www.kjubrasil.com/?ref=7B1313', {
@@ -110,7 +120,11 @@ async function scrapeKJU(quota = 6) {
     } catch (error) {
         console.error(`❌ Erro no scraper KJU: ${error.message}`);
     } finally {
-        await browser.close();
+        if (shouldCloseBrowser) {
+            await browser.close();
+        } else {
+            if (page) await page.close();
+        }
     }
 
     return products;

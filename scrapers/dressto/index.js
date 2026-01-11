@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { processProductUrl, processImageDirect } = require('../../imageDownloader');
 const { isDuplicate, markAsSent } = require('../../historyManager');
+const { parseProductDressTo } = require('./parser');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -11,13 +12,23 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
  * URL: https://www.dressto.com.br/nossas-novidades
  * Quota: 18 produtos (80% vestidos, 20% macacões)
  */
-async function scrapeDressTo(quota = 18) {
+async function scrapeDressTo(quota = 18, parentBrowser = null) {
     console.log('\n👗 INICIANDO SCRAPER DRESS TO (Quota: ' + quota + ')');
 
     const products = [];
     const seenInRun = new Set();
     const { normalizeId } = require('../../historyManager');
-    const { browser, page } = await initBrowser();
+
+    let browser, page;
+    let shouldCloseBrowser = false;
+
+    if (parentBrowser) {
+        browser = parentBrowser;
+        page = await browser.newPage();
+    } else {
+        ({ browser, page } = await initBrowser());
+        shouldCloseBrowser = true;
+    }
 
     try {
         let pageNum = 1;
@@ -73,14 +84,8 @@ async function scrapeDressTo(quota = 18) {
                     let collectedMacacoes = products.filter(p => p.categoria === 'macacão').length;
 
                     for (const url of productUrls) {
-                        // Critério de Parada Inteligente Check
-                        // Se quota for pequena (<=2), persegue 1 de cada.
-                        const isStrict = quota <= 3;
-                        if (isStrict) {
-                            if (collectedVestidos >= 1 && collectedMacacoes >= 1 && products.length >= quota) break;
-                        } else {
-                            if (products.length >= quota) break;
-                        }
+                        // Stop strictly when quota is reached
+                        if (products.length >= quota) break;
 
                         // Check ID na URL
                         const idMatch = url.match(/(\d{6,})/);
@@ -139,7 +144,11 @@ async function scrapeDressTo(quota = 18) {
     } catch (error) {
         console.error(`Erro no scraper Dress To: ${error.message}`);
     } finally {
-        await browser.close();
+        if (shouldCloseBrowser) {
+            await browser.close();
+        } else {
+            if (page) await page.close();
+        }
     }
 
     // Aplicar cotas internas (65% vestido, 15% macacão, 5% saia, 5% short, 5% blusa, 5% acessório)
@@ -198,163 +207,4 @@ async function scrapeDressTo(quota = 18) {
     return selectedProducts.slice(0, quota);
 }
 
-async function parseProductDressTo(page, url) {
-    try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        // Espera de estabilização extra para sites VTEX pesados
-        await page.waitForTimeout(4000);
-
-        const data = await page.evaluate(() => {
-            const getSafeText = (el) => {
-                if (!el) return '';
-                const txt = el.innerText || el.textContent || '';
-                return (typeof txt === 'string') ? txt.trim() : '';
-            };
-
-            // Nome
-            const h1 = document.querySelector('h1');
-            const nome = getSafeText(h1);
-            if (!nome) return null;
-
-            // Preço Original SOMENTE (ignorar promoções)
-            // Tenta pegar o preço principal exibido. Se tiver 'old', ignora e pega o 'old' como original? 
-            // "Capture APENAS o preço original exibido na página" -> Geralmente o maior valor se houver riscado, ou o único valor.
-            // DressTo markup: <s>Original</s> ... Current. Or just Current.
-
-            // 1. Coleta todos os preços visíveis
-            const allPrices = Array.from(document.querySelectorAll('*'))
-                .filter(el => el.children.length === 0 && getSafeText(el).includes('R$'))
-                .map(el => getSafeText(el));
-
-            const realPrices = allPrices.filter(txt => !/x\s*de|parcel|sem\s+juros/i.test(txt));
-            let numericPrices = [];
-
-            realPrices.forEach(txt => {
-                const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-                if (match) {
-                    let valStr = match[1].replace(/\./g, '');
-                    if (valStr.includes(',')) valStr = valStr.replace(',', '.');
-                    else valStr = valStr + '.00';
-                    const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0) numericPrices.push(val);
-                }
-            });
-
-            if (numericPrices.length === 0) return null;
-
-            // 2. Filtra valores de parcelas (geralmente menores que 30% do maior valor)
-            const maxVal = Math.max(...numericPrices);
-            const validPrices = numericPrices.filter(p => p > (maxVal * 0.3));
-
-            // 3. Define Preço Original e Atual
-            const precoOriginal = Math.max(...validPrices);
-            const precoAtual = Math.min(...validPrices);
-
-            const preco = precoAtual;
-
-            // Tamanhos
-            const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
-            const tamanhos = [];
-
-            sizeEls.forEach(el => {
-                let txt = getSafeText(el).toUpperCase();
-                // Limpeza: "TAMANHO P" -> "P", "TAM: 38" -> "38"
-                txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
-
-                const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO)$/i);
-                if (match) {
-                    const normalizedSize = match[0].toUpperCase();
-                    const isDisabled = el.className.toLowerCase().includes('disable') ||
-                        el.className.toLowerCase().includes('unavailable') ||
-                        el.getAttribute('aria-disabled') === 'true';
-                    if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
-                        tamanhos.push(normalizedSize);
-                    }
-                }
-            });
-
-            if (tamanhos.length === 0) return null;
-
-            // Categoria (INFERÊNCIA MAIS PRECISA)
-            let categoria = 'outros';
-            const pageTitle = (document.title || '').toLowerCase();
-            const breadcrumb = getSafeText(document.querySelector('.vtex-breadcrumb-1-x-container')).toLowerCase();
-            const fullText = (pageTitle + ' ' + breadcrumb + ' ' + nome.toLowerCase());
-
-            if (fullText.includes('vestido')) categoria = 'vestido';
-            else if (fullText.includes('macacão') || fullText.includes('macaquinho')) categoria = 'macacão';
-            else if (fullText.includes('saia')) categoria = 'saia';
-            else if (fullText.includes('short')) categoria = 'short';
-            else if (fullText.includes('blusa') || fullText.includes('top') || fullText.includes('camisa') || fullText.includes('regata')) categoria = 'blusa';
-            else if (fullText.includes('brinco') || fullText.includes('bolsa') || fullText.includes('colar') || fullText.includes('cinto') || fullText.includes('acessório')) categoria = 'acessório';
-            else if (fullText.includes('calça')) categoria = 'calça';
-
-            // ID (Referência VTEX)
-            let id = 'unknown';
-            const refEl = document.querySelector('.vtex-product-identifier, .vtex-product-identifier--product-reference');
-            if (refEl) {
-                // Formato esperado: 01.33.2394_198 -> Queremos 01332394
-                let rawText = getSafeText(refEl);
-                if (rawText.includes('_')) {
-                    rawText = rawText.split('_')[0];
-                }
-                id = rawText.replace(/\D/g, '');
-            }
-
-            if (id === 'unknown' || id.length < 6) {
-                // Fallback para URL se o ID extraído for inválido ou muito curto
-                // Tenta achar padrão de 8 digitos na URL também
-                // Ex: .../vestido-longo-01332394/p
-                const urlMatch = window.location.href.match(/(\d{7,})/);
-                if (urlMatch) id = urlMatch[1];
-            }
-
-            return {
-                id,
-                nome,
-                precoAtual: precoAtual,
-                precoOriginal: precoOriginal,
-                tamanhos: [...new Set(tamanhos)],
-                categoria,
-                url: window.location.href,
-                imageUrl: (function () {
-                    const gallerySelectors = [
-                        '.vtex-store-components-3-x-productImageTag',
-                        '.product-image',
-                        '.image-gallery img',
-                        'img[data-zoom]'
-                    ];
-
-                    let candidates = [];
-                    for (const sel of gallerySelectors) {
-                        const els = document.querySelectorAll(sel);
-                        if (els.length > 0) candidates.push(...Array.from(els));
-                    }
-                    if (candidates.length === 0) {
-                        candidates = Array.from(document.querySelectorAll('img'))
-                            .filter(img => img.width > 250 && img.height > 250);
-                    }
-                    if (candidates.length === 0) {
-                        const ogImg = document.querySelector('meta[property="og:image"]');
-                        if (ogImg && ogImg.content) return ogImg.content;
-                    }
-
-                    const bestImg = candidates.find(img => (img.currentSrc || img.src) && !(img.src || '').includes('svg'));
-                    return bestImg ? (bestImg.currentSrc || bestImg.src) : null;
-                })()
-            };
-        });
-
-        if (data) {
-            console.log(`✅ Dress To: ${data.nome} | R$${data.precoAtual}`);
-        }
-
-        return data;
-
-    } catch (error) {
-        console.log(`❌ Erro ao parsear ${url}: ${error.message}`);
-        return null;
-    }
-}
-
-module.exports = { scrapeDressTo, parseProductDressTo };
+module.exports = { scrapeDressTo };

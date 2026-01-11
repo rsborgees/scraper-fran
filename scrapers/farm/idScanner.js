@@ -7,8 +7,8 @@ const { normalizeId, isDuplicate, markAsSent } = require('../../historyManager')
  * @param {object} browser Playwright Browser instance
  * @param {Array} driveItems Lista de objetos { id, driveUrl, isFavorito, ... }
  */
-async function scrapeSpecificIds(browser, driveItems) {
-    console.log(`\n🚙 INICIANDO SCRAPE DRIVE-FIRST (${driveItems.length} itens)...`);
+async function scrapeSpecificIds(browser, driveItems, quota = 999) {
+    console.log(`\n🚙 INICIANDO SCRAPE DRIVE-FIRST (${driveItems.length} itens disponíveis, meta: ${quota})...`);
 
     const page = await browser.newPage();
     const collectedProducts = [];
@@ -18,6 +18,12 @@ async function scrapeSpecificIds(browser, driveItems) {
 
     try {
         for (const item of driveItems) {
+            // Stop if quota reached
+            if (collectedProducts.length >= quota) {
+                console.log(`   ✅ Meta de ${quota} itens do Drive atingida.`);
+                break;
+            }
+
             console.log(`\n🔍 Buscando ID ${item.id} (Favorito: ${item.isFavorito})...`);
 
             try {
@@ -36,6 +42,23 @@ async function scrapeSpecificIds(browser, driveItems) {
                     await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 5000 });
                     await page.fill(searchInputSelector, item.id);
                     await page.press(searchInputSelector, 'Enter');
+
+                    // Check for 'Not Found' message immediately to avoid clicking recommendations
+                    try {
+                        // Wait briefly for page update
+                        await page.waitForTimeout(2000);
+
+                        const notFound = await page.evaluate(() => {
+                            const bodyText = document.body.innerText || '';
+                            return bodyText.includes('Ops, sua busca não foi encontrada') ||
+                                bodyText.includes('OPS, NÃO ENCONTRAMOS');
+                        });
+
+                        if (notFound) {
+                            console.log(`   ⚠️ ID ${item.id} não encontrado (Mensagem 'Ops...'). Pulando...`);
+                            continue;
+                        }
+                    } catch (e) { /* Ignore check errors */ }
 
                     // Wait for results (usar seletor mais robusto)
                     const productLinkSelector = 'a[aria-label="view product"], .vtex-product-summary-2-x-clearLink, .shelf-product-item a';
@@ -70,9 +93,33 @@ async function scrapeSpecificIds(browser, driveItems) {
                 const product = await parseProduct(page, url);
 
                 if (product) {
-                    // 3. OVERWRITE CRÍTICO
-                    product.imageUrl = item.driveUrl; // Usa link do Drive
-                    product.imagePath = item.driveUrl; // Para compatibilidade
+                    // 3. IMAGE LOGIC (Drive Priority -> Fallback to Cloudinary)
+                    if (item.driveUrl && item.driveUrl.includes('drive.google.com')) {
+                        product.imageUrl = item.driveUrl; // Usa link do Drive
+                        product.imagePath = item.driveUrl; // Para compatibilidade
+                        console.log(`      🖼️  Usando imagem do Drive.`);
+                    } else {
+                        // Fallback: Usa imagem do site processada pelo Cloudinary
+                        console.log(`      ⚠️  Imagem do Drive ausente para ID ${item.id}. Tentando fallback para Cloudinary...`);
+                        const { processImageDirect, processProductUrl } = require('../../imageDownloader');
+
+                        let imagePath = null;
+                        try {
+                            let imgResult = product.imageUrl ?
+                                await processImageDirect(product.imageUrl, 'FARM', product.id) :
+                                await processProductUrl(url, product.id);
+
+                            if (imgResult.status === 'success' && imgResult.cloudinary_urls?.length > 0) {
+                                imagePath = imgResult.cloudinary_urls[0];
+                            }
+                        } catch (e) {
+                            console.error(`      ❌ Erro no fallback de imagem: ${e.message}`);
+                        }
+
+                        product.imagePath = imagePath || 'error.jpg';
+                        // Mantém product.imageUrl original do site como referência se precisar
+                    }
+
                     product.favorito = item.isFavorito || false;
 
                     // Ajustes Finais
