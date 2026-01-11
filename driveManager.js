@@ -23,12 +23,22 @@ function loadAuth() {
         'http://localhost:3000/oauth2callback'
     );
 
-    // 2. Check tokens.json
-    if (!fs.existsSync(TOKEN_PATH)) {
-        throw new Error('Arquivo tokens.json não encontrado. Execute "node setup_drive_auth.js" primeiro.');
+    // 2. Load Tokens (Environment variable OR tokens.json file)
+    let tokens;
+    if (process.env.GOOGLE_TOKEN_JSON) {
+        try {
+            tokens = JSON.parse(process.env.GOOGLE_TOKEN_JSON);
+            console.log('✅ [Drive] Usando tokens da variável de ambiente.');
+        } catch (e) {
+            throw new Error('Variável GOOGLE_TOKEN_JSON contém um JSON inválido');
+        }
+    } else if (fs.existsSync(TOKEN_PATH)) {
+        tokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
+        console.log('✅ [Drive] Usando arquivo tokens.json local.');
+    } else {
+        throw new Error('Credenciais do Google (tokens) não encontradas. Configure GOOGLE_TOKEN_JSON ou forneça um arquivo tokens.json.');
     }
 
-    const tokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
     oAuth2Client.setCredentials(tokens);
     return oAuth2Client;
 }
