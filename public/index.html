@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Scraper Multi-Loja</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        /* Header */
+        header {
+            background-color: #1e293b;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            padding: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #334155;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .status-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-idle {
+            background-color: #334155;
+            color: #94a3b8;
+        }
+
+        .status-running {
+            background-color: #059669;
+            color: #fff;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(5, 150, 105, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(5, 150, 105, 0);
+            }
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .action-button {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .action-button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Progress Section */
+        .progress-section {
+            background-color: #1e293b;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            padding: 2rem;
+            border: 1px solid #334155;
+        }
+
+        .progress-header {
+            margin-bottom: 1.5rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .store-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .store-card {
+            background-color: #0f172a;
+            border-radius: 8px;
+            padding: 1rem;
+            border: 1px solid #334155;
+            transition: border-color 0.3s;
+        }
+
+        .store-card.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px #3b82f6;
+        }
+
+        .store-card.complete {
+            border-color: #10b981;
+        }
+
+        .store-name {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .store-progress {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .store-quota {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
+
+        /* Overall Progress Bar */
+        .overall-progress {
+            margin-top: 1.5rem;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            color: #94a3b8;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background-color: #0f172a;
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #10b981);
+            border-radius: 9999px;
+            transition: width 0.5s ease;
+        }
+
+        /* Console */
+        .console-section {
+            background-color: #1e293b;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            padding: 2rem;
+            border: 1px solid #334155;
+        }
+
+        .console-header {
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .console-window {
+            background-color: #020617;
+            border-radius: 8px;
+            padding: 1rem;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+            border: 1px solid #334155;
+        }
+
+        .console-line {
+            margin-bottom: 0.25rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        .console-line.error {
+            color: #f87171;
+        }
+
+        .console-line.success {
+            color: #4ade80;
+        }
+
+        .console-line.warning {
+            color: #fbbf24;
+        }
+
+        .console-window::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .console-window::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        .console-window::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        .console-window::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="dashboard-container">
+        <header>
+            <h1>🛍️ Dashboard Scraper Multi-Loja</h1>
+            <div id="statusIndicator" class="status-badge status-idle">Aguardando</div>
+        </header>
+
+        <div class="controls">
+            <button id="startBtn" class="action-button">🚀 Iniciar Scraper</button>
+        </div>
+
+        <div class="progress-section">
+            <div class="progress-header">📊 Progresso por Loja</div>
+
+            <div class="store-cards">
+                <div class="store-card" id="store-farm">
+                    <div class="store-name">🌸 FARM</div>
+                    <div class="store-progress" id="farm-count">0</div>
+                    <div class="store-quota">Meta: 84 produtos</div>
+                </div>
+
+                <div class="store-card" id="store-dressto">
+                    <div class="store-name">👗 Dress To</div>
+                    <div class="store-progress" id="dressto-count">0</div>
+                    <div class="store-quota">Meta: 18 produtos</div>
+                </div>
+
+                <div class="store-card" id="store-kju">
+                    <div class="store-name">💎 KJU</div>
+                    <div class="store-progress" id="kju-count">0</div>
+                    <div class="store-quota">Meta: 6 produtos</div>
+                </div>
+
+                <div class="store-card" id="store-live">
+                    <div class="store-name">🔵 Live</div>
+                    <div class="store-progress" id="live-count">0</div>
+                    <div class="store-quota">Meta: 6 produtos</div>
+                </div>
+
+                <div class="store-card" id="store-zzmall">
+                    <div class="store-name">🟠 ZZMall</div>
+                    <div class="store-progress" id="zzmall-count">0</div>
+                    <div class="store-quota">Meta: 6 produtos</div>
+                </div>
+            </div>
+
+            <div class="overall-progress">
+                <div class="progress-label">
+                    <span>Progresso Total</span>
+                    <span id="overall-count">0/120</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="overall-bar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="console-section">
+            <div class="console-header">📝 Console de Logs</div>
+            <div id="consoleWindow" class="console-window">
+                <div class="console-line">--- Sistema pronto. Aguardando comando... ---</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const statusIndicator = document.getElementById('statusIndicator');
+        const startBtn = document.getElementById('startBtn');
+        const consoleWindow = document.getElementById('consoleWindow');
+        const overallBar = document.getElementById('overall-bar');
+        const overallCount = document.getElementById('overall-count');
+
+        const storeCounters = {
+            farm: { element: document.getElementById('farm-count'), card: document.getElementById('store-farm'), count: 0, quota: 84 },
+            dressto: { element: document.getElementById('dressto-count'), card: document.getElementById('store-dressto'), count: 0, quota: 18 },
+            kju: { element: document.getElementById('kju-count'), card: document.getElementById('store-kju'), count: 0, quota: 6 },
+            live: { element: document.getElementById('live-count'), card: document.getElementById('store-live'), count: 0, quota: 6 },
+            zzmall: { element: document.getElementById('zzmall-count'), card: document.getElementById('store-zzmall'), count: 0, quota: 6 }
+        };
+
+        let isRunning = false;
+        let lastLogCount = 0;
+
+        function formatLine(line) {
+            let className = '';
+            if (line.includes('[ERROR]') || line.includes('❌')) className = 'error';
+            else if (line.includes('✅') || line.includes('✔️')) className = 'success';
+            else if (line.includes('⚠️')) className = 'warning';
+
+            return `<div class="console-line ${className}">${escapeHtml(line)}</div>`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function extractProgress(logs) {
+            // Reset counters
+            Object.values(storeCounters).forEach(store => {
+                store.count = 0;
+                store.card.classList.remove('active', 'complete');
+            });
+
+            let currentStore = null;
+
+            logs.forEach(line => {
+                // Detect which store is active
+                if (line.includes('INICIANDO SCRAPER FARM')) currentStore = 'farm';
+                else if (line.includes('INICIANDO SCRAPER DRESS TO')) currentStore = 'dressto';
+                else if (line.includes('INICIANDO SCRAPER KJU')) currentStore = 'kju';
+                else if (line.includes('INICIANDO SCRAPER LIVE')) currentStore = 'live';
+                else if (line.includes('INICIANDO SCRAPER ZZMALL')) currentStore = 'zzmall';
+
+                // Mark active store
+                if (currentStore) {
+                    Object.values(storeCounters).forEach(s => s.card.classList.remove('active'));
+                    storeCounters[currentStore].card.classList.add('active');
+                }
+
+                // Extract completion counts
+                const farmMatch = line.match(/FARM:\s*(\d+)\/84/);
+                const dresstoMatch = line.match(/DRESS TO:\s*(\d+)\/18/);
+                const kjuMatch = line.match(/KJU:\s*(\d+)\/6/);
+                const liveMatch = line.match(/LIVE:\s*(\d+)\/6/);
+                const zzmallMatch = line.match(/ZZMALL:\s*(\d+)\/6/);
+
+                if (farmMatch) {
+                    storeCounters.farm.count = parseInt(farmMatch[1]);
+                    storeCounters.farm.card.classList.add('complete');
+                    storeCounters.farm.card.classList.remove('active');
+                }
+                if (dresstoMatch) {
+                    storeCounters.dressto.count = parseInt(dresstoMatch[1]);
+                    storeCounters.dressto.card.classList.add('complete');
+                    storeCounters.dressto.card.classList.remove('active');
+                }
+                if (kjuMatch) {
+                    storeCounters.kju.count = parseInt(kjuMatch[1]);
+                    storeCounters.kju.card.classList.add('complete');
+                    storeCounters.kju.card.classList.remove('active');
+                }
+                if (liveMatch) {
+                    storeCounters.live.count = parseInt(liveMatch[1]);
+                    storeCounters.live.card.classList.add('complete');
+                    storeCounters.live.card.classList.remove('active');
+                }
+                if (zzmallMatch) {
+                    storeCounters.zzmall.count = parseInt(zzmallMatch[1]);
+                    storeCounters.zzmall.card.classList.add('complete');
+                    storeCounters.zzmall.card.classList.remove('active');
+                }
+            });
+
+            // Update UI
+            Object.values(storeCounters).forEach(store => {
+                store.element.textContent = store.count;
+            });
+
+            // Calculate overall progress
+            const total = Object.values(storeCounters).reduce((sum, s) => sum + s.count, 0);
+            overallCount.textContent = `${total}/120`;
+            overallBar.style.width = `${(total / 120) * 100}%`;
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+
+                if (data.running !== isRunning) {
+                    isRunning = data.running;
+                    updateUIState(isRunning);
+                }
+
+                if (data.logs.length > lastLogCount || data.logs.length < lastLogCount) {
+                    const newLogs = data.logs;
+
+                    if (data.logs.length < lastLogCount) {
+                        consoleWindow.innerHTML = '';
+                    }
+
+                    consoleWindow.innerHTML = newLogs.map(formatLine).join('');
+                    consoleWindow.scrollTop = consoleWindow.scrollHeight;
+                    lastLogCount = newLogs.length;
+
+                    // Extract progress from logs
+                    extractProgress(newLogs);
+                }
+
+            } catch (error) {
+                console.error("Erro ao verificar status:", error);
+            }
+        }
+
+        function updateUIState(running) {
+            if (running) {
+                statusIndicator.textContent = "EM EXECUÇÃO";
+                statusIndicator.className = "status-badge status-running";
+                startBtn.disabled = true;
+                startBtn.textContent = "⏳ Processando...";
+            } else {
+                statusIndicator.textContent = "AGUARDANDO";
+                statusIndicator.className = "status-badge status-idle";
+                startBtn.disabled = false;
+                startBtn.textContent = "🚀 Iniciar Scraper";
+            }
+        }
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                startBtn.disabled = true;
+                const response = await fetch('/run', { method: 'POST' });
+                const data = await response.json();
+
+                if (!data.ok) {
+                    alert(data.message);
+                    startBtn.disabled = false;
+                }
+            } catch (error) {
+                alert("Erro ao iniciar scraper");
+                startBtn.disabled = false;
+            }
+        });
+
+        // Polling
+        setInterval(checkStatus, 1000);
+
+    </script>
+</body>
+
+</html>

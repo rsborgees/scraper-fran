@@ -1,0 +1,17 @@
+[
+    {
+        "description": "Start the scraping application",
+        "name": "start application",
+        "steps": [
+            {
+                "id": "start-cron",
+                "action": "run_command",
+                "args": {
+                    "CommandLine": "node cronScheduler.js",
+                    "Cwd": "d:\\scrapping",
+                    "WaitMsBeforeAsync": 500
+                }
+            }
+        ]
+    }
+]
