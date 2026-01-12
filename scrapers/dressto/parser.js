@@ -88,12 +88,11 @@ async function parseProductDressTo(page, url) {
             let id = 'unknown';
             const refEl = document.querySelector('.vtex-product-identifier, .vtex-product-identifier--product-reference');
             if (refEl) {
-                // Formato esperado: 01.33.2394_198 -> Queremos 01332394
+                // Formato esperado: 01.33.2394_198 ou 01.33.2394|471
                 let rawText = getSafeText(refEl);
-                if (rawText.includes('_')) {
-                    rawText = rawText.split('_')[0];
-                }
-                id = rawText.replace(/\D/g, '');
+                // Divide por qualquer separador comum
+                const parts = rawText.split(/[|_-]/);
+                id = parts[0].replace(/\D/g, '');
             }
 
             if (id === 'unknown' || id.length < 6) {

@@ -88,9 +88,11 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
                         if (products.length >= quota) break;
 
                         // Check ID na URL
-                        const idMatch = url.match(/(\d{6,})/);
+                        // Procura padrão de 8 dígitos que pode estar separado por pontos ou hífens
+                        // Ex: 01.33.2394 ou 01-33-2394
+                        const idMatch = url.match(/(\d{2})[.-]?(\d{2})[.-]?(\d{4})/);
                         if (idMatch) {
-                            const earlyId = normalizeId(idMatch[1]);
+                            const earlyId = normalizeId(idMatch[1] + idMatch[2] + idMatch[3]);
                             if (earlyId && (seenInRun.has(earlyId) || isDuplicate(earlyId))) continue;
                         }
 
@@ -103,12 +105,7 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
 
                             if (normId) seenInRun.add(normId);
 
-                            // Validar categoria se Strict Mode
-                            if (isStrict) {
-                                // Se já temos vestido e este é vestido, skip? Não, excesso é bom pra garantir.
-                                // Mas se faltam apenas macacões, e isso é uma blusa, podemos pular para economizar?
-                                // Por enquanto, aceita tudo, filtramos no final.
-                            }
+                            if (normId) seenInRun.add(normId);
 
                             // Image Download
                             console.log(`      🖼️  Baixando imagem ${product.id}...`);
