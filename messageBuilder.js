@@ -19,19 +19,21 @@ function getInstallments(price) {
  */
 function buildKjuMessage(produto) {
     const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
-    const original = isPromotional ? `De ~${formatPrice(produto.precoOriginal)}~ ` : '';
+    const priceLine = isPromotional
+        ? `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`
+        : `Por *${formatPrice(produto.precoAtual)}* 🔥`;
 
     return `
-⭕️ Lançamento na Kju 🤩‼️
-${produto.nome}
+⭕️ Farm na Kju 🤩‼️
 
- ${original}Por *${formatPrice(produto.precoAtual)}* 🔥
-+ 10% extra no pix  💰
-
-Cód vendedora: ${SELLER_CODE}
+${priceLine}
++ 10% extra no pix 💰 
 
 ${produto.url}
-🌈*Vaga pra entrar no grupo:*
+
+*Cód vendedora: ${SELLER_CODE}*
+
+🌈 Vaga pra entrar no grupo:
 
 ${LINKTREE}
 `.trim();
