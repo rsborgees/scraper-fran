@@ -155,7 +155,8 @@ function buildFarmMessage(produto, timerData = null) {
         `Código Vendedora ${SELLER_CODE}`,
         finalUrl,
         `🌈*Vaga pra entrar no grupo:*`,
-        LINKTREE
+        LINKTREE,
+        `**Farm na KJU**\nClica aqui e veja a promoção do momento:\nhttps://www.kjubrasil.com/?ref=7B1313`
     ];
 
     // Filtra partes vazias (ex: progressiveHeader se inativo) e junta
