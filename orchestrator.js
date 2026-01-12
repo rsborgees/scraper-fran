@@ -258,13 +258,20 @@ async function runAllScrapers(overrideQuotas = null) {
                 try {
                     // Pega apenas o necessário para fechar o gap
                     const driveFillCandidates = unusedFarmDriveItems.slice(0, gap + 2); // margem de segurança
+                    console.log(`   🔎 Tentando recuperar IDs: ${driveFillCandidates.map(i => i.id).join(', ')}`);
 
                     const driveFilledProducts = await scrapeSpecificIds(browser, driveFillCandidates, gap);
+                    console.log(`   ✅ Retornados do Drive-Scraper: ${driveFilledProducts.length} itens.`);
+
                     driveFilledProducts.forEach(p => p.message = buildFarmMessage(p, p.timerData));
 
                     // Add unique only
                     const alreadyPickedIds = new Set(allProducts.map(p => p.id));
                     const newDriveItems = driveFilledProducts.filter(p => !alreadyPickedIds.has(p.id));
+
+                    if (newDriveItems.length === 0 && driveFilledProducts.length > 0) {
+                        console.log(`   ⚠️ Todos os itens recuperados já estavam na lista principal.`);
+                    }
 
                     allProducts.push(...newDriveItems);
                     gap = totalTarget - allProducts.length;
@@ -273,6 +280,8 @@ async function runAllScrapers(overrideQuotas = null) {
                 } catch (driveRedistErr) {
                     console.error(`❌ Erro Redistribuição Drive: ${driveRedistErr.message}`);
                 }
+            } else {
+                console.log(`\n⚠️ Sem itens 'unusedFarmDriveItems' disponíveis para redistribuição.`);
             }
 
             // STRATEGY 2: GENERIC SCRAPE (FALLBACK DO FALLBACK)
