@@ -256,79 +256,81 @@ async function runAllScrapers(overrideQuotas = null) {
                 console.log(`\n🚙 Prioridade Redistribuição: Usando ${unusedFarmDriveItems.length} itens do Drive restantes...`);
 
                 try {
-                    // Pega apenas o necessário para fechar o gap
-                    const driveFillCandidates = unusedFarmDriveItems.slice(0, gap + 2); // margem de segurança
-                    console.log(`   🔎 Tentando recuperar IDs: ${driveFillCandidates.map(i => i.id).join(', ')}`);
-
-                    const driveFilledProducts = await scrapeSpecificIds(browser, driveFillCandidates, gap);
-                    console.log(`   ✅ Retornados do Drive-Scraper: ${driveFilledProducts.length} itens.`);
-
-                    driveFilledProducts.forEach(p => p.message = buildFarmMessage(p, p.timerData));
-
-                    // Add unique only
-                    const alreadyPickedIds = new Set(allProducts.map(p => p.id));
-                    const newDriveItems = driveFilledProducts.filter(p => !alreadyPickedIds.has(p.id));
-
-                    if (newDriveItems.length === 0 && driveFilledProducts.length > 0) {
-                        console.log(`   ⚠️ Todos os itens recuperados já estavam na lista principal.`);
-                    }
-
-                    allProducts.push(...newDriveItems);
-                    gap = totalTarget - allProducts.length;
-
-                    console.log(`♻️ Redistribuição (Drive): +${newDriveItems.length} itens.`);
-                } catch (driveRedistErr) {
-                    console.error(`❌ Erro Redistribuição Drive: ${driveRedistErr.message}`);
-                }
-            } else {
-                console.log(`\n⚠️ Sem itens 'unusedFarmDriveItems' disponíveis para redistribuição.`);
-            }
-
-            // STRATEGY 2: GENERIC SCRAPE (FALLBACK DO FALLBACK)
-            if (gap > 0) {
-                console.log(`\n🔄 Preenchendo lacuna restante (${gap}) com FARM (Genérico)...`);
-
-                let attempts = 0;
-                const maxAttempts = 2;
-
-                while (gap > 0 && attempts < maxAttempts) {
-                    attempts++;
                     try {
-                        const { scrapeFarm } = require('./scrapers/farm');
-                        let extraProducts = await scrapeFarm(gap + 1, false, browser);
+                        // Passa TODOS os candidatos restantes. O `scrapeSpecificIds` vai tentar um por um até bater a meta (gap)
+                        // Isso evita que se os primeiros 5 falharem, ele desista, mesmo tendo mais 100 na lista.
+                        const driveFillCandidates = unusedFarmDriveItems;
+                        console.log(`   🔎 Tentando recuperar de ${driveFillCandidates.length} IDs disponíveis no Drive...`);
 
+                        const driveFilledProducts = await scrapeSpecificIds(browser, driveFillCandidates, gap);
+                        console.log(`   ✅ Retornados do Drive-Scraper: ${driveFilledProducts.length} itens.`);
+
+                        driveFilledProducts.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+
+                        // Add unique only
                         const alreadyPickedIds = new Set(allProducts.map(p => p.id));
-                        const filteredExtra = extraProducts.filter(p => !alreadyPickedIds.has(p.id)).slice(0, gap);
+                        const newDriveItems = driveFilledProducts.filter(p => !alreadyPickedIds.has(p.id));
 
-                        filteredExtra.forEach(p => p.message = buildFarmMessage(p, p.timerData));
-                        allProducts.push(...filteredExtra);
+                        if (newDriveItems.length === 0 && driveFilledProducts.length > 0) {
+                            console.log(`   ⚠️ Todos os itens recuperados já estavam na lista principal.`);
+                        }
 
+                        allProducts.push(...newDriveItems);
                         gap = totalTarget - allProducts.length;
-                        console.log(`♻️ Redistribuição (Genérica): +${filteredExtra.length} produtos`);
-                    } catch (e) {
-                        console.error(`❌ Falha na redistribuição genérica (tentativa ${attempts}): ${e.message}`);
-                        break;
+
+                        console.log(`♻️ Redistribuição (Drive): +${newDriveItems.length} itens.`);
+                    } catch (driveRedistErr) {
+                        console.error(`❌ Erro Redistribuição Drive: ${driveRedistErr.message}`);
+                    }
+                } else {
+                    console.log(`\n⚠️ Sem itens 'unusedFarmDriveItems' disponíveis para redistribuição.`);
+                }
+
+                // STRATEGY 2: GENERIC SCRAPE (FALLBACK DO FALLBACK)
+                if (gap > 0) {
+                    console.log(`\n🔄 Preenchendo lacuna restante (${gap}) com FARM (Genérico)...`);
+
+                    let attempts = 0;
+                    const maxAttempts = 2;
+
+                    while (gap > 0 && attempts < maxAttempts) {
+                        attempts++;
+                        try {
+                            const { scrapeFarm } = require('./scrapers/farm');
+                            let extraProducts = await scrapeFarm(gap + 1, false, browser);
+
+                            const alreadyPickedIds = new Set(allProducts.map(p => p.id));
+                            const filteredExtra = extraProducts.filter(p => !alreadyPickedIds.has(p.id)).slice(0, gap);
+
+                            filteredExtra.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+                            allProducts.push(...filteredExtra);
+
+                            gap = totalTarget - allProducts.length;
+                            console.log(`♻️ Redistribuição (Genérica): +${filteredExtra.length} produtos`);
+                        } catch (e) {
+                            console.error(`❌ Falha na redistribuição genérica (tentativa ${attempts}): ${e.message}`);
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        console.log('\n==================================================');
-        console.log(`RESULTADO FINAL: ${allProducts.length}/${totalTarget} produtos coletados`);
-        console.log('Todas as mensagens foram geradas com sucesso.');
-        console.log('==================================================');
+            console.log('\n==================================================');
+            console.log(`RESULTADO FINAL: ${allProducts.length}/${totalTarget} produtos coletados`);
+            console.log('Todas as mensagens foram geradas com sucesso.');
+            console.log('==================================================');
 
-        return allProducts;
+            return allProducts;
 
-    } catch (error) {
-        console.error(`❌ Erro no Orchestrator: ${error.message}`);
-        return allProducts;
-    } finally {
-        if (browser) {
-            console.log('🔒 Encerrando Navegador Mestre...');
-            await browser.close();
+        } catch (error) {
+            console.error(`❌ Erro no Orchestrator: ${error.message}`);
+            return allProducts;
+        } finally {
+            if (browser) {
+                console.log('🔒 Encerrando Navegador Mestre...');
+                await browser.close();
+            }
         }
     }
-}
 
 module.exports = { runAllScrapers };

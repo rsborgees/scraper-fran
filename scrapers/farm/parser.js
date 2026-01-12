@@ -253,12 +253,12 @@ async function parseProduct(page, url) {
             else if (combinedText.includes('/saia-') || combinedText.includes(' saia ')) category = 'saia';
             else if (combinedText.includes('/short-') || combinedText.includes(' short ')) category = 'short';
             else if (combinedText.includes('/blusa-') || combinedText.includes('/camisa-') || combinedText.includes(' blusa ') || combinedText.includes(' camisa ')) category = 'blusa';
-            else if (combinedText.includes('/brinco-') || combinedText.includes('/bolsa-') || combinedText.includes('/colar-') || combinedText.includes('/cinto-') || combinedText.includes('/acessorio-') || combinedText.includes(' brinco ') || combinedText.includes(' bolsa ') || combinedText.includes(' colar ') || combinedText.includes(' acessório ')) category = 'acessório';
+            else if (combinedText.includes('/brinco-') || combinedText.includes('/bolsa-') || combinedText.includes('/colar-') || combinedText.includes('/cinto-') || combinedText.includes('/acessorio-') || combinedText.includes(' brinco ') || combinedText.includes(' bolsa ') || combinedText.includes(' colar ') || combinedText.includes(' acessório ') || combinedText.includes(' garrafa ') || combinedText.includes(' copo ') || combinedText.includes(' necessaire ')) category = 'acessório';
             else if (combinedText.includes('/calca-') || combinedText.includes(' calça ')) category = 'calça';
 
             // 🚫 BLOQUEIO TOTAL DE ACESSÓRIOS
             if (category === 'acessório') {
-                return { error: 'Acessório bloqueado (Farm nunca coleta acessórios)' };
+                return { error: 'Acessório bloqueado (Garrafas, Copos, Bolsas e similares)' };
             }
 
             // 5. TAMANHOS (Sincronização Refinada)
