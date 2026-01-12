@@ -45,6 +45,7 @@ async function runAllScrapers(overrideQuotas = null) {
         // =================================================================
         const driveProducts = [];
         let driveItemsByStore = { farm: [], dressto: [], kju: [], zzmall: [], live: [] };
+        let unusedFarmDriveItems = [];
 
         try {
             if (process.env.GOOGLE_DRIVE_FOLDER_ID) {
@@ -89,12 +90,24 @@ async function runAllScrapers(overrideQuotas = null) {
                         .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0))
                         .slice(0, 50); // Passa mais candidatos para compensar falhas/duplicados
 
+                    // Calculamos a cota disponível para usar, mas pegamos mais candidatos para garantir
+                    // que se chover duplicado, não ficamos sem.
+                    // O `scrapeSpecificIds` respeita o `quotas.farm`.
+
                     // Reutiliza o browser instanciado
                     const scrapedDriveItems = await scrapeSpecificIds(browser, limitedFarmDriveItems, quotas.farm);
                     scrapedDriveItems.forEach(p => p.message = buildFarmMessage(p, p.timerData));
 
                     allProducts.push(...scrapedDriveItems);
                     driveProducts.push(...scrapedDriveItems);
+
+                    // SALVAR O RESTO PARA REDISTRIBUIÇÃO
+                    // Remove os que foram efetivamente 'processados' (enviados) da lista de candidatos
+                    const processedIds = new Set(scrapedDriveItems.map(p => normalizeId(p.id)));
+
+                    // Guarda o que sobrou da lista `farmDriveItems` original (não só da limited)
+                    // Filtra o que já foi e o que já sabemos que é duplicado (mas o filtro inicial já cuidou disso na maioria)
+                    unusedFarmDriveItems = farmDriveItems.filter(item => !processedIds.has(normalizeId(item.id)));
                 }
 
                 // DRESS TO Drive Items
@@ -236,32 +249,57 @@ async function runAllScrapers(overrideQuotas = null) {
         let gap = totalTarget - allProducts.length;
 
         if (gap > 0) {
-            console.log(`\n⚖️ Cota não atingida (${allProducts.length}/${totalTarget}). Tentando preencher lacuna de ${gap} produtos com a FARM...`);
+            console.log(`\n⚖️ Cota não atingida (${allProducts.length}/${totalTarget}). Lacuna de ${gap} produtos.`);
 
-            let attempts = 0;
-            const maxAttempts = 2; // Reduzi de 3 para 2 para ser mais rápido
-
-            while (gap > 0 && attempts < maxAttempts) {
-                attempts++;
-                console.log(`\n🔄 Preenchendo lacuna com FARM (Tentativa #${attempts})...`);
+            // STRATEGY 1: CHECK REMAINING DRIVE ITEMS
+            if (unusedFarmDriveItems.length > 0) {
+                console.log(`\n🚙 Prioridade Redistribuição: Usando ${unusedFarmDriveItems.length} itens do Drive restantes...`);
 
                 try {
-                    const { scrapeFarm } = require('./scrapers/farm');
-                    // Pede apenas o necessário (+ margem pequena) para evitar Deep Scan infinito
-                    let extraProducts = await scrapeFarm(gap + 1, false, browser);
+                    // Pega apenas o necessário para fechar o gap
+                    const driveFillCandidates = unusedFarmDriveItems.slice(0, gap + 2); // margem de segurança
 
-                    // Filtra o que já pegamos nesta rodada (por ID)
+                    const driveFilledProducts = await scrapeSpecificIds(browser, driveFillCandidates, gap);
+                    driveFilledProducts.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+
+                    // Add unique only
                     const alreadyPickedIds = new Set(allProducts.map(p => p.id));
-                    const filteredExtra = extraProducts.filter(p => !alreadyPickedIds.has(p.id)).slice(0, gap);
+                    const newDriveItems = driveFilledProducts.filter(p => !alreadyPickedIds.has(p.id));
 
-                    filteredExtra.forEach(p => p.message = buildFarmMessage(p, p.timerData));
-                    allProducts.push(...filteredExtra);
-
+                    allProducts.push(...newDriveItems);
                     gap = totalTarget - allProducts.length;
-                    console.log(`♻️ Redistribuição: +${filteredExtra.length} produtos (Total atual: ${allProducts.length}/${totalTarget})`);
-                } catch (e) {
-                    console.error(`❌ Falha na redistribuição (tentativa ${attempts}): ${e.message}`);
-                    break; // Sai do loop em caso de erro crítico
+
+                    console.log(`♻️ Redistribuição (Drive): +${newDriveItems.length} itens.`);
+                } catch (driveRedistErr) {
+                    console.error(`❌ Erro Redistribuição Drive: ${driveRedistErr.message}`);
+                }
+            }
+
+            // STRATEGY 2: GENERIC SCRAPE (FALLBACK DO FALLBACK)
+            if (gap > 0) {
+                console.log(`\n🔄 Preenchendo lacuna restante (${gap}) com FARM (Genérico)...`);
+
+                let attempts = 0;
+                const maxAttempts = 2;
+
+                while (gap > 0 && attempts < maxAttempts) {
+                    attempts++;
+                    try {
+                        const { scrapeFarm } = require('./scrapers/farm');
+                        let extraProducts = await scrapeFarm(gap + 1, false, browser);
+
+                        const alreadyPickedIds = new Set(allProducts.map(p => p.id));
+                        const filteredExtra = extraProducts.filter(p => !alreadyPickedIds.has(p.id)).slice(0, gap);
+
+                        filteredExtra.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+                        allProducts.push(...filteredExtra);
+
+                        gap = totalTarget - allProducts.length;
+                        console.log(`♻️ Redistribuição (Genérica): +${filteredExtra.length} produtos`);
+                    } catch (e) {
+                        console.error(`❌ Falha na redistribuição genérica (tentativa ${attempts}): ${e.message}`);
+                        break;
+                    }
                 }
             }
         }
