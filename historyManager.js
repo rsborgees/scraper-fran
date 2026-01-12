@@ -82,9 +82,9 @@ function saveHistory(idsObject) {
  */
 function normalizeId(id) {
     if (!id) return '';
-    return String(id).trim().replace(/^0+/, '');
+    // Remove tudo que não é dígito e depois remove zeros à esquerda
+    return id.toString().trim().replace(/\D/g, '').replace(/^0+/, '');
 }
-
 /**
  * Verifica se um ID é duplicado baseado em tempo (3 dias)
  * @param {string} id 
@@ -97,20 +97,6 @@ function isDuplicate(id, options = {}) {
 
     const history = loadHistory();
     const now = Date.now();
-
-    // 1. Lógica Especial para Favoritos (repetem a cada 24h)
-    if (options.force && history[normId]) {
-        const ageMs = now - history[normId].timestamp;
-        const ageHours = ageMs / (1000 * 60 * 60);
-
-        if (ageHours < 24) {
-            console.log(`   🚫 Favorito ignorado: enviado há apenas ${ageHours.toFixed(1)}h (mínimo 24h)`);
-            return true;
-        }
-        console.log(`   ✅ Favorito liberado: enviado há ${ageHours.toFixed(1)}h.`);
-        return false;
-    }
-
     const maxAgeMs = MAX_AGE_HOURS * 60 * 60 * 1000; // 72 hours in milliseconds
 
     // 0. Check Session Blocklist (Drive)
@@ -119,41 +105,43 @@ function isDuplicate(id, options = {}) {
         return true;
     }
 
-    // Match exato por ID normalizado
-    if (history[normId]) {
-        const ageMs = now - history[normId].timestamp;
-        const ageHours = ageMs / (1000 * 60 * 60);
+    // 1. Busca no Histórico (Exact Match)
+    let matchedIdInHistory = history[normId] ? normId : null;
 
-        if (ageMs < maxAgeMs) {
-            console.log(`   🚫 ID Duplicado detectado: ${normId}`);
-            console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (trava de ${MAX_AGE_HOURS}h)`);
-            return true;
-        } else {
-            console.log(`   ♻️  ID ${normId} expirado (${ageHours.toFixed(1)}h) - pode ser re-scraped`);
+    // 2. Busca no Histórico (Fuzzy Match - Inclusão/SKU)
+    if (!matchedIdInHistory) {
+        matchedIdInHistory = Object.keys(history).find(historyId => {
+            // Se um contiver o outro e ambos forem longos (Cobre prefixos 01/A0 e sufixos de variantes)
+            if ((historyId.includes(normId) || normId.includes(historyId)) &&
+                normId.length >= 6 && historyId.length >= 6) {
+                return true;
+            }
             return false;
-        }
+        });
     }
 
-    // Verifica match de prefixo para IDs complexos (SKU-COLOR-SIZE)
-    const duplicate = Object.keys(history).find(historyId => {
-        // Se ambos forem puramente numéricos, exigimos match exato
-        const isNumeric = /^\d+$/.test(normId) && /^\d+$/.test(historyId);
-        if (isNumeric) return false;
-
-        // Para IDs complexos, permitimos match de prefixo
-        return historyId.startsWith(normId) || normId.startsWith(historyId);
-    });
-
-    if (duplicate) {
-        const ageMs = now - history[duplicate].timestamp;
+    // 3. Se achamos um registro, verificamos as regras de tempo
+    if (matchedIdInHistory) {
+        const entry = history[matchedIdInHistory];
+        const ageMs = now - entry.timestamp;
         const ageHours = ageMs / (1000 * 60 * 60);
 
+        // REGRA ESPECIAL: FAVORITOS (24h)
+        if (options.force) {
+            if (ageHours < 24) {
+                console.log(`   🚫 Favorito ignorado: ID ${normId} emitiu match com ${matchedIdInHistory} há ${ageHours.toFixed(1)}h (mínimo 24h)`);
+                return true;
+            }
+            console.log(`   ✅ Favorito liberado: ID ${normId} (match ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h.`);
+            return false;
+        }
+
+        // REGRA PADRÃO: 72h
         if (ageMs < maxAgeMs) {
-            console.log(`   🚫 ID Duplicado (Fuzzy) detectado: ${normId} (Encontrado como: ${duplicate})`);
-            console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (trava de ${MAX_AGE_HOURS}h)`);
+            console.log(`   🚫 ID Duplicado detectado: ${normId} (Match: ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h`);
             return true;
         } else {
-            console.log(`   ♻️  ID ${duplicate} expirado (${ageHours.toFixed(1)}h) - pode ser re-scraped`);
+            console.log(`   ♻️  ID ${normId} (Match: ${matchedIdInHistory}) expirado (${ageHours.toFixed(1)}h)`);
             return false;
         }
     }
