@@ -58,6 +58,16 @@ console.log(buildFarmMessage(pFarm, { ativo: true, cupom: '25% OFF' }));
 console.log('\n>>> FARM (Timer Inativo)');
 console.log(buildFarmMessage(pFarm, null));
 
+const pFarmFullRatio = {
+    nome: 'Macacão Liso',
+    precoAtual: 500.00,
+    tamanhos: ['P', 'M'],
+    url: 'https://www.farmrio.com.br/macacao',
+    id: '999'
+};
+console.log('\n>>> FARM (Full Price - Deve ter 10% message)');
+console.log(buildFarmMessage(pFarmFullRatio, null));
+
 console.log('\n>>> KJU');
 console.log(buildKjuMessage(pKju));
 

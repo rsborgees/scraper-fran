@@ -120,16 +120,17 @@ Bom diaa meninas ❤️
 
 RESUMO DAS PROMOÇÕES
 
-🔥 ${mainHeadline}
-> ${mainSub}
+ 🔥 ${mainHeadline}: ${mainSub.toUpperCase()} CONFIRA TUDO AQUI
 
-BAZAR:
+https://www.farmrio.com.br/?utm_campaign=7B1313
 
 🔥 ${bazarHeadline}
-> ${bazarSub}
 
-Acesse: https://www.farmrio.com.br/?utm_campaign=7B1313
 https://www.farmrio.com.br/bazar?utm_campaign=7B1313
+
+*Farm na KJU*
+Clica aqui e veja a promoção do momento:
+https://www.kjubrasil.com/?ref=7B1313
         `.trim();
 
         return copy;

@@ -27,14 +27,12 @@ function buildKjuMessage(produto) {
 ⭕️ Farm na Kju 🤩‼️
 
 ${priceLine}
-+ 10% extra no pix 💰 
 
 ${produto.url}
 
 *Cód vendedora: ${SELLER_CODE}*
 
 🌈 Vaga pra entrar no grupo:
-
 ${LINKTREE}
 `.trim();
 }
@@ -50,16 +48,11 @@ ${produto.nome}
 ${sizes}
 Por *${formatPrice(produto.precoAtual)}*
 
-✨ Primeira compra: BEMVINDA15
-
-✨ Aniversariante : ANIVERDEZ15
-
 + código de vendedora: 5KP4
 
 ${produto.url}
 
 🌈*Vaga pra entrar no grupo:*
-
 ${LINKTREE}
 `.trim();
 }
@@ -113,6 +106,9 @@ function buildFarmMessage(produto, timerData = null) {
 3️⃣ peças  30% off`;
     }
 
+    // Verificação de Promoção (De/Por)
+    const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
+
     // Lógica do Cupom
     let cupomText = "";
     // Se temos timer ativo OU campanha progressiva, motra linha de cupom
@@ -130,33 +126,36 @@ function buildFarmMessage(produto, timerData = null) {
             const fallback = (timerData.cupom && timerData.cupom !== 'NO SITE') ? timerData.cupom : 'Confira o desconto no site';
             cupomText = `Cupom: *${fallback}*`;
         }
-    } else {
-        // Fallback apenas se não houver NENHUMA campanha ativa
-        cupomText = "10% off comprando pelo link e usando código da vendedora";
     }
+    // NOTA: Se não tem cupom ativo e não é promocional, a mensagem de desconto entra no priceLine abaixo,
+    // então não precisamos definir cupomText aqui.
 
     // Adiciona parâmetros de vendedora na URL de forma robusta usando utilitário
     const finalUrl = appendQueryParams(produto.url, {
         utm_campaign: SELLER_CODE
     });
 
+    // Monta a linha de preço
+    let priceLine;
+    if (isPromotional) {
+        priceLine = `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`;
+    } else {
+        // Se NÃO for promoção (preço cheio), calcula 10% OFF manual
+        const discountedPrice = produto.precoAtual * 0.9;
+        priceLine = `De ~${formatPrice(produto.precoAtual)}~ Por *${formatPrice(discountedPrice)}* usando o código da vendedora 🔥`;
+    }
+
     // Monta a mensagem final: Progressivo (se houver) -> Nome -> Tamanhos -> Preço -> Cupom -> Código -> Link -> Grupo
     const parts = [
         progressiveHeader,
         produto.nome,
         sizes,
-        (function () {
-            const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
-            return isPromotional
-                ? `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`
-                : `Por *${formatPrice(produto.precoAtual)}* 🔥`;
-        })(),
+        priceLine,
         cupomText,
         `Código Vendedora ${SELLER_CODE}`,
         finalUrl,
         `🌈*Vaga pra entrar no grupo:*`,
-        LINKTREE,
-        `**Farm na KJU**\nClica aqui e veja a promoção do momento:\nhttps://www.kjubrasil.com/?ref=7B1313`
+        LINKTREE
     ];
 
     // Filtra partes vazias (ex: progressiveHeader se inativo) e junta
@@ -171,7 +170,6 @@ function buildZzMallMessage(produto) {
 * AREZZO, SCHÜTZ, ANACAPRI, VANS, VICENZA ❤️
 ${produto.nome}
 
-10% EXTRA usando meu voucher  ZZCUPOM4452  ⁠🎟️
 
 Por *${formatPrice(produto.precoAtual)}* 🔥
 
