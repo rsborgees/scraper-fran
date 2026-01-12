@@ -41,7 +41,7 @@ async function scrapeSpecificIdsDressTo(browser, driveItems, quota = 999) {
                     // Tenta achar o input direto primeiro se visivel, ou clica na lupa
                     // Tenta achar o input direto primeiro se visivel, ou clica na lupa
                     const searchInputSelector = '#downshift-0-input, input[placeholder="Digite sua busca"], input[placeholder*="buscar"]';
-                    const searchIconSelector = 'button[title="Buscar"], .dresstoshop-commercegrowth-custom-0-x-SearchCustom_icon, .dresstoshop-commercegrowth-custom-0-x-SearchCustom_iconClose';
+                    const searchIconSelector = 'button[title="Buscar"], [class*="SearchCustom_icon"]';
 
                     const isInputVisible = await page.isVisible(searchInputSelector).catch(() => false);
                     if (!isInputVisible) {

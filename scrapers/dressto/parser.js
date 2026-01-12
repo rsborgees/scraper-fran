@@ -52,7 +52,8 @@ async function parseProductDressTo(page, url) {
             if (precoOriginal < precoAtual) precoOriginal = precoAtual;
 
             // 2. Tamanhos
-            const sizeEls = Array.from(document.querySelectorAll('.dresstoshop-commercegrowth-custom-0-x-skuselector__item'));
+            // Uso de seletor parcial para evitar falhar se a versao do app custom mudar (ex: custom-0-x para custom-1-x)
+            const sizeEls = Array.from(document.querySelectorAll('[class*="skuselector__item"]'));
             const tamanhos = [];
 
             sizeEls.forEach(el => {

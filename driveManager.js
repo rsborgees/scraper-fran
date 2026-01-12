@@ -139,4 +139,51 @@ async function getExistingIdsFromDrive(folderId) {
     }
 }
 
-module.exports = { getExistingIdsFromDrive };
+
+/**
+ * Busca um arquivo específico pelo ID do produto (string contida no nome)
+ * Mais eficiente que listar tudo.
+ * @param {string} folderId 
+ * @param {string} productId 
+ */
+async function findFileByProductId(folderId, productId) {
+    if (!folderId || !productId) return null;
+
+    try {
+        const auth = loadAuth();
+        const drive = google.drive({ version: 'v3', auth });
+
+        // Busca exata ou parcial pelo ID no nome
+        const start = Date.now();
+        const res = await drive.files.list({
+            q: `'${folderId}' in parents and name contains '${productId}' and trashed = false`,
+            fields: 'files(id, name, webContentLink)',
+            spaces: 'drive'
+        });
+
+        const files = res.data.files;
+        if (files && files.length > 0) {
+            // Pega o primeiro match
+            const file = files[0];
+            console.log(`✅ [Drive] Arquivo encontrado para ${productId}: ${file.name} (${Date.now() - start}ms)`);
+
+            // Link direto para download
+            const driveUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
+
+            return {
+                id: productId,
+                fileId: file.id,
+                name: file.name,
+                driveUrl: driveUrl
+            };
+        }
+
+        return null;
+
+    } catch (error) {
+        console.error(`❌ [Drive] Erro ao buscar arquivo ${productId}:`, error.message);
+        return null;
+    }
+}
+
+module.exports = { getExistingIdsFromDrive, findFileByProductId };
