@@ -121,7 +121,7 @@ async function scrapeSpecificIdsDressTo(browser, driveItems, quota = 999) {
                     if (!isDup) {
                         collectedProducts.push(product);
                         console.log(`   ✅ [DressTo] Capturado via Drive: ${product.nome}`);
-                        if (!item.isFavorito) markAsSent([product.id]);
+                        markAsSent([product.id]);
                     } else {
                         console.log(`   ⏭️  [DressTo] Duplicado.`);
                     }

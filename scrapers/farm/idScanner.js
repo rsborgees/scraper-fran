@@ -131,16 +131,12 @@ async function scrapeSpecificIds(browser, driveItems, quota = 999) {
                     const isDup = isDuplicate(normId, { force: item.isFavorito });
 
                     if (!isDup) {
-                        // Se não for dup (ou for favorito), adiciona
+                        // Se não for dup (ou for favorito liberado), adiciona
                         collectedProducts.push(product);
                         console.log(`   ✅ Capturado via Drive: ${product.nome}`);
 
-                        // Marca como enviado se não for dryRun (controlado pelo orchestrator, aqui assumimos que vai enviar)
-                        // Se for favorito, não importa marcar, pois sempre enviará. 
-                        // Se não for favorito, marcamos para não repetir logo.
-                        if (!item.isFavorito) {
-                            markAsSent([product.id]);
-                        }
+                        // Marca como enviado (incluindo favoritos para valer o ciclo de 24h)
+                        markAsSent([product.id]);
                     } else {
                         console.log(`   ⏭️  Skip: Duplicado no histórico.`);
                     }

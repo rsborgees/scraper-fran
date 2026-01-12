@@ -25,33 +25,43 @@ if (!fs.existsSync(HISTORY_FILE)) {
 
 function loadHistory() {
     try {
+        if (!fs.existsSync(HISTORY_FILE)) {
+            return {};
+        }
         const data = fs.readFileSync(HISTORY_FILE, 'utf8');
         const parsed = JSON.parse(data);
+        const rawIds = parsed.sent_ids || {};
 
         // Auto-migrate from old format (array) to new format (object with timestamps)
-        if (Array.isArray(parsed.sent_ids)) {
+        if (Array.isArray(rawIds)) {
             console.log('📦 Migrando history.json para formato com timestamps...');
             const migratedIds = {};
             const now = Date.now();
 
-            parsed.sent_ids.forEach(id => {
-                if (id) {
-                    const normId = normalizeId(id);
-                    if (normId) {
-                        migratedIds[normId] = {
-                            timestamp: now,
-                            lastSent: new Date().toISOString()
-                        };
-                    }
+            rawIds.forEach(id => {
+                const normId = normalizeId(id);
+                if (normId) {
+                    migratedIds[normId] = {
+                        timestamp: now,
+                        lastSent: new Date().toISOString()
+                    };
                 }
             });
 
             saveHistory(migratedIds);
-            console.log(`✅ Migrado ${Object.keys(migratedIds).length} IDs para novo formato`);
             return migratedIds;
         }
 
-        return parsed.sent_ids || {};
+        // NOVO: Garantir que todas as chaves estão normalizadas (caso o usuário tenha editado manualmente)
+        const normalizedHistory = {};
+        Object.keys(rawIds).forEach(key => {
+            const normKey = normalizeId(key);
+            if (normKey) {
+                normalizedHistory[normKey] = rawIds[key];
+            }
+        });
+
+        return normalizedHistory;
     } catch (e) {
         console.error('Erro ao carregar histórico:', e.message);
         return {};
@@ -115,8 +125,8 @@ function isDuplicate(id, options = {}) {
         const ageHours = ageMs / (1000 * 60 * 60);
 
         if (ageMs < maxAgeMs) {
-            console.log(`   🚫 ID Duplicado detectado: ${normId} (Encontrado no histórico como: ${normId})`);
-            console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (max: ${MAX_AGE_HOURS}h)`);
+            console.log(`   🚫 ID Duplicado detectado: ${normId}`);
+            console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (trava de ${MAX_AGE_HOURS}h)`);
             return true;
         } else {
             console.log(`   ♻️  ID ${normId} expirado (${ageHours.toFixed(1)}h) - pode ser re-scraped`);
@@ -139,8 +149,8 @@ function isDuplicate(id, options = {}) {
         const ageHours = ageMs / (1000 * 60 * 60);
 
         if (ageMs < maxAgeMs) {
-            console.log(`   🚫 ID Duplicado detectado: ${normId} (Encontrado no histórico como: ${duplicate})`);
-            console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (max: ${MAX_AGE_HOURS}h)`);
+            console.log(`   🚫 ID Duplicado (Fuzzy) detectado: ${normId} (Encontrado como: ${duplicate})`);
+            console.log(`      ⏱️  Enviado há ${ageHours.toFixed(1)}h (trava de ${MAX_AGE_HOURS}h)`);
             return true;
         } else {
             console.log(`   ♻️  ID ${duplicate} expirado (${ageHours.toFixed(1)}h) - pode ser re-scraped`);
