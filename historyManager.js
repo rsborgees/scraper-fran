@@ -26,11 +26,18 @@ if (!fs.existsSync(HISTORY_FILE)) {
 function loadHistory() {
     try {
         if (!fs.existsSync(HISTORY_FILE)) {
+            console.log(`⚠️  History file NOT found at: ${HISTORY_FILE}`);
+            console.log('   Starting with empty history.');
             return {};
         }
+
         const data = fs.readFileSync(HISTORY_FILE, 'utf8');
         const parsed = JSON.parse(data);
         const rawIds = parsed.sent_ids || {};
+
+        const entriesCount = Object.keys(rawIds).length;
+        console.log(`📂 Loaded history from: ${HISTORY_FILE}`);
+        console.log(`   Entries found: ${entriesCount}`);
 
         // Auto-migrate from old format (array) to new format (object with timestamps)
         if (Array.isArray(rawIds)) {

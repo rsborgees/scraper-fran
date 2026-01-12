@@ -63,7 +63,22 @@ async function runAllScrapers(overrideQuotas = null) {
                 });
 
                 // FARM Drive Items (único scraper de ID implementado por enquanto)
-                const farmDriveItems = driveItemsByStore.farm.filter(item => {
+                const uniqueFarmItems = new Map();
+
+                driveItemsByStore.farm.forEach(item => {
+                    const normId = normalizeId(item.id);
+                    // Se já existe, damos preferência se o novo for favorito
+                    if (uniqueFarmItems.has(normId)) {
+                        const existing = uniqueFarmItems.get(normId);
+                        if (!existing.isFavorito && item.isFavorito) {
+                            uniqueFarmItems.set(normId, item);
+                        }
+                    } else {
+                        uniqueFarmItems.set(normId, item);
+                    }
+                });
+
+                const farmDriveItems = Array.from(uniqueFarmItems.values()).filter(item => {
                     if (item.isFavorito) return true;
                     return !isDuplicate(normalizeId(item.id));
                 });

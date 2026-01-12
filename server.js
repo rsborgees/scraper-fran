@@ -65,11 +65,51 @@ app.post("/run", (req, res) => {
     res.json({ ok: true, message: "Scraper iniciado" });
 });
 
+app.use(express.json({ limit: '10mb' })); // Support large history files
+
+app.post("/import-history", (req, res) => {
+    try {
+        const historyData = req.body;
+        if (!historyData || !historyData.sent_ids) {
+            return res.status(400).json({ ok: false, message: "Formato inválido. Esperado objeto com sent_ids." });
+        }
+
+        const fs = require('fs');
+        const path = require('path');
+        const DATA_DIR = path.join(__dirname, 'data');
+        if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+        const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
+
+        // Backup existing if any
+        if (fs.existsSync(HISTORY_FILE)) {
+            fs.copyFileSync(HISTORY_FILE, path.join(DATA_DIR, `history.backup.${Date.now()}.json`));
+        }
+
+        fs.writeFileSync(HISTORY_FILE, JSON.stringify(historyData, null, 2));
+        console.log(`📥 Histórico importado manualmente via API (${Object.keys(historyData.sent_ids).length} itens)`);
+
+        res.json({ ok: true, message: "Histórico importado com sucesso!", count: Object.keys(historyData.sent_ids).length });
+    } catch (e) {
+        console.error("Erro ao importar histórico:", e);
+        res.status(500).json({ ok: false, message: e.message });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Scraper Dashboard rodando em http://localhost:${PORT}`);
 
     // Inicia o agendador automático (7h da manhã) ao subir o servidor
     setupDailySchedule();
+
+    // DEBUG: Informar caminho exato para configurar volume
+    const path = require('path');
+    const DATA_DIR = path.join(__dirname, 'data');
+    console.log('\n==================================================');
+    console.log('📂 CONFIGURAÇÃO DE PERSISTÊNCIA (EASYPANEL)');
+    console.log(`Para salvar o histórico, crie um VOLUME montado em:`);
+    console.log(`👉 ${DATA_DIR}`);
+    console.log('==================================================\n');
 
     // 🕒 Inicia monitoramento do cronômetro Farm (30 em 30 min)
     console.log('🕒 Iniciando monitoramento de cronômetro Farm...');

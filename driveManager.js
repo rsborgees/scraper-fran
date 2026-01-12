@@ -77,10 +77,13 @@ async function getExistingIdsFromDrive(folderId) {
                 q: `'${folderId}' in parents and trashed = false`,
                 fields: 'nextPageToken, files(id, name)',
                 spaces: 'drive',
-                pageToken: pageToken
+                pageToken: pageToken,
+                pageSize: 1000
             });
 
             const files = res.data.files;
+            console.log(`📄 [Drive] Página processada. Arquivos encontrados: ${files ? files.length : 0}. Próxima página: ${res.data.nextPageToken ? 'SIM' : 'NÃO'}`);
+
             if (files && files.length > 0) {
                 files.forEach(file => {
                     fileCount++;
@@ -116,7 +119,8 @@ async function getExistingIdsFromDrive(folderId) {
                                 store: store
                             });
                         } else {
-                            console.log(`⚠️ [Drive] Arquivo sem loja identificada: ${file.name}`);
+                            // Opcional: Logar arquivos ignorados para debug
+                            // console.log(`⚠️ [Drive] Arquivo sem loja identificada: ${file.name}`);
                         }
                     }
                 });
@@ -124,8 +128,8 @@ async function getExistingIdsFromDrive(folderId) {
             pageToken = res.data.nextPageToken;
         } while (pageToken);
 
-        console.log(`✅ [Drive] Total de arquivos analisados: ${fileCount}`);
-        console.log(`✅ [Drive] Total de itens processáveis: ${items.length}`);
+        console.log(`✅ [Drive] Total de arquivos da pasta: ${fileCount}`);
+        console.log(`✅ [Drive] Itens válidos com ID e Loja: ${items.length}`);
 
         return items;
 
