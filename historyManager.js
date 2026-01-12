@@ -93,18 +93,30 @@ function normalizeId(id) {
     return id.toString().trim().replace(/\D/g, '').replace(/^0+/, '');
 }
 /**
- * Verifica se um ID é duplicado baseado em tempo (3 dias)
+ * Verifica se um ID é duplicado baseado em tempo (3 dias OU 30 dias se > 1000 reais)
  * @param {string} id 
  * @param {object} options { force: boolean }
+ * @param {number} price Preço do produto para regra de cooldown estendido
  */
-function isDuplicate(id, options = {}) {
+function isDuplicate(id, options = {}, price = 0) {
     if (!id) return false;
     const normId = normalizeId(id);
     if (!normId) return false;
 
     const history = loadHistory();
     const now = Date.now();
-    const maxAgeMs = MAX_AGE_HOURS * 60 * 60 * 1000; // 72 hours in milliseconds
+
+    // Regra Padrão: 3 dias (72h)
+    let maxAgeHours = MAX_AGE_HOURS;
+    let ruleName = "Padrão (3 dias)";
+
+    // Regra Valor Alto (> 1000): 30 dias (720h)
+    if (price && price > 1000) {
+        maxAgeHours = 30 * 24; // 720 horas
+        ruleName = "Valor Alto (30 dias)";
+    }
+
+    const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
 
     // 0. Check Session Blocklist (Drive)
     if (sessionBlocklist.has(normId)) {
@@ -143,12 +155,16 @@ function isDuplicate(id, options = {}) {
             return false;
         }
 
-        // REGRA PADRÃO: 72h
+        // NOVO LOG (PRICE AWARE)
+        if (price > 1000) {
+            console.log(`   💎 Item de Alto Valor (R$${price}): Aplicando regra de 30 dias.`);
+        }
+
         if (ageMs < maxAgeMs) {
-            console.log(`   🚫 ID Duplicado detectado: ${normId} (Match: ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h`);
+            console.log(`   🚫 ID Duplicado detectado: ${normId} (Match: ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h [Regra: ${ruleName}]`);
             return true;
         } else {
-            console.log(`   ♻️  ID ${normId} (Match: ${matchedIdInHistory}) expirado (${ageHours.toFixed(1)}h)`);
+            console.log(`   ♻️  ID ${normId} (Match: ${matchedIdInHistory}) expirado (${ageHours.toFixed(1)}h) [Regra: ${ruleName}] - Liberado.`);
             return false;
         }
     }

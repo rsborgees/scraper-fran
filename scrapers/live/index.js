@@ -137,7 +137,7 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
 
             if (!product) continue;
 
-            if (!ignoreDuplicates && isDuplicate(product.id)) {
+            if (!ignoreDuplicates && isDuplicate(product.id, {}, product.preco)) {
                 console.log(`   ⏭️  Duplicado (Histórico): ${product.id}`);
                 continue;
             }

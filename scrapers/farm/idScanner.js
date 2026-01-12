@@ -128,7 +128,7 @@ async function scrapeSpecificIds(browser, driveItems, quota = 999) {
 
                     // Dup check (com override se for favorito)
                     const normId = normalizeId(product.id);
-                    const isDup = isDuplicate(normId, { force: item.isFavorito });
+                    const isDup = isDuplicate(normId, { force: item.isFavorito }, product.preco);
 
                     if (!isDup) {
                         // Se não for dup (ou for favorito liberado), adiciona

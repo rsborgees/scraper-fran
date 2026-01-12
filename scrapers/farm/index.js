@@ -136,7 +136,7 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
 
                             if (product) {
                                 const normId = normalizeId(product.id);
-                                if (seenInRun.has(normId) || isDuplicate(normId)) continue;
+                                if (seenInRun.has(normId) || isDuplicate(normId, {}, product.preco)) continue;
 
                                 seenInRun.add(normId);
                                 if (!dryRun) markAsSent([product.id]);
