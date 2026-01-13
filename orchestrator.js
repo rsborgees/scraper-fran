@@ -34,7 +34,7 @@ async function runAllScrapers(overrideQuotas = null) {
 
     // 🚀 SINGLE BROWSER INSTANCE SHARING
     // Inicializa o navegador uma única vez para todos os scrapers
-    const { browser } = await initBrowser();
+    const { browser, context } = await initBrowser();
 
     try {
         const calculatedTotalTarget = Object.values(quotas).reduce((a, b) => a + b, 0);
@@ -95,7 +95,7 @@ async function runAllScrapers(overrideQuotas = null) {
                     // O `scrapeSpecificIds` respeita o `quotas.farm`.
 
                     // Reutiliza o browser instanciado
-                    const scrapedDriveItems = await scrapeSpecificIds(browser, limitedFarmDriveItems, quotas.farm);
+                    const scrapedDriveItems = await scrapeSpecificIds(context, limitedFarmDriveItems, quotas.farm);
                     scrapedDriveItems.forEach(p => p.message = buildFarmMessage(p, p.timerData));
 
                     allProducts.push(...scrapedDriveItems);
@@ -110,27 +110,38 @@ async function runAllScrapers(overrideQuotas = null) {
                     unusedFarmDriveItems = farmDriveItems.filter(item => !processedIds.has(normalizeId(item.id)));
                 }
 
-                // DRESS TO Drive Items
-                const dressToDriveItems = driveItemsByStore.dressto.filter(item => {
-                    if (item.isFavorito) return true;
-                    return !isDuplicate(normalizeId(item.id));
-                });
+                // =================================================================
+                // 🚗 DRIVE-FIRST FOR OTHER STORES (Dressto, KJU, ZZMall, Live)
+                // =================================================================
+                const otherStores = ['dressto', 'kju', 'zzmall', 'live'];
+                const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
 
-                if (dressToDriveItems.length > 0) {
-                    const { scrapeSpecificIdsDressTo } = require('./scrapers/dressto/idScanner');
-                    // Ordenar por Favorito
-                    const limitedDressItems = dressToDriveItems
-                        .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0))
-                        .slice(0, 50);
+                for (const store of otherStores) {
+                    const items = driveItemsByStore[store].filter(item => {
+                        if (item.isFavorito) return true;
+                        return !isDuplicate(normalizeId(item.id));
+                    });
 
-                    const scrapedDressItems = await scrapeSpecificIdsDressTo(browser, limitedDressItems, quotas.dressto);
-                    scrapedDressItems.forEach(p => p.message = buildDressMessage(p));
+                    if (items.length > 0) {
+                        const limitedItems = items
+                            .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0))
+                            .slice(0, 50);
 
-                    allProducts.push(...scrapedDressItems);
-                    driveProducts.push(...scrapedDressItems);
+                        console.log(`🔍 [${store.toUpperCase()}] Iniciando Drive-First (${items.length} itens)...`);
+                        const scrapedItems = await scrapeSpecificIdsGeneric(context, limitedItems, store);
+
+                        // Apply message builder
+                        scrapedItems.forEach(p => {
+                            if (store === 'dressto') p.message = buildDressMessage(p);
+                            else if (store === 'kju') p.message = buildKjuMessage(p);
+                            else if (store === 'live') p.message = buildLiveMessage([p]); // Live expects array
+                            else if (store === 'zzmall') p.message = buildZzMallMessage(p);
+                        });
+
+                        allProducts.push(...scrapedItems);
+                        driveProducts.push(...scrapedItems);
+                    }
                 }
-
-                // TODO: Implementar idScanner para outras lojas quando necessário (KJU, Live, ZZMall)
             }
         } catch (driveErr) {
             console.error('❌ Erro Phase 1 (Drive):', driveErr.message);
@@ -149,7 +160,7 @@ async function runAllScrapers(overrideQuotas = null) {
         // 1. Scrapes (Passando o objeto browser)
         if (remainingQuotaFarm > 0) {
             try {
-                let products = await scrapeFarm(remainingQuotaFarm, false, browser);
+                let products = await scrapeFarm(remainingQuotaFarm, false, context);
                 products.forEach(p => p.message = buildFarmMessage(p, p.timerData));
                 allProducts.push(...products);
                 console.log(`✅ FARM (Regular): ${products.length} msgs geradas`);
@@ -162,87 +173,108 @@ async function runAllScrapers(overrideQuotas = null) {
         if (remainingQuotaDressTo > 0) {
             try {
                 const { scrapeDressTo } = require('./scrapers/dressto');
-                let products = await scrapeDressTo(remainingQuotaDressTo, browser);
+                let products = await scrapeDressTo(remainingQuotaDressTo, context);
                 products.forEach(p => p.message = buildDressMessage(p));
                 allProducts.push(...products);
                 console.log(`✅ DressTo: ${products.length} msgs geradas`);
             } catch (e) { console.error(`❌ DressTo Error: ${e.message}`); }
-        } else {
+        } else if (quotas.dressto > 0) {
             console.log(`✅ DressTo: Cota preenchida pelo Drive (${driveCountDressTo}/${quotas.dressto})`);
         }
 
-        try {
-            const { scrapeKJU } = require('./scrapers/kju');
-            let products = await scrapeKJU(quotas.kju, browser);
-            products.forEach(p => p.message = buildKjuMessage(p));
-            allProducts.push(...products);
-            console.log(`✅ KJU: ${products.length} msgs geradas`);
-        } catch (e) { console.error(`❌ KJU Error: ${e.message}`); }
+        const driveCountKju = driveProducts.filter(p => p.loja === 'kju').length;
+        const remainingQuotaKju = Math.max(0, quotas.kju - driveCountKju);
 
-        try {
-            const { scrapeZZMall } = require('./scrapers/zzmall');
-            let products = await scrapeZZMall(quotas.zzmall, browser);
-            products.forEach(p => p.message = buildZzMallMessage(p));
-            allProducts.push(...products);
-            console.log(`✅ ZZMall: ${products.length} msgs geradas`);
-        } catch (e) { console.error(`❌ ZZMall Error: ${e.message}`); }
+        if (remainingQuotaKju > 0) {
+            try {
+                const { scrapeKJU } = require('./scrapers/kju');
+                let products = await scrapeKJU(remainingQuotaKju, context);
+                products.forEach(p => p.message = buildKjuMessage(p));
+                allProducts.push(...products);
+                console.log(`✅ KJU: ${products.length} msgs geradas`);
+            } catch (e) { console.error(`❌ KJU Error: ${e.message}`); }
+        } else if (quotas.kju > 0) {
+            console.log(`✅ KJU: Cota preenchida pelo Drive (${driveCountKju}/${quotas.kju})`);
+        }
+
+        const driveCountZzMall = driveProducts.filter(p => p.loja === 'zzmall').length;
+        const remainingQuotaZzMall = Math.max(0, quotas.zzmall - driveCountZzMall);
+
+        if (remainingQuotaZzMall > 0) {
+            try {
+                const { scrapeZZMall } = require('./scrapers/zzmall');
+                let products = await scrapeZZMall(remainingQuotaZzMall, context);
+                products.forEach(p => p.message = buildZzMallMessage(p));
+                allProducts.push(...products);
+                console.log(`✅ ZZMall: ${products.length} msgs geradas`);
+            } catch (e) { console.error(`❌ ZZMall Error: ${e.message}`); }
+        } else if (quotas.zzmall > 0) {
+            console.log(`✅ ZZMall: Cota preenchida pelo Drive (${driveCountZzMall}/${quotas.zzmall})`);
+        }
+
+        const driveCountLive = driveProducts.filter(p => p.loja === 'live').length;
+        const remainingQuotaLive = Math.max(0, quotas.live - driveCountLive);
 
         // 2. LIVE Special Handling (Sets)
-        try {
-            const { scrapeLive } = require('./scrapers/live');
-            let products = await scrapeLive(quotas.live, false, browser);
+        if (remainingQuotaLive > 0) {
+            try {
+                const { scrapeLive } = require('./scrapers/live');
+                let products = await scrapeLive(remainingQuotaLive, false, context);
 
-            let i = 0;
-            while (i < products.length) {
-                const current = products[i];
-                let chunk = [];
+                let i = 0;
+                while (i < products.length) {
+                    const current = products[i];
+                    let chunk = [];
 
-                if (current.type === 'onepiece') {
-                    // Peça única -> Mantém objeto original
-                    chunk = [current];
-                    i++;
-                } else {
-                    // Par Top + Bottom (qualquer)
-                    const next = products[i + 1];
-                    if (next && next.type !== 'onepiece') {
-                        // MERGE 2 produtos em 1 objeto SET
-                        console.log(`   🔗 Merging ${current.nome} + ${next.nome}`);
-
-                        const mergedProduct = {
-                            ...current,
-                            id: `${current.id}_${next.id}`,
-                            nome: `${current.nome} + ${next.nome}`,
-                            preco: parseFloat((current.preco + next.preco).toFixed(2)),
-                            precoOriginal: parseFloat(((current.precoOriginal || current.preco) + (next.precoOriginal || next.preco)).toFixed(2)),
-                            // Mantém imagem do Top (geralmente mais representativo) ou poderia tentar outra estratégia
-                            // User não pediu imagem composta, apenas "não enviar 2 produtos"
-                            imageUrl: current.imageUrl,
-                            imagePath: current.imagePath,
-                            link: current.url, // Link do Top
-                            loja: 'live',
-                            set: true
-                        };
-
-                        chunk = [mergedProduct];
-                        i += 2;
-                    } else {
-                        // Órfão (Top/Bottom sem par) - Envia single ou descarta?
-                        // Se não tiver par, envia single.
+                    if (current.type === 'onepiece') {
+                        // Peça única -> Mantém objeto original
                         chunk = [current];
                         i++;
+                    } else {
+                        // Par Top + Bottom (qualquer)
+                        const next = products[i + 1];
+                        if (next && next.type !== 'onepiece') {
+                            // MERGE 2 produtos em 1 objeto SET
+                            console.log(`   🔗 Merging ${current.nome} + ${next.nome}`);
+
+                            const mergedProduct = {
+                                ...current,
+                                id: `${current.id}_${next.id}`,
+                                nome: `${current.nome} + ${next.nome}`,
+                                preco: parseFloat((current.preco + next.preco).toFixed(2)),
+                                precoOriginal: parseFloat(((current.precoOriginal || current.preco) + (next.precoOriginal || next.preco)).toFixed(2)),
+                                // Mantém imagem do Top (geralmente mais representativo) ou poderia tentar outra estratégia
+                                // User não pediu imagem composta, apenas "não enviar 2 produtos"
+                                imageUrl: current.imageUrl,
+                                imagePath: current.imagePath,
+                                link: current.url, // Link do Top
+                                loja: 'live',
+                                set: true
+                            };
+
+                            chunk = [mergedProduct];
+                            i += 2;
+                        } else {
+                            // Órfão (Top/Bottom sem par) - Envia single ou descarta?
+                            // Se não tiver par, envia single.
+                            chunk = [current];
+                            i++;
+                        }
+                    }
+
+                    // Gera mensagem e adiciona ao output final
+                    if (chunk.length > 0) {
+                        // Se for merge set, só tem 1 item no chunk
+                        const msg = buildLiveMessage(chunk);
+                        chunk.forEach(p => p.message = msg);
+                        allProducts.push(...chunk);
                     }
                 }
-
-                // Gera mensagem e adiciona ao output final
-                if (chunk.length > 0) {
-                    // Se for merge set, só tem 1 item no chunk
-                    const msg = buildLiveMessage(chunk);
-                    chunk.forEach(p => p.message = msg);
-                    allProducts.push(...chunk);
-                }
-            }
-            console.log(`✅ LIVE: ${products.length} produtos processados`);
-        } catch (e) { console.error(`❌ LIVE Error: ${e.message}`); }
+                console.log(`✅ LIVE: ${products.length} produtos processados`);
+            } catch (e) { console.error(`❌ LIVE Error: ${e.message}`); }
+        } else if (quotas.live > 0) {
+            console.log(`✅ LIVE: Cota preenchida pelo Drive (${driveCountLive}/${quotas.live})`);
+        }
 
         // 3. REDISTRIBUIÇÃO (Garantir 12 produtos)
         let totalTarget = Object.values(quotas).reduce((a, b) => a + b, 0);

@@ -36,11 +36,17 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
         const maxPages = 5; // Suficiente para preencher a quota de Dress To
 
         while (products.length < quota && pageNum <= maxPages) {
-            const currentUrl = `https://www.dressto.com.br/nossas-novidades?page=${pageNum}`;
-            console.log(`   📄 Página ${pageNum}: ${currentUrl}`);
+            const targetUrl = `https://www.dressto.com.br/nossas-novidades?page=${pageNum}`;
+            console.log(`   📄 Página ${pageNum}: ${targetUrl}`);
 
             try {
-                await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                await page.goto(targetUrl, {
+                    waitUntil: 'load',
+                    timeout: 60000
+                });
+
+                // Pequena pausa para garantir carregamento dinâmico (VTEX)
+                await page.waitForTimeout(2000 + Math.random() * 3000);
                 // Explicit wait for any product link to ensure page is actually ready
                 try {
                     await page.waitForSelector('a.vtex-product-summary-2-x-clearLink, a[href$="/p"]', { timeout: 15000 });
@@ -89,8 +95,12 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
                     let collectedMacacoes = products.filter(p => p.categoria === 'macacão').length;
 
                     for (const url of productUrls) {
-                        // Stop strictly when quota is reached
                         if (products.length >= quota) break;
+
+                        console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
+
+                        // Random delay entre produtos para evitar rate limit
+                        await page.waitForTimeout(1500 + Math.random() * 2500);
 
                         // Check ID na URL
                         // Procura padrão de 8 dígitos que pode estar separado por pontos ou hífens
@@ -209,4 +219,4 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
     return selectedProducts.slice(0, quota);
 }
 
-module.exports = { scrapeDressTo };
+module.exports = { scrapeDressTo, parseProductDressTo };

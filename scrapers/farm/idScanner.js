@@ -7,10 +7,10 @@ const { normalizeId, isDuplicate, markAsSent } = require('../../historyManager')
  * @param {object} browser Playwright Browser instance
  * @param {Array} driveItems Lista de objetos { id, driveUrl, isFavorito, ... }
  */
-async function scrapeSpecificIds(browser, driveItems, quota = 999) {
+async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
     console.log(`\n🚙 INICIANDO SCRAPE DRIVE-FIRST (${driveItems.length} itens disponíveis, meta: ${quota})...`);
 
-    const page = await browser.newPage();
+    const page = await contextOrBrowser.newPage();
     const collectedProducts = [];
 
     // Previne carregamento de imagens pesadas do site, já que vamos usar as do Drive

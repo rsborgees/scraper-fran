@@ -22,9 +22,9 @@ const STORE_CONFIG = {
     },
     kju: {
         baseUrl: 'https://www.kjubrasil.com',
-        searchUrl: (id) => `https://www.kjubrasil.com/buscar?q=${id}`,
-        searchInputSelector: 'input[type="search"], input.search',
-        productLinkSelector: '.prod a, a[href*="/produto"]',
+        searchUrl: (id) => `https://www.kjubrasil.com/busca/?q=${id}`,
+        searchInputSelector: 'input[name="q"], input.search',
+        productLinkSelector: '.produtos .item a, .prod a, a.b_acao',
         parser: 'kju',
         utmParam: 'ref=7B1313'
     },
@@ -48,11 +48,11 @@ const STORE_CONFIG = {
 
 /**
  * Scraper focado em IDs específicos para múltiplas lojas
- * @param {object} browser Playwright Browser instance
+ * @param {object} contextOrBrowser Playwright Browser or BrowserContext instance
  * @param {Array} driveItems Lista de objetos { id, driveUrl, isFavorito, store }
  * @param {string} storeName Nome da loja (dressto, kju, zzmall, live)
  */
-async function scrapeSpecificIdsGeneric(browser, driveItems, storeName) {
+async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName) {
     const config = STORE_CONFIG[storeName];
     if (!config) {
         console.log(`❌ [ID Scanner] Loja não configurada: ${storeName}`);
@@ -61,8 +61,8 @@ async function scrapeSpecificIdsGeneric(browser, driveItems, storeName) {
 
     console.log(`\n🔍 [${storeName.toUpperCase()}] DRIVE-FIRST: Buscando ${driveItems.length} itens...`);
 
-    const page = await browser.newPage();
     const collectedProducts = [];
+    const page = await contextOrBrowser.newPage();
 
     try {
         for (const item of driveItems) {
@@ -75,23 +75,40 @@ async function scrapeSpecificIdsGeneric(browser, driveItems, storeName) {
                 await new Promise(r => setTimeout(r, 2000));
 
                 // Verifica se estamos em uma página de resultados ou produto direto
-                const currentUrl = page.url();
+                let currentUrl = page.url();
+
+                // Redirection check: if search redirected to product page
                 let isProductPage = currentUrl.includes('/p') || currentUrl.includes('/produto');
 
+                // Advanced detection (if store doesn't use /p/ or /produto/)
                 if (!isProductPage) {
-                    // Estamos na página de busca, precisa clicar no primeiro resultado
-                    try {
-                        await page.waitForSelector(config.productLinkSelector, { timeout: 10000 });
-                        await new Promise(r => setTimeout(r, 1000));
+                    isProductPage = await page.evaluate(() => {
+                        return !!document.querySelector('.codigo_produto, .productReference, [itemprop="identifier"], .vtex-product-identifier');
+                    });
+                }
 
-                        const productLink = page.locator(config.productLinkSelector).first();
-                        await productLink.scrollIntoViewIfNeeded();
-                        await Promise.all([
-                            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
-                            productLink.click({ force: true })
-                        ]);
+                if (isProductPage) {
+                    console.log(`   ✨ Redirecionado direto para o produto!`);
+                } else {
+                    // Try to catch the first result link and navigate directly
+                    try {
+                        const selector = config.productLinkSelector;
+                        console.log(`   🖱️ Procurando seletor: ${selector}`);
+                        await page.waitForSelector(selector, { state: 'attached', timeout: 10000 });
+
+                        const href = await page.evaluate((sel) => {
+                            const el = document.querySelector(sel);
+                            return el ? el.href : null;
+                        }, selector);
+
+                        if (href) {
+                            console.log(`   🔗 Navegando diretamente para o resultado: ${href}`);
+                            await page.goto(href, { waitUntil: 'load', timeout: 30000 });
+                        } else {
+                            throw new Error('Link not found');
+                        }
                     } catch (navErr) {
-                        console.log(`   ❌ Produto ${item.id} não encontrado na busca de ${storeName}`);
+                        console.log(`   ❌ Produto ${item.id} não encontrado na busca de ${storeName} (Erro: ${navErr.message})`);
                         continue;
                     }
                 }

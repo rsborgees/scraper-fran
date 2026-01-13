@@ -31,12 +31,24 @@ async function scrapeKJU(quota = 6, parentBrowser = null) {
     }
 
     try {
-        await page.goto('https://www.kjubrasil.com/?ref=7B1313', {
-            waitUntil: 'domcontentloaded',
-            timeout: 45000
+        const targetUrl = 'https://www.kjubrasil.com/acessorios/?ref=7B1313';
+        console.log(`   🔗 Navegando para Categorias (Acessórios): ${targetUrl}`);
+
+        await page.goto(targetUrl, {
+            waitUntil: 'load',
+            timeout: 60000
         });
 
-        await page.waitForTimeout(3000);
+        // Identifica seletores de cards de produtos
+        const productSelector = '.produtos .item a, .prod a, a.b_acao';
+
+        // Espera explícita pelo container de produtos ou seletor padrão
+        console.log('   ⏳ Aguardando carregamento dos produtos...');
+        try {
+            await page.waitForSelector(productSelector, { state: 'attached', timeout: 15000 });
+        } catch (e) {
+            console.warn('   ⚠️ Timeout aguardando produtos. Tentando continuar...');
+        }
 
         // 📜 Rolagem lenta e parcial (3 viewports)
         console.log('   📜 Rolando página suavemente (parcial)...');
@@ -50,9 +62,6 @@ async function scrapeKJU(quota = 6, parentBrowser = null) {
             }
         });
         await page.waitForTimeout(2000);
-
-        // Identifica seletores de cards de produtos
-        const productSelector = '.prod a';
 
         // Coleta URLs de produtos (flat structure na KJU)
         const productUrls = await page.evaluate((sel) => {
@@ -70,12 +79,30 @@ async function scrapeKJU(quota = 6, parentBrowser = null) {
                 });
         }, productSelector);
 
-        console.log(`   🔎 Encontrados ${productUrls.length} produtos na listagem.`);
+        // Fallback se não encontrar nada com o seletor padrão
+        if (productUrls.length === 0) {
+            console.log('   ⚠️ Nenhum produto encontrado com ".prod a". Tentando seletores alternativos...');
+            const fallbackUrls = await page.evaluate(() => {
+                // Procura por links que pareçam ser de produtos (geralmente sem extensões e com nomes longos)
+                const anchors = Array.from(document.querySelectorAll('a[href]'));
+                return anchors
+                    .map(a => a.href)
+                    .filter(href => {
+                        const path = new URL(href).pathname;
+                        return path.length > 15 && !path.includes('/central/') && !path.includes('/ajuda/') && !path.includes('/fale-conosco/');
+                    });
+            });
+            productUrls.push(...new Set(fallbackUrls));
+            console.log(`   💡 Fallback encontrou ${productUrls.length} links potenciais.`);
+        }
 
         for (const url of productUrls) {
             if (products.length >= quota) break;
 
             console.log(`\n🛍️  Processando produto ${products.length + 1}/${quota}: ${url}`);
+
+            // Random delay entre produtos
+            await page.waitForTimeout(1000 + Math.random() * 2000);
 
             const product = await parseProductKJU(page, url);
 
@@ -112,7 +139,7 @@ async function scrapeKJU(quota = 6, parentBrowser = null) {
             }
 
             // Volta para a lista
-            await page.goto('https://www.kjubrasil.com/?ref=7B1313', { waitUntil: 'domcontentloaded' });
+            await page.goto('https://www.kjubrasil.com/acessorios/?ref=7B1313', { waitUntil: 'load' });
             await page.evaluate(() => window.scrollBy(0, 800));
             await page.waitForTimeout(1000);
         }

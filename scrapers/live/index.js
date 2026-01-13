@@ -29,10 +29,16 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
     }
 
     try {
-        await page.goto('https://www.liveoficial.com.br/outlet', {
-            waitUntil: 'domcontentloaded',
-            timeout: 45000
+        const targetUrl = 'https://www.liveoficial.com.br/outlet';
+        console.log(`   🔗 Navegando para: ${targetUrl}`);
+
+        await page.goto(targetUrl, {
+            waitUntil: 'load',
+            timeout: 60000
         });
+
+        // Espera inicial para shields/popups renderizarem
+        await page.waitForTimeout(3000 + Math.random() * 3000);
 
         await page.waitForTimeout(5000);
 
@@ -133,6 +139,10 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
             if (products.length >= quota * 3) break;
 
             console.log(`\n   🔎 Processando: ${url}`);
+
+            // Random delay entre produtos
+            await page.waitForTimeout(1000 + Math.random() * 2000);
+
             const product = await parseProductLive(page, url);
 
             if (!product) continue;

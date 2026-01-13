@@ -38,7 +38,9 @@ async function diagnose() {
                     (store.name === 'KJU' ? 'https://www.kjubrasil.com/?ref=7B1313' : 'https://www.liveoficial.com.br/outlet');
 
                 console.log(`📸 Capturando screenshot de debug para ${store.name} em: ${testUrl}`);
-                await debugPage.goto(testUrl, { waitUntil: 'networkidle', timeout: 30000 });
+                await debugPage.goto(testUrl, { waitUntil: 'load', timeout: 30000 });
+                // Espera manual após load
+                await debugPage.waitForTimeout(5000);
                 const screenshotPath = `debug_failure_${store.name.toLowerCase()}.png`;
                 await debugPage.screenshot({ path: screenshotPath });
                 console.log(`🖼️ Screenshot salvo: ${screenshotPath}`);

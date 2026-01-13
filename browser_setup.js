@@ -37,34 +37,57 @@ async function initBrowser() {
         ]
     };
 
+    /*
     if (isHeadless) {
         // Tenta usar o novo modo headless se disponível (melhor para anti-bot)
         // Mas deixa o Playwright gerenciar via opção 'headless: true' ou args
         launchOptions.args.push('--headless=new');
     }
+    */
 
     const browser = await chromium.launch(launchOptions);
 
     const context = await browser.newContext({
-        viewport: { width: 1280, height: 800 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1366, height: 768 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         locale: 'pt-BR',
         timezoneId: 'America/Sao_Paulo',
         permissions: ['geolocation'],
         geolocation: { latitude: -23.5505, longitude: -46.6333 }, // São Paulo, BR
-        colorScheme: 'light'
+        colorScheme: 'light',
+        extraHTTPHeaders: {
+            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1'
+        }
     });
 
     const page = await context.newPage();
 
-    // 🛡️ ANTI-DETECÇÃO: Inject scripts para esconder webdriver
+    // 🛡️ ANTI-DETECÇÃO: Inject scripts para esconder webdriver e simular browser real
     await page.addInitScript(() => {
-        // Hide webdriver property
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        });
+        // 1. Oculta a propriedade webdriver
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 
-        // Override the permissions API
+        // 2. Simula o objeto window.chrome
+        window.chrome = {
+            runtime: {},
+            loadTimes: function () { },
+            csi: function () { },
+            app: {}
+        };
+
+        // 3. Simula plugins e linguagens
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+
+        // 4. Mock das permissões
         const originalQuery = window.navigator.permissions.query;
         window.navigator.permissions.query = (parameters) => (
             parameters.name === 'notifications' ?
@@ -72,32 +95,17 @@ async function initBrowser() {
                 originalQuery(parameters)
         );
 
-        // Pass the Chrome Test
-        window.navigator.chrome = {
-            runtime: {},
-            loadTimes: function () { },
-            csi: function () { },
-            app: {}
+        // 5. Spoof de WebGL Vendor/Renderer (Opcional, mas ajuda)
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function (parameter) {
+            // UNMASKED_VENDOR_WEBGL
+            if (parameter === 37445) return 'Google Inc. (Intel)';
+            // UNMASKED_RENDERER_WEBGL
+            if (parameter === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0)';
+            return getParameter.apply(this, arguments);
         };
 
-        // Pass the Plugins Length Test
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => [1, 2, 3, 4, 5]
-        });
-
-        // Pass the Languages Test
-        Object.defineProperty(navigator, 'languages', {
-            get: () => ['pt-BR', 'pt', 'en-US', 'en']
-        });
-
-        // Pass the iframe Test
-        Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
-            get: function () {
-                return window;
-            }
-        });
-
-        // Pass toString test
+        // 6. Corrige o toString do Navigator
         window.navigator.toString = () => '[object Navigator]';
     });
 
