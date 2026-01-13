@@ -200,6 +200,18 @@ async function parseProduct(page, url) {
                 precoOriginal = precoAtual;
             }
 
+            // --- TEMPORÁRIO: DESCONTO EXTRA DE 10% (Solicitado em 13/01/2026) ---
+            // Expira automaticamente em 15/01/2026 (Quinta-feira)
+            const now = new Date();
+            const expirationDate = new Date('2026-01-15T00:00:00-03:00'); // Fuso de Brasília
+
+            if (precoAtual > 0 && now < expirationDate) {
+                const precoComDescontoExtra = parseFloat((precoAtual * 0.90).toFixed(2));
+                console.log(`🎉 [TEMPORÁRIO] Aplicando 10% off: De R$${precoAtual} para R$${precoComDescontoExtra}`);
+                precoAtual = precoComDescontoExtra;
+            }
+            // ---------------------------------------------------------------------
+
             // FILTRO BAZAR (Requisito: Se estiver no Bazar, NÃO envia, independente do desconto)
             const isBazar = (function () {
                 // 1. URL Check
