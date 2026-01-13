@@ -40,7 +40,12 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
             console.log(`   📄 Página ${pageNum}: ${currentUrl}`);
 
             try {
-                await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                // Explicit wait for any product link to ensure page is actually ready
+                try {
+                    await page.waitForSelector('a.vtex-product-summary-2-x-clearLink, a[href$="/p"]', { timeout: 15000 });
+                } catch (e) { console.log('      ⚠️ Timeout esperando carregamento da lista (tentando continuar mesmo assim)...'); }
+
                 await page.waitForTimeout(3000);
 
                 // Scroll suave para carregar lazy elements (VTEX IO)

@@ -28,7 +28,7 @@ async function scrapeSpecificIdsDressTo(browser, driveItems, quota = 999) {
 
             try {
                 // 1. Navega para a home (ou busca direta se URL permitir, mas VTEX search é chata)
-                await page.goto(`https://www.dressto.com.br`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await page.goto(`https://www.dressto.com.br`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
                 // Wait for stability
                 await new Promise(r => setTimeout(r, 1500));
@@ -56,7 +56,7 @@ async function scrapeSpecificIdsDressTo(browser, driveItems, quota = 999) {
                     }
 
                     // Tenta garantir que o input está visível antes de preencher
-                    await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 5000 });
+                    await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 15000 });
                     await page.fill(searchInputSelector, item.id);
                     await page.press(searchInputSelector, 'Enter');
 
