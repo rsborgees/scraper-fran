@@ -51,21 +51,28 @@ const STORE_CONFIG = {
  * @param {object} contextOrBrowser Playwright Browser or BrowserContext instance
  * @param {Array} driveItems Lista de objetos { id, driveUrl, isFavorito, store }
  * @param {string} storeName Nome da loja (dressto, kju, zzmall, live)
+ * @param {number} quota Meta máxima de itens para esta loja
  */
-async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName) {
+async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName, quota = 999) {
     const config = STORE_CONFIG[storeName];
     if (!config) {
         console.log(`❌ [ID Scanner] Loja não configurada: ${storeName}`);
         return [];
     }
 
-    console.log(`\n🔍 [${storeName.toUpperCase()}] DRIVE-FIRST: Buscando ${driveItems.length} itens...`);
+    console.log(`\n🔍 [${storeName.toUpperCase()}] DRIVE-FIRST: Buscando ${driveItems.length} itens (Meta: ${quota})...`);
 
     const collectedProducts = [];
     const page = await contextOrBrowser.newPage();
 
     try {
         for (const item of driveItems) {
+            // Stop if quota reached
+            if (collectedProducts.length >= quota) {
+                console.log(`   ✅ Meta de ${quota} itens para ${storeName} atingida no Drive.`);
+                break;
+            }
+
             console.log(`\n🔍 [${storeName}] Buscando ID ${item.id} (Favorito: ${item.isFavorito})...`);
 
             try {

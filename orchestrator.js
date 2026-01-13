@@ -128,7 +128,7 @@ async function runAllScrapers(overrideQuotas = null) {
                             .slice(0, 50);
 
                         console.log(`🔍 [${store.toUpperCase()}] Iniciando Drive-First (${items.length} itens)...`);
-                        const scrapedItems = await scrapeSpecificIdsGeneric(context, limitedItems, store);
+                        const scrapedItems = await scrapeSpecificIdsGeneric(context, limitedItems, store, quotas[store]);
 
                         // Apply message builder
                         scrapedItems.forEach(p => {
