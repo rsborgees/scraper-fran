@@ -85,17 +85,19 @@ async function runAllScrapers(overrideQuotas = null) {
                 });
 
                 if (farmDriveItems.length > 0) {
-                    // Ordenar por Favorito primeiro e pegar apenas até o limite da quota
-                    const limitedFarmDriveItems = farmDriveItems
-                        .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0))
-                        .slice(0, 50); // Passa mais candidatos para compensar falhas/duplicados
+                    // Ordenar por Favorito primeiro e passar TODOS os itens disponíveis
+                    // O scraper vai processar até atingir a quota total (não só a quota inicial)
+                    const sortedFarmDriveItems = farmDriveItems
+                        .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0));
 
-                    // Calculamos a cota disponível para usar, mas pegamos mais candidatos para garantir
-                    // que se chover duplicado, não ficamos sem.
-                    // O `scrapeSpecificIds` respeita o `quotas.farm`.
+                    console.log(`📊 [FARM] ${sortedFarmDriveItems.length} itens disponíveis no Drive (${farmDriveItems.filter(i => i.isFavorito).length} favoritos)`);
+
+                    // IMPORTANTE: Passa TODOS os candidatos do Drive, não limita a 50
+                    // O scraper interno vai respeitar a quota total do orchestrator
+                    const totalQuota = Object.values(quotas).reduce((a, b) => a + b, 0);
 
                     // Reutiliza o browser instanciado
-                    const scrapedDriveItems = await scrapeSpecificIds(context, limitedFarmDriveItems, quotas.farm);
+                    const scrapedDriveItems = await scrapeSpecificIds(context, sortedFarmDriveItems, totalQuota);
                     scrapedDriveItems.forEach(p => p.message = buildFarmMessage(p, p.timerData));
 
                     allProducts.push(...scrapedDriveItems);
@@ -152,19 +154,24 @@ async function runAllScrapers(overrideQuotas = null) {
         const remainingQuotaFarm = Math.max(0, quotas.farm - driveCountFarm);
 
         console.log(`📊 Pós-Drive: ${driveCountFarm} itens Farm capturados. Restam ${remainingQuotaFarm} para scraping regular.`);
+        console.log(`📊 Itens Farm não utilizados do Drive: ${unusedFarmDriveItems.length}`);
 
         // =================================================================
         // PHASE 2: REGULAR SCRAPING
         // =================================================================
 
         // 1. Scrapes (Passando o objeto browser)
-        if (remainingQuotaFarm > 0) {
+        // IMPORTANTE: Só faz scraping regular se NÃO houver mais itens no Drive
+        if (remainingQuotaFarm > 0 && unusedFarmDriveItems.length === 0) {
+            console.log(`🌐 [FARM] Drive esgotado. Iniciando scraping regular...`);
             try {
                 let products = await scrapeFarm(remainingQuotaFarm, false, context);
                 products.forEach(p => p.message = buildFarmMessage(p, p.timerData));
                 allProducts.push(...products);
                 console.log(`✅ FARM (Regular): ${products.length} msgs geradas`);
             } catch (e) { console.error(`❌ FARM Error: ${e.message}`); }
+        } else if (remainingQuotaFarm > 0 && unusedFarmDriveItems.length > 0) {
+            console.log(`⏭️ [FARM] Pulando scraping regular. Ainda há ${unusedFarmDriveItems.length} itens no Drive para redistribuição.`);
         }
 
         const driveCountDressTo = driveProducts.filter(p => p.loja === 'dressto').length;
@@ -320,8 +327,10 @@ async function runAllScrapers(overrideQuotas = null) {
 
 
             // STRATEGY 2: GENERIC SCRAPE (FALLBACK DO FALLBACK)
-            if (gap > 0) {
+            // Só faz scraping genérico se o Drive estiver COMPLETAMENTE ESGOTADO
+            if (gap > 0 && unusedFarmDriveItems.length === 0) {
                 console.log(`\n🔄 Preenchendo lacuna restante (${gap}) com FARM (Genérico)...`);
+                console.log(`   ⚠️ Drive completamente esgotado. Usando scraping regular como último recurso.`);
 
                 let attempts = 0;
                 const maxAttempts = 2;
@@ -345,6 +354,9 @@ async function runAllScrapers(overrideQuotas = null) {
                         break;
                     }
                 }
+            } else if (gap > 0 && unusedFarmDriveItems.length > 0) {
+                console.log(`\n⚠️ Lacuna de ${gap} produtos restante, mas ainda há ${unusedFarmDriveItems.length} itens no Drive.`);
+                console.log(`   💡 Considere aumentar a quota ou verificar se há problemas com os itens do Drive.`);
             }
         }
 
