@@ -166,17 +166,23 @@ function buildFarmMessage(produto, timerData = null) {
  * ZZMALL TEMPLATE
  */
 function buildZzMallMessage(produto) {
+    const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
+    const priceLine = isPromotional
+        ? `De ~${formatPrice(produto.precoOriginal)}~ Por ${formatPrice(produto.precoAtual)}`
+        : formatPrice(produto.precoAtual);
+
     return `
-* AREZZO, SCHÜTZ, ANACAPRI, VANS, VICENZA ❤️
-${produto.nome}
+AREZZO, SCHÜTZ, ANACAPRI, VANS, VICENZA ❤️
 
 
-Por *${formatPrice(produto.precoAtual)}* 🔥
+🏷️ use o voucher ZZCUPOM4452 para aplicar desconto
+
+
+${priceLine}
 
 ${produto.url}
 
-
-💚ZZ MALL é marketplace oficial do grupo Arezzo
+💚 ZZ MALL é marketplace oficial do grupo Arezzo
 `.trim();
 }
 
