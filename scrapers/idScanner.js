@@ -79,7 +79,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                 // Estratégia 1: VTEX Full-Text Search URL (funciona para DressTo, ZZMall, Live)
                 const searchUrl = config.searchUrl(item.id);
                 await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                await new Promise(r => setTimeout(r, 2000));
+                await new Promise(r => setTimeout(r, 3000)); // Espera maior para VTEX carregar
 
                 // Verifica se estamos em uma página de resultados ou produto direto
                 let currentUrl = page.url();
@@ -97,12 +97,25 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                 if (isProductPage) {
                     console.log(`   ✨ Redirecionado direto para o produto!`);
                 } else {
+                    // Verifica se é página de "não encontrado"
+                    const notFound = await page.evaluate(() => {
+                        const text = document.body.innerText || '';
+                        return text.includes('Nenhum produto foi encontrado') ||
+                            text.includes('não encontrado') ||
+                            text.includes('Ops, sua busca');
+                    });
+
+                    if (notFound) {
+                        console.log(`   ❌ Produto ${item.id} não encontrado (página sem resultados)`);
+                        continue;
+                    }
+
                     // Try to catch the first result link and navigate directly
                     try {
                         const selector = config.productLinkSelector;
                         console.log(`   🖱️ Procurando seletor: ${selector}`);
-                        await page.waitForSelector(selector, { state: 'attached', timeout: 10000 });
 
+                        // Busca diretamente sem waitForSelector
                         const href = await page.evaluate((sel) => {
                             const el = document.querySelector(sel);
                             return el ? el.href : null;
