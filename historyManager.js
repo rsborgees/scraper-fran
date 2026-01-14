@@ -93,10 +93,10 @@ function normalizeId(id) {
     return id.toString().trim().replace(/\D/g, '').replace(/^0+/, '');
 }
 /**
- * Verifica se um ID é duplicado baseado em tempo (3 dias OU 30 dias se > 1000 reais)
+ * Verifica se um ID é duplicado
  * @param {string} id 
- * @param {object} options { force: boolean }
- * @param {number} price Preço do produto para regra de cooldown estendido
+ * @param {object} options { force: boolean } - force=true para favoritos (podem repetir após 24h)
+ * @param {number} price Preço do produto (não usado mais, mantido para compatibilidade)
  */
 function isDuplicate(id, options = {}, price = 0) {
     if (!id) return false;
@@ -105,18 +105,6 @@ function isDuplicate(id, options = {}, price = 0) {
 
     const history = loadHistory();
     const now = Date.now();
-
-    // Regra Padrão: 3 dias (72h)
-    let maxAgeHours = MAX_AGE_HOURS;
-    let ruleName = "Padrão (3 dias)";
-
-    // Regra Valor Alto (> 1000): 30 dias (720h)
-    if (price && price > 1000) {
-        maxAgeHours = 30 * 24; // 720 horas
-        ruleName = "Valor Alto (30 dias)";
-    }
-
-    const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
 
     // 0. Check Session Blocklist (Drive)
     if (sessionBlocklist.has(normId)) {
@@ -139,13 +127,13 @@ function isDuplicate(id, options = {}, price = 0) {
         });
     }
 
-    // 3. Se achamos um registro, verificamos as regras de tempo
+    // 3. Se achamos um registro no histórico
     if (matchedIdInHistory) {
         const entry = history[matchedIdInHistory];
         const ageMs = now - entry.timestamp;
         const ageHours = ageMs / (1000 * 60 * 60);
 
-        // REGRA ESPECIAL: FAVORITOS (24h)
+        // REGRA ESPECIAL: FAVORITOS (podem repetir após 24h)
         if (options.force) {
             if (ageHours < 24) {
                 console.log(`   🚫 Favorito ignorado: ID ${normId} emitiu match com ${matchedIdInHistory} há ${ageHours.toFixed(1)}h (mínimo 24h)`);
@@ -155,18 +143,9 @@ function isDuplicate(id, options = {}, price = 0) {
             return false;
         }
 
-        // NOVO LOG (PRICE AWARE)
-        if (price > 1000) {
-            console.log(`   💎 Item de Alto Valor (R$${price}): Aplicando regra de 30 dias.`);
-        }
-
-        if (ageMs < maxAgeMs) {
-            console.log(`   🚫 ID Duplicado detectado: ${normId} (Match: ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h [Regra: ${ruleName}]`);
-            return true;
-        } else {
-            console.log(`   ♻️  ID ${normId} (Match: ${matchedIdInHistory}) expirado (${ageHours.toFixed(1)}h) [Regra: ${ruleName}] - Liberado.`);
-            return false;
-        }
+        // REGRA PADRÃO: Produtos normais NUNCA repetem
+        console.log(`   🚫 ID Duplicado detectado: ${normId} (Match: ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h [Regra: Sem Repetição]`);
+        return true;
     }
 
     return false;
@@ -187,14 +166,6 @@ function markAsSent(ids) {
                 timestamp: now,
                 lastSent: timestamp
             };
-        }
-    });
-
-    // Opcional: Limpar IDs muito antigos (> 30 dias) para manter o arquivo enxuto
-    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    Object.keys(history).forEach(id => {
-        if (now - history[id].timestamp > thirtyDaysMs) {
-            delete history[id];
         }
     });
 

@@ -87,12 +87,34 @@ async function getExistingIdsFromDrive(folderId) {
             if (files && files.length > 0) {
                 files.forEach(file => {
                     fileCount++;
+                    const nameLower = file.name.toLowerCase();
+
                     // Regra: "o nome do arquivo é o codigo da roupa e o nome da loja"
-                    // Extrai sequência de 6+ dígitos
-                    const match = file.name.match(/(\d{6,})/);
-                    if (match) {
-                        const id = match[1];
-                        const nameLower = file.name.toLowerCase();
+                    // Conjunto: IDs separados por ESPAÇO. Ex: "351693 350740"
+                    // NÃO é conjunto se houver underline: "351693_350740" -> Ignora underline
+
+                    let ids = [];
+                    // Busca todos os IDs de 6+ dígitos
+                    const allIds = file.name.match(/\d{6,}/g) || [];
+
+                    if (allIds.length > 1) {
+                        // Verifica se a separação entre os dois primeiros IDs tem underline
+                        // Se tiver, tratamos como ID único (pega só o primeiro) e não é conjunto
+                        const id1 = allIds[0];
+                        const id2 = allIds[1];
+                        const between = file.name.substring(file.name.indexOf(id1) + id1.length, file.name.indexOf(id2));
+
+                        if (between.includes('_')) {
+                            ids = [id1]; // Não é conjunto
+                        } else {
+                            ids = allIds; // É conjunto
+                        }
+                    } else {
+                        ids = allIds;
+                    }
+
+                    if (ids.length > 0) {
+                        const mainId = ids[0];
                         const isFavorito = nameLower.includes('favorito');
 
                         // 🏪 DETECÇÃO DE LOJA pelo nome do arquivo
@@ -111,16 +133,15 @@ async function getExistingIdsFromDrive(folderId) {
 
                         if (store) {
                             items.push({
-                                id: id,
+                                id: mainId,
+                                ids: ids, // Novo campo com todos os IDs
+                                isSet: ids.length > 1,
                                 fileId: file.id,
                                 name: file.name,
                                 driveUrl: `https://drive.google.com/uc?export=download&id=${file.id}`,
                                 isFavorito: isFavorito,
                                 store: store
                             });
-                        } else {
-                            // Opcional: Logar arquivos ignorados para debug
-                            // console.log(`⚠️ [Drive] Arquivo sem loja identificada: ${file.name}`);
                         }
                     }
                 });

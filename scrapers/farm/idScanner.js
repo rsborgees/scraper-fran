@@ -24,126 +24,121 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
                 break;
             }
 
-            console.log(`\n🔍 Buscando ID ${item.id} (Favorito: ${item.isFavorito})...`);
+            const idsToSearch = item.ids || [item.id];
+            console.log(`\n🔍 Buscendo ${item.isSet ? 'CONJUNTO' : 'ID'} ${idsToSearch.join(' ')} (Favorito: ${item.isFavorito})...`);
 
-            try {
-                // 1. Navega para a home e realiza busca interativa
-                await page.goto(`https://www.farmrio.com.br`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            const mergedProducts = [];
 
+            for (const id of idsToSearch) {
                 try {
-                    // Click Search Icon (Lupa)
-                    // Selector based on inspection: label[aria-label="open search"] or similar SVG container
-                    const searchIconSelector = 'label[aria-label="open search"], .vtex-store-components-3-x-searchIcon';
-                    await page.waitForSelector(searchIconSelector, { timeout: 10000 });
-                    await page.click(searchIconSelector);
+                    console.log(`   🔎 Buscando sub-item ${id}...`);
+                    // 1. Navega para a home e realiza busca interativa
+                    await page.goto(`https://www.farmrio.com.br`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-                    // Type ID in Search Input
-                    const searchInputSelector = 'input.search-input, input[placeholder*="buscar"]';
-                    await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 5000 });
-                    await page.fill(searchInputSelector, item.id);
-                    await page.press(searchInputSelector, 'Enter');
-
-                    // Check for 'Not Found' message immediately to avoid clicking recommendations
                     try {
-                        // Wait briefly for page update
-                        await page.waitForTimeout(2000);
+                        const searchIconSelector = 'label[aria-label="open search"], .vtex-store-components-3-x-searchIcon';
+                        await page.waitForSelector(searchIconSelector, { timeout: 10000 });
+                        await page.click(searchIconSelector);
 
+                        const searchInputSelector = 'input.search-input, input[placeholder*="buscar"]';
+                        await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 5000 });
+                        await page.fill(searchInputSelector, id);
+                        await page.press(searchInputSelector, 'Enter');
+
+                        await page.waitForTimeout(2000);
                         const notFound = await page.evaluate(() => {
                             const bodyText = document.body.innerText || '';
-                            return bodyText.includes('Ops, sua busca não foi encontrada') ||
-                                bodyText.includes('OPS, NÃO ENCONTRAMOS');
+                            return bodyText.includes('Ops, sua busca não foi encontrada') || bodyText.includes('OPS, NÃO ENCONTRAMOS');
                         });
 
                         if (notFound) {
-                            console.log(`   ⚠️ ID ${item.id} não encontrado (Mensagem 'Ops...'). Pulando...`);
+                            console.log(`      ⚠️ ID ${id} não encontrado.`);
                             continue;
                         }
-                    } catch (e) { /* Ignore check errors */ }
 
-                    // Wait for results (usar seletor mais robusto)
-                    const productLinkSelector = 'a[aria-label="view product"], .vtex-product-summary-2-x-clearLink, .shelf-product-item a';
-                    await page.waitForSelector(productLinkSelector, { timeout: 15000 });
+                        const productLinkSelector = 'a[aria-label="view product"], .vtex-product-summary-2-x-clearLink, .shelf-product-item a';
+                        await page.waitForSelector(productLinkSelector, { timeout: 15000 });
+                        await new Promise(r => setTimeout(r, 1000));
 
-                    // Pequeno delay para garantir que os elementos estão clicáveis
-                    await new Promise(r => setTimeout(r, 1000));
+                        const productLink = page.locator(productLinkSelector).first();
+                        await productLink.scrollIntoViewIfNeeded();
+                        await Promise.all([
+                            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
+                            productLink.click({ force: true })
+                        ]);
 
-                    // Click First Result
-                    const productLink = page.locator(productLinkSelector).first();
-                    await productLink.scrollIntoViewIfNeeded();
-                    await Promise.all([
-                        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
-                        productLink.click({ force: true })
-                    ]);
-
-                } catch (searchErr) {
-                    console.log(`   ❌ Produto ${item.id} não encontrado via busca interativa: ${searchErr.message}`);
-                    continue; // Skip to next ID
-                }
-
-                // Check URL after click
-                const url = page.url();
-
-                // Validation: Must be a product page
-                if (!url.includes('/p') && !url.includes('/produto')) {
-                    console.log(`   ❌ Redirecionamento falhou, URL atual: ${url}`);
-                    continue;
-                }
-
-                // 2. Parse
-                const product = await parseProduct(page, url);
-
-                if (product) {
-                    // 3. IMAGE LOGIC (Drive Priority -> Fallback to Cloudinary)
-                    if (item.driveUrl && item.driveUrl.includes('drive.google.com')) {
-                        product.imageUrl = item.driveUrl; // Usa link do Drive
-                        product.imagePath = item.driveUrl; // Para compatibilidade
-                        console.log(`      🖼️  Usando imagem do Drive.`);
-                    } else {
-                        // Fallback: Usa imagem do site processada pelo Cloudinary
-                        console.log(`      ⚠️  Imagem do Drive ausente para ID ${item.id}. Tentando fallback para Cloudinary...`);
-                        const { processImageDirect, processProductUrl } = require('../../imageDownloader');
-
-                        let imagePath = null;
-                        try {
-                            let imgResult = product.imageUrl ?
-                                await processImageDirect(product.imageUrl, 'FARM', product.id) :
-                                await processProductUrl(url, product.id);
-
-                            if (imgResult.status === 'success' && imgResult.cloudinary_urls?.length > 0) {
-                                imagePath = imgResult.cloudinary_urls[0];
-                            }
-                        } catch (e) {
-                            console.error(`      ❌ Erro no fallback de imagem: ${e.message}`);
-                        }
-
-                        product.imagePath = imagePath || 'error.jpg';
-                        // Mantém product.imageUrl original do site como referência se precisar
+                    } catch (searchErr) {
+                        console.log(`      ❌ Erro na busca interativa para ${id}: ${searchErr.message}`);
+                        continue;
                     }
 
-                    product.favorito = item.isFavorito || false;
+                    const url = page.url();
+                    if (!url.includes('/p') && !url.includes('/produto')) {
+                        console.log(`      ❌ Redirecionamento falhou para ${id}`);
+                        continue;
+                    }
 
-                    // Ajustes Finais
-                    product.url = appendQueryParams(url, { utm_campaign: "7B1313" });
-                    product.loja = 'farm';
+                    const product = await parseProduct(page, url);
+                    if (product) {
+                        mergedProducts.push(product);
+                    }
 
-                    // Dup check (com override se for favorito)
-                    const normId = normalizeId(product.id);
-                    const isDup = isDuplicate(normId, { force: item.isFavorito }, product.preco);
+                } catch (err) {
+                    console.error(`      ❌ Erro ao processar sub-item ${id}: ${err.message}`);
+                }
 
-                    if (!isDup) {
-                        // Se não for dup (ou for favorito liberado), adiciona
-                        collectedProducts.push(product);
-                        console.log(`   ✅ Capturado via Drive: ${product.nome}`);
+                await new Promise(r => setTimeout(r, 1000));
+            }
 
-                        // Marca como enviado (incluindo favoritos para valer o ciclo de 24h)
-                        markAsSent([product.id]);
-                    } else {
-                        console.log(`   ⏭️  Skip: Duplicado no histórico.`);
+            if (mergedProducts.length > 0) {
+                let finalProduct;
+
+                if (mergedProducts.length > 1) {
+                    // MERGE LOGIC (CONJUNTO COMPLETO)
+                    console.log(`   🔗 Consolidando conjunto completo com ${mergedProducts.length} itens. Usará foto do Drive.`);
+                    finalProduct = {
+                        ...mergedProducts[0],
+                        id: mergedProducts.map(p => p.id).join('_'),
+                        nome: mergedProducts.map(p => p.nome).join(' + '),
+                        precoAtual: parseFloat(mergedProducts.reduce((sum, p) => sum + p.precoAtual, 0).toFixed(2)),
+                        precoOriginal: parseFloat(mergedProducts.reduce((sum, p) => sum + (p.precoOriginal || p.precoAtual), 0).toFixed(2)),
+                        isSet: true
+                    };
+                } else {
+                    // SINGLE ITEM (pode ser parte de um conjunto que não foi encontrado completo)
+                    finalProduct = mergedProducts[0];
+                    if (item.isSet && idsToSearch.length > 1) {
+                        console.log(`   ⚠️ Conjunto parcial: apenas 1 de ${idsToSearch.length} itens encontrado. Enviando com foto do Drive.`);
                     }
                 }
 
-            } catch (err) {
-                console.error(`   ❌ Erro ao processar ID ${item.id}: ${err.message}`);
+                // 3. IMAGE LOGIC (Drive Priority)
+                if (item.driveUrl && item.driveUrl.includes('drive.google.com')) {
+                    finalProduct.imageUrl = item.driveUrl;
+                    finalProduct.imagePath = item.driveUrl;
+                    console.log(`      🖼️  Usando imagem do Drive.`);
+                } else {
+                    console.log(`      ⚠️  Imagem do Drive ausente. Mantendo original.`);
+                    finalProduct.imagePath = finalProduct.imagePath || 'error.jpg';
+                }
+
+                finalProduct.favorito = item.isFavorito || false;
+                finalProduct.url = appendQueryParams(finalProduct.url, { utm_campaign: "7B1313" });
+                finalProduct.loja = 'farm';
+
+                const isDup = isDuplicate(normalizeId(finalProduct.id), { force: item.isFavorito }, finalProduct.preco);
+
+                if (!isDup) {
+                    collectedProducts.push(finalProduct);
+                    console.log(`   ✅ Capturado: ${finalProduct.nome}`);
+
+                    // Marca TODOS os IDs originais como enviados
+                    const allIds = mergedProducts.map(p => p.id);
+                    markAsSent(allIds);
+                    if (mergedProducts.length > 1) markAsSent([finalProduct.id]); // Também marca o ID composto
+                } else {
+                    console.log(`   ⏭️  Skip: Duplicado no histórico.`);
+                }
             }
 
             // Delay suave

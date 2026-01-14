@@ -185,53 +185,72 @@ async function parseProductZZMall(page, url) {
             const nome = getSafeText(h1);
             if (!nome) return null;
 
-            let numericPrices = [];
+            let precoOriginal = 0;
+            let precoAtual = 0;
 
-            // Estratégia 1: Meta Tags (Mais confiável)
-            const metaPrice = document.querySelector('meta[property="product:price:amount"], meta[itemprop="price"]');
-            if (metaPrice) {
-                const val = parseFloat(metaPrice.content);
-                if (!isNaN(val) && val > 0) numericPrices.push(val);
+            // Estratégia 1: Seletores Específicos ZZMall (Mais Robusto)
+            const oldPriceEl = document.querySelector('[data-testid="ta-product-price"], .price--old-price');
+            const newPriceEl = document.querySelector('[data-testid="ta-product-price-now"], .price--new-price');
+
+            if (oldPriceEl && newPriceEl) {
+                const oldTxt = getSafeText(oldPriceEl).replace(/\./g, '').replace(',', '.').match(/[\d.]+/);
+                const newTxt = getSafeText(newPriceEl).replace(/\./g, '').replace(',', '.').match(/[\d.]+/);
+
+                if (oldTxt && newTxt) {
+                    precoOriginal = parseFloat(oldTxt[0]);
+                    precoAtual = parseFloat(newTxt[0]);
+                }
             }
 
-            // Estratégia 2: JSON-LD (Script Data)
-            try {
-                const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-                scripts.forEach(script => {
-                    const json = JSON.parse(script.innerText);
-                    if (json && (json['@type'] === 'Product' || json['@type'] === 'ProductGroup')) {
-                        const offers = json.offers;
-                        if (offers) {
-                            const price = offers.price || offers.lowPrice || offers.highPrice;
-                            if (price) numericPrices.push(parseFloat(price));
+            // Se ainda não temos preços, tenta Meta Tags ou JSON-LD ou Varredura
+            if (!precoAtual) {
+                let numericPrices = [];
+
+                // Meta Tags
+                const metaPrice = document.querySelector('meta[property="product:price:amount"], meta[itemprop="price"]');
+                if (metaPrice) {
+                    const val = parseFloat(metaPrice.content);
+                    if (!isNaN(val) && val > 0) numericPrices.push(val);
+                }
+
+                // JSON-LD
+                try {
+                    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                    scripts.forEach(script => {
+                        const json = JSON.parse(script.innerText);
+                        if (json && (json['@type'] === 'Product' || json['@type'] === 'ProductGroup')) {
+                            const offers = Array.isArray(json.offers) ? json.offers[0] : json.offers;
+                            if (offers) {
+                                const price = offers.price || offers.lowPrice || offers.highPrice;
+                                if (price) numericPrices.push(parseFloat(price));
+                            }
+                        }
+                    });
+                } catch (e) { }
+
+                // Varredura visual robusta (Fallback)
+                const allElements = Array.from(document.querySelectorAll('.price, .ns-product-price, .vtex-product-price-1-x-sellingPrice, span, strong'));
+                allElements.forEach(el => {
+                    const txt = getSafeText(el);
+                    if (txt.includes('R$') && !/x\s*de|parcel|juros/i.test(txt)) {
+                        const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                        if (match) {
+                            let valStr = match[1].replace(/\./g, '').replace(',', '.');
+                            const val = parseFloat(valStr);
+                            if (!isNaN(val) && val > 0) numericPrices.push(val);
                         }
                     }
                 });
-            } catch (e) { }
 
-            // Estratégia 3: Varredura visual robusta (Fallback)
-            const allElements = Array.from(document.querySelectorAll('.price, .ns-product-price, .vtex-product-price-1-x-sellingPrice, span, strong'));
-            allElements.forEach(el => {
-                const txt = getSafeText(el);
-                if (txt.includes('R$') && !/x\s*de|parcel|juros/i.test(txt)) {
-                    const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-                    if (match) {
-                        let valStr = match[1].replace(/\./g, '').replace(',', '.');
-                        const val = parseFloat(valStr);
-                        if (!isNaN(val) && val > 0) numericPrices.push(val);
-                    }
+                if (numericPrices.length > 0) {
+                    const maxVal = Math.max(...numericPrices);
+                    const valid = numericPrices.filter(v => v > (maxVal * 0.3));
+                    precoOriginal = Math.max(...valid);
+                    precoAtual = Math.min(...valid);
                 }
-            });
+            }
 
-            if (numericPrices.length === 0) return null;
-
-            const maxVal = Math.max(...numericPrices);
-            // Filtra parcelas (<30% do max)
-            const valid = numericPrices.filter(v => v > (maxVal * 0.3));
-
-            const precoOriginal = Math.max(...valid); // De
-            const precoAtual = Math.min(...valid);    // Por
-
+            if (!precoAtual) return null;
             const preco = precoAtual;
 
             // Tamanhos
