@@ -13,8 +13,15 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
     const page = await contextOrBrowser.newPage();
     const collectedProducts = [];
 
-    // Previne carregamento de imagens pesadas do site, já que vamos usar as do Drive
-    // Mas precisamos carregar algumas para o layout não quebrar (opcional)
+    // Stats Tracking
+    const attemptedIds = [];
+    const stats = {
+        checked: 0,
+        found: 0,
+        notFound: 0,
+        duplicates: 0,
+        errors: 0
+    };
 
     try {
         for (const item of driveItems) {
@@ -24,10 +31,15 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
                 break;
             }
 
+            attemptedIds.push(item.id);
+            stats.checked++;
+
             const idsToSearch = item.ids || [item.id];
             console.log(`\n🔍 Buscendo ${item.isSet ? 'CONJUNTO' : 'ID'} ${idsToSearch.join(' ')} (Favorito: ${item.isFavorito})...`);
 
             const mergedProducts = [];
+            let itemHasError = false;
+            let itemNotFound = false;
 
             for (const id of idsToSearch) {
                 try {
@@ -53,6 +65,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
 
                         if (notFound) {
                             console.log(`      ⚠️ ID ${id} não encontrado.`);
+                            itemNotFound = true;
                             continue;
                         }
 
@@ -69,12 +82,14 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
 
                     } catch (searchErr) {
                         console.log(`      ❌ Erro na busca interativa para ${id}: ${searchErr.message}`);
+                        itemHasError = true;
                         continue;
                     }
 
                     const url = page.url();
                     if (!url.includes('/p') && !url.includes('/produto')) {
                         console.log(`      ❌ Redirecionamento falhou para ${id}`);
+                        itemHasError = true;
                         continue;
                     }
 
@@ -85,6 +100,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
 
                 } catch (err) {
                     console.error(`      ❌ Erro ao processar sub-item ${id}: ${err.message}`);
+                    itemHasError = true;
                 }
 
                 await new Promise(r => setTimeout(r, 1000));
@@ -95,7 +111,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
 
                 if (mergedProducts.length > 1) {
                     // MERGE LOGIC (CONJUNTO COMPLETO)
-                    console.log(`   🔗 Consolidando conjunto completo com ${mergedProducts.length} itens. Usará foto do Drive.`);
+                    console.log(`   🔗 Consolidando conjunto completo com ${mergedProducts.length} itens.`);
                     finalProduct = {
                         ...mergedProducts[0],
                         id: mergedProducts.map(p => p.id).join('_'),
@@ -105,20 +121,14 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
                         isSet: true
                     };
                 } else {
-                    // SINGLE ITEM (pode ser parte de um conjunto que não foi encontrado completo)
                     finalProduct = mergedProducts[0];
-                    if (item.isSet && idsToSearch.length > 1) {
-                        console.log(`   ⚠️ Conjunto parcial: apenas 1 de ${idsToSearch.length} itens encontrado. Enviando com foto do Drive.`);
-                    }
                 }
 
                 // 3. IMAGE LOGIC (Drive Priority)
                 if (item.driveUrl && item.driveUrl.includes('drive.google.com')) {
                     finalProduct.imageUrl = item.driveUrl;
                     finalProduct.imagePath = item.driveUrl;
-                    console.log(`      🖼️  Usando imagem do Drive.`);
                 } else {
-                    console.log(`      ⚠️  Imagem do Drive ausente. Mantendo original.`);
                     finalProduct.imagePath = finalProduct.imagePath || 'error.jpg';
                 }
 
@@ -130,15 +140,20 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
 
                 if (!isDup) {
                     collectedProducts.push(finalProduct);
+                    stats.found++;
                     console.log(`   ✅ Capturado: ${finalProduct.nome}`);
 
-                    // Marca TODOS os IDs originais como enviados
                     const allIds = mergedProducts.map(p => p.id);
                     markAsSent(allIds);
-                    if (mergedProducts.length > 1) markAsSent([finalProduct.id]); // Também marca o ID composto
+                    if (mergedProducts.length > 1) markAsSent([finalProduct.id]);
                 } else {
                     console.log(`   ⏭️  Skip: Duplicado no histórico.`);
+                    stats.duplicates++;
                 }
+            } else {
+                if (itemNotFound) stats.notFound++;
+                else if (itemHasError) stats.errors++;
+                else stats.notFound++; // Fallback
             }
 
             // Delay suave
@@ -151,8 +166,14 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
         await page.close();
     }
 
-    console.log(`🚙 DRIVE-FIRST FINALIZADO: ${collectedProducts.length} itens recuperados.\n`);
-    return collectedProducts;
+    console.log(`🚙 DRIVE-FIRST FINALIZADO: ${collectedProducts.length} itens recuperados.`);
+    console.log(`📊 Stats: ${stats.found} ok, ${stats.notFound} não encontrados, ${stats.duplicates} duplicados, ${stats.errors} erros.\n`);
+
+    return {
+        products: collectedProducts,
+        attemptedIds: attemptedIds,
+        stats: stats
+    };
 }
 
 module.exports = { scrapeSpecificIds };

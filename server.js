@@ -96,6 +96,19 @@ app.post("/import-history", (req, res) => {
     }
 });
 
+// Endpoint para baixar o histórico atual do servidor
+app.get("/history", (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const HISTORY_FILE = path.join(__dirname, 'data', 'history.json');
+
+    if (fs.existsSync(HISTORY_FILE)) {
+        res.download(HISTORY_FILE, 'history.json');
+    } else {
+        res.status(404).json({ ok: false, message: "Arquivo history.json não encontrado" });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Scraper Dashboard rodando em http://localhost:${PORT}`);
 

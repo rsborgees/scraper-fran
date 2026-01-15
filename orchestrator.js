@@ -97,19 +97,21 @@ async function runAllScrapers(overrideQuotas = null) {
                     const totalQuota = Object.values(quotas).reduce((a, b) => a + b, 0);
 
                     // Reutiliza o browser instanciado
-                    const scrapedDriveItems = await scrapeSpecificIds(context, sortedFarmDriveItems, totalQuota);
+                    // UPDATE: Agora retorna objeto com stats
+                    const { products: scrapedDriveItems, attemptedIds, stats } = await scrapeSpecificIds(context, sortedFarmDriveItems, totalQuota);
+
                     scrapedDriveItems.forEach(p => p.message = buildFarmMessage(p, p.timerData));
 
                     allProducts.push(...scrapedDriveItems);
                     driveProducts.push(...scrapedDriveItems);
 
-                    // SALVAR O RESTO PARA REDISTRIBUIÇÃO
-                    // Remove os que foram efetivamente 'processados' (enviados) da lista de candidatos
-                    const processedIds = new Set(scrapedDriveItems.map(p => normalizeId(p.id)));
+                    // SALVAR O RESTO: Remove todos que já foram TENTADOS (sucesso ou falha)
+                    const attemptedSet = new Set(attemptedIds.map(id => normalizeId(id)));
 
-                    // Guarda o que sobrou da lista `farmDriveItems` original (não só da limited)
-                    // Filtra o que já foi e o que já sabemos que é duplicado (mas o filtro inicial já cuidou disso na maioria)
-                    unusedFarmDriveItems = farmDriveItems.filter(item => !processedIds.has(normalizeId(item.id)));
+                    // Guarda o que sobrou da lista `farmDriveItems` original que NÃO foi tentado
+                    unusedFarmDriveItems = farmDriveItems.filter(item => !attemptedSet.has(normalizeId(item.id)));
+
+                    console.log(`📊 [FARM] Stats Drive: ${stats.found} capturados, ${stats.notFound} não encontrados, ${stats.duplicates} duplicados, ${stats.errors} erros.`);
                 }
 
                 // =================================================================
@@ -300,8 +302,8 @@ async function runAllScrapers(overrideQuotas = null) {
 
                     console.log(`   🔎 Tentando recuperar de ${driveFillCandidates.length} IDs disponíveis no Drive...`);
 
-                    const driveFilledProducts = await scrapeSpecificIds(browser, driveFillCandidates, gap);
-                    console.log(`   ✅ Retornados do Drive-Scraper: ${driveFilledProducts.length} itens.`);
+                    const { products: driveFilledProducts, stats: redistStats } = await scrapeSpecificIds(browser, driveFillCandidates, gap);
+                    console.log(`   ✅ Retornados do Drive-Scraper: ${driveFilledProducts.length} itens. (Check: ${redistStats.checked}, Not Found: ${redistStats.notFound})`);
 
                     driveFilledProducts.forEach(p => p.message = buildFarmMessage(p, p.timerData));
 
@@ -356,7 +358,7 @@ async function runAllScrapers(overrideQuotas = null) {
                 }
             } else if (gap > 0 && unusedFarmDriveItems.length > 0) {
                 console.log(`\n⚠️ Lacuna de ${gap} produtos restante, mas ainda há ${unusedFarmDriveItems.length} itens no Drive.`);
-                console.log(`   💡 Considere aumentar a quota ou verificar se há problemas com os itens do Drive.`);
+                console.log(`   💡 Os itens não processados ainda não foram tentados. Se o log acima mostra muitos "não encontrados", verifique a disponibilidade.`);
             }
         }
 
