@@ -1,34 +1,64 @@
-const { initBrowser } = require('./browser_setup');
-const { scrapeSpecificIdsDressTo } = require('./scrapers/dressto/idScanner');
+// Test Drive-First for DressTo with mock data
+const { chromium } = require('playwright');
+const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
 
-async function testDressToDrive() {
-    console.log('🧪 TESTE ISOLADO: DRESS TO DRIVE-FIRST');
+async function test() {
+    const browser = await chromium.launch({ headless: false });
 
-    // Mock do item do Drive
+    // Mock Drive items for DressTo
     const mockDriveItems = [
         {
-            id: '01342621', // Valid ID: Vestido Coluna Tule Estampa Areia (Tem tamanhos indisponíveis)
-            driveUrl: 'https://drive.google.com/uc?id=TESTE_DRIVE_LINK',
-            isFavorito: true
+            id: '01342814',
+            driveUrl: 'https://drive.google.com/uc?export=download&id=MOCK_DRIVE_FILE_ID_123',
+            isFavorito: false,
+            store: 'dressto'
         }
     ];
 
-    console.log('🚀 Iniciando navegador...');
-    const { browser } = await initBrowser();
+    console.log('🧪 Testing DressTo Drive-First Flow...\n');
+    console.log('Mock Drive Item:', mockDriveItems[0]);
+    console.log('Expected: Product should have driveUrl as imageUrl/imagePath\n');
 
-    try {
-        console.log('🏃 Executando scrapeSpecificIdsDressTo...');
-        const products = await scrapeSpecificIdsDressTo(browser, mockDriveItems);
+    const products = await scrapeSpecificIdsGeneric(browser, mockDriveItems, 'dressto', 1);
 
-        console.log('\n📊 RESULTADO DO TESTE:');
-        console.log(JSON.stringify(products, null, 2));
+    if (products.length > 0) {
+        const product = products[0];
+        console.log('\n✅ PRODUCT SCRAPED:');
+        console.log('   ID:', product.id);
+        console.log('   Nome:', product.nome);
+        console.log('   Tamanhos:', product.tamanhos);
+        console.log('   ImageUrl:', product.imageUrl);
+        console.log('   ImagePath:', product.imagePath);
+        console.log('   Favorito:', product.favorito);
+        console.log('   Loja:', product.loja);
 
-    } catch (error) {
-        console.error('❌ Erro no teste:', error);
-    } finally {
-        console.log('🔒 Fechando navegador...');
-        await browser.close();
+        // Verify Drive URL is being used
+        if (product.imageUrl === mockDriveItems[0].driveUrl) {
+            console.log('\n✅ SUCCESS: Drive URL correctly applied to imageUrl!');
+        } else {
+            console.log('\n❌ ERROR: Drive URL NOT applied!');
+            console.log('   Expected:', mockDriveItems[0].driveUrl);
+            console.log('   Got:', product.imageUrl);
+        }
+
+        if (product.imagePath === mockDriveItems[0].driveUrl) {
+            console.log('✅ SUCCESS: Drive URL correctly applied to imagePath!');
+        } else {
+            console.log('❌ ERROR: Drive URL NOT applied to imagePath!');
+        }
+
+        // Verify sizes don't have "DISPONÍVEL"
+        const hasDisponivel = product.tamanhos.some(t => t.includes('DISPONÍVEL'));
+        if (!hasDisponivel) {
+            console.log('✅ SUCCESS: Sizes clean (no DISPONÍVEL)!');
+        } else {
+            console.log('❌ ERROR: Sizes still contain DISPONÍVEL!');
+        }
+    } else {
+        console.log('\n❌ No products scraped!');
     }
+
+    await browser.close();
 }
 
-testDressToDrive();
+test().catch(console.error);

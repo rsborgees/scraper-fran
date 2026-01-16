@@ -34,8 +34,13 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
             attemptedIds.push(item.id);
             stats.checked++;
 
+            // 1. Navega para a home (UMA VEZ) - Mantemos para garantir contexto e cookies se necessário
+            if (stats.checked === 1) {
+                await page.goto(`https://www.farmrio.com.br`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+            }
+
             const idsToSearch = item.ids || [item.id];
-            console.log(`\n🔍 Buscendo ${item.isSet ? 'CONJUNTO' : 'ID'} ${idsToSearch.join(' ')} (Favorito: ${item.isFavorito})...`);
+            console.log(`\n🔍 [${stats.checked}/${driveItems.length}] Buscando ${item.isSet ? 'CONJUNTO' : 'ID'} ${idsToSearch.join(' ')} (Favorito: ${item.isFavorito})...`);
 
             const mergedProducts = [];
             let itemHasError = false;
@@ -43,74 +48,60 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
 
             for (const id of idsToSearch) {
                 try {
-                    console.log(`   🔎 Buscando sub-item ${id}...`);
-                    // 1. Navega para a home e realiza busca interativa
-                    await page.goto(`https://www.farmrio.com.br`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                    console.log(`   🔎 Buscando sub-item ${id} via API...`);
+
+                    // API Call
+                    const apiUrl = `https://www.farmrio.com.br/api/catalog_system/pub/products/search?ft=${id}`;
+                    const response = await page.goto(apiUrl);
+                    let productsJson = [];
 
                     try {
-                        const searchIconSelector = 'label[aria-label="open search"], .vtex-store-components-3-x-searchIcon';
-                        await page.waitForSelector(searchIconSelector, { timeout: 10000 });
-                        await page.click(searchIconSelector);
+                        productsJson = await response.json();
+                    } catch (e) {
+                        // Fallback: às vezes retorna HTML se der erro, mas API deve retornar JSON
+                        const text = await page.evaluate(() => document.body.innerText);
+                        try { productsJson = JSON.parse(text); } catch (e2) { }
+                    }
 
-                        const searchInputSelector = 'input.search-input, input[placeholder*="buscar"]';
-                        await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 5000 });
-                        await page.fill(searchInputSelector, id);
-                        await page.press(searchInputSelector, 'Enter');
+                    if (!productsJson || productsJson.length === 0) {
+                        console.log(`      ⚠️ ID ${id} não encontrado na API.`);
+                        itemNotFound = true;
+                        continue;
+                    }
 
-                        await page.waitForTimeout(2000);
-                        const notFound = await page.evaluate(() => {
-                            const bodyText = document.body.innerText || '';
-                            return bodyText.includes('Ops, sua busca não foi encontrada') || bodyText.includes('OPS, NÃO ENCONTRAMOS');
-                        });
+                    // Encontrou! Pega o primeiro link
+                    const productData = productsJson[0];
+                    console.log(`      🎯 Encontrado na API: ${productData.productName}`);
 
-                        if (notFound) {
-                            console.log(`      ⚠️ ID ${id} não encontrado.`);
-                            itemNotFound = true;
-                            continue;
-                        }
-
-                        const productLinkSelector = 'a[aria-label="view product"], .vtex-product-summary-2-x-clearLink, .shelf-product-item a';
-                        await page.waitForSelector(productLinkSelector, { timeout: 15000 });
-                        await new Promise(r => setTimeout(r, 1000));
-
-                        const productLink = page.locator(productLinkSelector).first();
-                        await productLink.scrollIntoViewIfNeeded();
-                        await Promise.all([
-                            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
-                            productLink.click({ force: true })
-                        ]);
-
-                    } catch (searchErr) {
-                        console.log(`      ❌ Erro na busca interativa para ${id}: ${searchErr.message}`);
+                    const productLink = productData.link;
+                    if (!productLink) {
+                        console.error(`      ❌ Link não encontrado no JSON da API.`);
                         itemHasError = true;
                         continue;
                     }
+
+                    // Navega para a página do produto
+                    await page.goto(productLink, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
                     const url = page.url();
-                    if (!url.includes('/p') && !url.includes('/produto')) {
-                        console.log(`      ❌ Redirecionamento falhou para ${id}`);
-                        itemHasError = true;
-                        continue;
-                    }
-
                     const product = await parseProduct(page, url);
+
                     if (product) {
                         mergedProducts.push(product);
+                    } else {
+                        throw new Error('Falha ao fazer parse do produto (Parse retornou null)');
                     }
 
-                } catch (err) {
-                    console.error(`      ❌ Erro ao processar sub-item ${id}: ${err.message}`);
+                } catch (apiErr) {
+                    console.log(`      ❌ Erro API/Parse ${id}: ${apiErr.message}`);
                     itemHasError = true;
                 }
-
-                await new Promise(r => setTimeout(r, 1000));
             }
 
             if (mergedProducts.length > 0) {
                 let finalProduct;
 
                 if (mergedProducts.length > 1) {
-                    // MERGE LOGIC (CONJUNTO COMPLETO)
                     console.log(`   🔗 Consolidando conjunto completo com ${mergedProducts.length} itens.`);
                     finalProduct = {
                         ...mergedProducts[0],
@@ -124,7 +115,6 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
                     finalProduct = mergedProducts[0];
                 }
 
-                // 3. IMAGE LOGIC (Drive Priority)
                 if (item.driveUrl && item.driveUrl.includes('drive.google.com')) {
                     finalProduct.imageUrl = item.driveUrl;
                     finalProduct.imagePath = item.driveUrl;
@@ -153,7 +143,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
             } else {
                 if (itemNotFound) stats.notFound++;
                 else if (itemHasError) stats.errors++;
-                else stats.notFound++; // Fallback
+                else stats.notFound++;
             }
 
             // Delay suave

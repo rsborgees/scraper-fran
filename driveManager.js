@@ -143,6 +143,38 @@ async function getExistingIdsFromDrive(folderId) {
                                 store: store
                             });
                         }
+                    } else if (nameLower.includes('live')) {
+                        // 🆕 FEATURE: Live Items by Name (No ID in filename)
+                        const isFavorito = nameLower.includes('favorito');
+
+                        // Clean name for search
+                        let cleanName = file.name.toLowerCase()
+                            .replace(/\.jpg|\.png|\.jpeg|\.webp/g, '')
+                            .replace(/favorito/g, '')
+                            .replace(/unavailable/g, '')
+                            .trim();
+
+                        // Remove 'live' only if it's at the end
+                        cleanName = cleanName.replace(/\s+live$/i, '').trim();
+
+                        // Normalize spaces
+                        cleanName = cleanName.replace(/\s+/g, ' ');
+
+                        if (cleanName.length > 3) {
+                            items.push({
+                                id: `LIVE_${file.id.substring(0, 6)}`, // Temporary ID
+                                ids: [],
+                                isSet: false,
+                                fileId: file.id,
+                                name: cleanName, // This will be the search query
+                                originalName: file.name,
+                                driveUrl: `https://drive.google.com/uc?export=download&id=${file.id}`,
+                                isFavorito: isFavorito,
+                                store: 'live',
+                                searchByName: true // Flag to trigger name search
+                            });
+                            console.log(`   ✨ [Drive] Item Live detectado por nome: "${cleanName}"`);
+                        }
                     }
                 });
             }

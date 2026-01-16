@@ -52,20 +52,31 @@ async function parseProductDressTo(page, url) {
             if (precoOriginal < precoAtual) precoOriginal = precoAtual;
 
             // 2. Tamanhos
-            // Uso de seletor parcial para evitar falhar se a versao do app custom mudar (ex: custom-0-x para custom-1-x)
-            const sizeEls = Array.from(document.querySelectorAll('[class*="skuselector__item"]'));
+            // DressTo usa <li> elements com tooltips em <span> para baixo estoque
+            // Ex: <li>M<span class="tooltip">1 disponível</span></li>
+            const sizeElements = Array.from(document.querySelectorAll('li[class*="skuselector__item"]'));
             const tamanhos = [];
 
-            sizeEls.forEach(el => {
-                // Pega apenas o primeiro nó de texto (o nome do tamanho) para evitar "PP1 DISPONÍVEL"
-                const txt = el.childNodes[0] ? el.childNodes[0].textContent.trim() : '';
+            sizeElements.forEach(li => {
+                // Extrai apenas o texto direto do <li>, ignorando o <span> tooltip
+                let sizeText = '';
 
-                const isUnavailable = el.className.includes('--unavailable') ||
-                    el.className.includes('disabled') ||
-                    el.getAttribute('aria-disabled') === 'true';
+                for (let node of li.childNodes) {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const text = node.textContent.trim();
+                        if (text) {
+                            sizeText = text;
+                            break; // Pega só o primeiro text node (o tamanho)
+                        }
+                    }
+                }
 
-                if (txt && !isUnavailable) {
-                    tamanhos.push(txt.toUpperCase());
+                const isUnavailable = li.className.includes('--unavailable') ||
+                    li.className.includes('disabled') ||
+                    li.getAttribute('aria-disabled') === 'true';
+
+                if (sizeText && !isUnavailable) {
+                    tamanhos.push(sizeText.toUpperCase());
                 }
             });
 

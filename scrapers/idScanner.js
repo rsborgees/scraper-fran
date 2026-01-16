@@ -10,6 +10,8 @@ const { parseProductKJU } = require('./kju');
 const { parseProductZZMall } = require('./zzmall');
 const { parseProductLive } = require('./live');
 
+const { scrapeLiveByName } = require('./live/nameScanner');
+
 // Configurações por loja
 const STORE_CONFIG = {
     dressto: {
@@ -63,135 +65,156 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
     console.log(`\n🔍 [${storeName.toUpperCase()}] DRIVE-FIRST: Buscando ${driveItems.length} itens (Meta: ${quota})...`);
 
     const collectedProducts = [];
-    const page = await contextOrBrowser.newPage();
 
-    try {
-        for (const item of driveItems) {
-            // Stop if quota reached
-            if (collectedProducts.length >= quota) {
-                console.log(`   ✅ Meta de ${quota} itens para ${storeName} atingida no Drive.`);
-                break;
-            }
+    // Separa itens por Nome (Feature Live) e por ID (Padrão)
+    const nameBasedItems = driveItems.filter(i => i.searchByName);
+    const idBasedItems = driveItems.filter(i => !i.searchByName);
 
-            console.log(`\n🔍 [${storeName}] Buscando ID ${item.id} (Favorito: ${item.isFavorito})...`);
-
-            try {
-                // Estratégia 1: VTEX Full-Text Search URL (funciona para DressTo, ZZMall, Live)
-                const searchUrl = config.searchUrl(item.id);
-                await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                await new Promise(r => setTimeout(r, 3000)); // Espera maior para VTEX carregar
-
-                // Verifica se estamos em uma página de resultados ou produto direto
-                let currentUrl = page.url();
-
-                // Redirection check: if search redirected to product page
-                let isProductPage = currentUrl.includes('/p') || currentUrl.includes('/produto');
-
-                // Advanced detection (if store doesn't use /p/ or /produto/)
-                if (!isProductPage) {
-                    isProductPage = await page.evaluate(() => {
-                        return !!document.querySelector('.codigo_produto, .productReference, [itemprop="identifier"], .vtex-product-identifier');
-                    });
+    // 1. Processa itens por ID (Padrão)
+    if (idBasedItems.length > 0) {
+        const page = await contextOrBrowser.newPage();
+        try {
+            for (const item of idBasedItems) {
+                // Stop if quota reached
+                if (collectedProducts.length >= quota) {
+                    console.log(`   ✅ Meta de ${quota} itens para ${storeName} atingida no Drive.`);
+                    break;
                 }
 
-                if (isProductPage) {
-                    console.log(`   ✨ Redirecionado direto para o produto!`);
-                } else {
-                    // Verifica se é página de "não encontrado"
-                    const notFound = await page.evaluate(() => {
-                        const text = document.body.innerText || '';
-                        return text.includes('Nenhum produto foi encontrado') ||
-                            text.includes('não encontrado') ||
-                            text.includes('Ops, sua busca');
-                    });
+                console.log(`\n🔍 [${storeName}] Buscando ID ${item.id} (Favorito: ${item.isFavorito})...`);
 
-                    if (notFound) {
-                        console.log(`   ❌ Produto ${item.id} não encontrado (página sem resultados)`);
-                        continue;
+                try {
+                    // Estratégia 1: VTEX Full-Text Search URL (funciona para DressTo, ZZMall, Live)
+                    const searchUrl = config.searchUrl(item.id);
+                    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                    await new Promise(r => setTimeout(r, 3000)); // Espera maior para VTEX carregar
+
+                    // Verifica se estamos em uma página de resultados ou produto direto
+                    let currentUrl = page.url();
+
+                    // Redirection check: if search redirected to product page
+                    let isProductPage = currentUrl.includes('/p') || currentUrl.includes('/produto');
+
+                    // Advanced detection (if store doesn't use /p/ or /produto/)
+                    if (!isProductPage) {
+                        isProductPage = await page.evaluate(() => {
+                            return !!document.querySelector('.codigo_produto, .productReference, [itemprop="identifier"], .vtex-product-identifier');
+                        });
                     }
 
-                    // Try to catch the first result link and navigate directly
-                    try {
-                        const selector = config.productLinkSelector;
-                        console.log(`   🖱️ Procurando seletor: ${selector}`);
+                    if (isProductPage) {
+                        console.log(`   ✨ Redirecionado direto para o produto!`);
+                    } else {
+                        // Verifica se é página de "não encontrado"
+                        const notFound = await page.evaluate(() => {
+                            const text = document.body.innerText || '';
+                            return text.includes('Nenhum produto foi encontrado') ||
+                                text.includes('não encontrado') ||
+                                text.includes('Ops, sua busca');
+                        });
 
-                        // Busca diretamente sem waitForSelector
-                        const href = await page.evaluate((sel) => {
-                            const el = document.querySelector(sel);
-                            return el ? el.href : null;
-                        }, selector);
+                        if (notFound) {
+                            console.log(`   ❌ Produto ${item.id} não encontrado (página sem resultados)`);
+                            continue;
+                        }
 
-                        if (href) {
-                            console.log(`   🔗 Navegando diretamente para o resultado: ${href}`);
-                            await page.goto(href, { waitUntil: 'load', timeout: 30000 });
+                        // Try to catch the first result link and navigate directly
+                        try {
+                            const selector = config.productLinkSelector;
+                            console.log(`   🖱️ Procurando seletor: ${selector}`);
+
+                            // Busca diretamente sem waitForSelector
+                            const href = await page.evaluate((sel) => {
+                                const el = document.querySelector(sel);
+                                return el ? el.href : null;
+                            }, selector);
+
+                            if (href) {
+                                console.log(`   🔗 Navegando diretamente para o resultado: ${href}`);
+                                await page.goto(href, { waitUntil: 'load', timeout: 30000 });
+                            } else {
+                                throw new Error('Link not found');
+                            }
+                        } catch (navErr) {
+                            console.log(`   ❌ Produto ${item.id} não encontrado na busca de ${storeName} (Erro: ${navErr.message})`);
+                            continue;
+                        }
+                    }
+
+                    // Parse do produto usando o parser específico da loja
+                    const finalUrl = page.url();
+                    let product = null;
+
+                    if (config.parser === 'dressto') {
+                        product = await parseProductDressTo(page, finalUrl);
+                    } else if (config.parser === 'kju') {
+                        product = await parseProductKJU(page, finalUrl);
+                    } else if (config.parser === 'zzmall') {
+                        product = await parseProductZZMall(page, finalUrl);
+                    } else if (config.parser === 'live') {
+                        product = await parseProductLive(page, finalUrl);
+                    }
+
+                    if (product) {
+                        // Sobrescreve com dados do Drive
+                        product.imageUrl = item.driveUrl;
+                        product.imagePath = item.driveUrl;
+                        product.favorito = item.isFavorito || false;
+                        product.loja = storeName;
+
+                        // Adiciona UTM se configurado
+                        if (config.utmParam) {
+                            product.url = finalUrl.includes('?')
+                                ? `${finalUrl}&${config.utmParam}`
+                                : `${finalUrl}?${config.utmParam}`;
                         } else {
-                            throw new Error('Link not found');
+                            product.url = finalUrl;
                         }
-                    } catch (navErr) {
-                        console.log(`   ❌ Produto ${item.id} não encontrado na busca de ${storeName} (Erro: ${navErr.message})`);
-                        continue;
-                    }
-                }
 
-                // Parse do produto usando o parser específico da loja
-                const finalUrl = page.url();
-                let product = null;
+                        // Verificação de duplicatas
+                        const normId = normalizeId(product.id);
+                        const isDup = isDuplicate(normId, { force: item.isFavorito });
 
-                if (config.parser === 'dressto') {
-                    product = await parseProductDressTo(page, finalUrl);
-                } else if (config.parser === 'kju') {
-                    product = await parseProductKJU(page, finalUrl);
-                } else if (config.parser === 'zzmall') {
-                    product = await parseProductZZMall(page, finalUrl);
-                } else if (config.parser === 'live') {
-                    product = await parseProductLive(page, finalUrl);
-                }
+                        if (!isDup) {
+                            collectedProducts.push(product);
+                            console.log(`   ✅ [${storeName}] Capturado: ${product.nome}`);
 
-                if (product) {
-                    // Sobrescreve com dados do Drive
-                    product.imageUrl = item.driveUrl;
-                    product.imagePath = item.driveUrl;
-                    product.favorito = item.isFavorito || false;
-                    product.loja = storeName;
-
-                    // Adiciona UTM se configurado
-                    if (config.utmParam) {
-                        product.url = finalUrl.includes('?')
-                            ? `${finalUrl}&${config.utmParam}`
-                            : `${finalUrl}?${config.utmParam}`;
-                    } else {
-                        product.url = finalUrl;
-                    }
-
-                    // Verificação de duplicatas
-                    const normId = normalizeId(product.id);
-                    const isDup = isDuplicate(normId, { force: item.isFavorito });
-
-                    if (!isDup) {
-                        collectedProducts.push(product);
-                        console.log(`   ✅ [${storeName}] Capturado: ${product.nome}`);
-
-                        if (!item.isFavorito) {
-                            markAsSent([product.id]);
+                            if (!item.isFavorito) {
+                                markAsSent([product.id]);
+                            }
+                        } else {
+                            console.log(`   ⏭️  Skip: Duplicado no histórico.`);
                         }
                     } else {
-                        console.log(`   ⏭️  Skip: Duplicado no histórico.`);
+                        console.log(`   ❌ Falha ao parsear produto na ${storeName}`);
                     }
-                } else {
-                    console.log(`   ❌ Falha ao parsear produto na ${storeName}`);
+
+                } catch (err) {
+                    console.error(`   ❌ Erro ao processar ID ${item.id} na ${storeName}: ${err.message}`);
                 }
 
-            } catch (err) {
-                console.error(`   ❌ Erro ao processar ID ${item.id} na ${storeName}: ${err.message}`);
+                await new Promise(r => setTimeout(r, 1000));
             }
 
-            await new Promise(r => setTimeout(r, 1000));
+        } catch (globalErr) {
+            console.error(`❌ Erro crítico no ID Scanner ${storeName}:`, globalErr.message);
+        } finally {
+            await page.close();
         }
+    }
 
-    } catch (globalErr) {
-        console.error(`❌ Erro crítico no ID Scanner ${storeName}:`, globalErr.message);
-    } finally {
-        await page.close();
+    // 2. Processa itens por Nome (Feature Live)
+    if (storeName === 'live' && nameBasedItems.length > 0) {
+        const remainingQuota = quota - collectedProducts.length;
+        if (remainingQuota > 0) {
+            console.log(`\n🚙 Delegando ${nameBasedItems.length} itens Live por nome...`);
+            try {
+                const nameProducts = await scrapeLiveByName(contextOrBrowser, nameBasedItems, remainingQuota);
+                collectedProducts.push(...nameProducts);
+            } catch (e) {
+                console.error(`❌ Erro no scrapeLiveByName: ${e.message}`);
+            }
+        }
     }
 
     console.log(`🏁 [${storeName.toUpperCase()}] DRIVE-FIRST: ${collectedProducts.length} itens recuperados.\n`);
