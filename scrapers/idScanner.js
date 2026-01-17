@@ -16,6 +16,9 @@ const { scrapeLiveByName } = require('./live/nameScanner');
 const STORE_CONFIG = {
     dressto: {
         baseUrl: 'https://www.dressto.com.br',
+        // User provided specific robust URL pattern
+        directUrlBuilder: (id) => `https://www.dressto.com.br/${id}?_q=${id}&map=ft`,
+        // Fallback search (though directUrlBuilder acts as a search too)
         searchUrl: (id) => `https://www.dressto.com.br/${id}?map=ft`,
         searchInputSelector: 'input[type="search"], input[placeholder*="Buscar"], .vtex-store-components-3-x-searchBarIcon',
         productLinkSelector: 'a.vtex-product-summary-2-x-clearLink, a[href$="/p"]',
@@ -24,14 +27,18 @@ const STORE_CONFIG = {
     },
     kju: {
         baseUrl: 'https://www.kjubrasil.com',
+        // KJU direct URL /ID/p fails, so we rely on search.
+        directUrlBuilder: null,
         searchUrl: (id) => `https://www.kjubrasil.com/busca/?q=${id}`,
         searchInputSelector: 'input[name="q"], input.search',
-        productLinkSelector: '.produtos .item a, .prod a, a.b_acao',
+        // Updated robust selector for KJU (WBUY structure)
+        productLinkSelector: '.produtos .item a, .prod a, a.b_acao, .product-item a, a.product-link, div[class*="product"] a[href*="/produto/"], div[class*="product"] a[href*="/p/"]',
         parser: 'kju',
         utmParam: 'ref=7B1313'
     },
     zzmall: {
         baseUrl: 'https://www.zzmall.com.br',
+        directUrlBuilder: (id) => `https://www.zzmall.com.br/${id}?map=ft`,
         searchUrl: (id) => `https://www.zzmall.com.br/${id}?map=ft`,
         searchInputSelector: 'input[type="search"], .vtex-store-components-3-x-searchBarIcon',
         productLinkSelector: 'a[href*="/p/"], a.vtex-product-summary-2-x-clearLink',
@@ -40,6 +47,7 @@ const STORE_CONFIG = {
     },
     live: {
         baseUrl: 'https://www.liveoficial.com.br',
+        directUrlBuilder: (id) => `https://www.liveoficial.com.br/${id}?map=ft`,
         searchUrl: (id) => `https://www.liveoficial.com.br/${id}?map=ft`,
         searchInputSelector: 'input[type="search"], .search-input',
         productLinkSelector: 'a[href$="/p"], a.vtex-product-summary-2-x-clearLink',
@@ -72,7 +80,9 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
     // 1. Processa itens por ID (Padrão)
     if (idBasedItems.length > 0) {
-        const page = await contextOrBrowser.newPage();
+        const page = await contextOrBrowser.newPage({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        });
         try {
             for (const item of idBasedItems) {
                 // Stop if quota reached
@@ -81,21 +91,41 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     break;
                 }
 
-                console.log(`\n🔍 [${storeName}] Buscando ID ${item.id} (Favorito: ${item.isFavorito})...`);
+                console.log(`\n🔍 [${storeName}] Buscando ID ${item.id} (${item.driveUrl ? 'Com Drive URL' : 'Sem Drive URL'})...`);
 
                 try {
-                    // Estratégia 1: VTEX Full-Text Search URL (funciona para DressTo, ZZMall, Live)
-                    const searchUrl = config.searchUrl(item.id);
-                    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                    await new Promise(r => setTimeout(r, 3000)); // Espera maior para VTEX carregar
+                    // --- ESTRATÉGIA DE NAVEGAÇÃO ---
 
-                    // Verifica se estamos em uma página de resultados ou produto direto
+                    // 1. Tenta Direct URL (se configurada)
+                    // Para DressTo, isso é uma URL de busca robusta.
+                    let navigationSuccess = false;
+
+                    if (config.directUrlBuilder) {
+                        const directUrl = config.directUrlBuilder(item.id);
+                        try {
+                            // console.log(`      🚀 Tentando Direct URL: ${directUrl}`);
+                            await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                            await new Promise(r => setTimeout(r, 2000));
+                            navigationSuccess = true;
+                        } catch (e) {
+                            console.log(`      ⚠️ Falha na Direct URL: ${e.message}`);
+                        }
+                    }
+
+                    // 2. Se não tem Direct URL configurada ou falhou muito feio, usa Search URL padrão
+                    if (!navigationSuccess) {
+                        const searchUrl = config.searchUrl(item.id);
+                        // console.log(`      🔎 Tentando Search URL: ${searchUrl}`);
+                        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
+
+                    // --- DETECÇÃO DE RESULTADO ---
+
                     let currentUrl = page.url();
-
-                    // Redirection check: if search redirected to product page
                     let isProductPage = currentUrl.includes('/p') || currentUrl.includes('/produto');
 
-                    // Advanced detection (if store doesn't use /p/ or /produto/)
+                    // Advanced detection (if store doesn't use /p/ or /produto/ in URL)
                     if (!isProductPage) {
                         isProductPage = await page.evaluate(() => {
                             return !!document.querySelector('.codigo_produto, .productReference, [itemprop="identifier"], .vtex-product-identifier');
@@ -103,45 +133,78 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     }
 
                     if (isProductPage) {
-                        console.log(`   ✨ Redirecionado direto para o produto!`);
+                        console.log(`   ✨ Página do produto detectada!`);
                     } else {
-                        // Verifica se é página de "não encontrado"
+                        // Não é página de produto direta. Verifica se é lista de resultados.
+
+                        // Primeiro, check de "Não Encontrado" explícito
                         const notFound = await page.evaluate(() => {
                             const text = document.body.innerText || '';
                             return text.includes('Nenhum produto foi encontrado') ||
                                 text.includes('não encontrado') ||
-                                text.includes('Ops, sua busca');
+                                text.includes('Ops, sua busca') ||
+                                text.includes('Página inválida');
                         });
 
                         if (notFound) {
-                            console.log(`   ❌ Produto ${item.id} não encontrado (página sem resultados)`);
+                            console.log(`   ❌ Produto ${item.id} não encontrado (Store msg).`);
                             continue;
                         }
 
-                        // Try to catch the first result link and navigate directly
+                        // Tenta encontrar o link do produto na listagem
                         try {
                             const selector = config.productLinkSelector;
-                            console.log(`   🖱️ Procurando seletor: ${selector}`);
+                            // console.log(`      🖱️ Procurando link c/ seletor: ${selector}`);
 
-                            // Busca diretamente sem waitForSelector
+                            // Busca link que não seja "indesejado" (ex: filtro, categoria etc)
                             const href = await page.evaluate((sel) => {
-                                const el = document.querySelector(sel);
-                                return el ? el.href : null;
+                                const anchors = Array.from(document.querySelectorAll(sel));
+                                // Procura o primeiro link visível e válido
+                                for (const a of anchors) {
+                                    if (a.href && !a.href.includes('javascript') && !a.href.includes('#')) {
+                                        return a.href;
+                                    }
+                                }
+                                return null;
                             }, selector);
 
                             if (href) {
-                                console.log(`   🔗 Navegando diretamente para o resultado: ${href}`);
-                                await page.goto(href, { waitUntil: 'load', timeout: 30000 });
+                                console.log(`   🔗 Link encontrado na busca: ${href}`);
+                                await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                await new Promise(r => setTimeout(r, 1500));
                             } else {
-                                throw new Error('Link not found');
+                                // Scraper KJU as vezes falha aqui.
+
+                                // Fallback: Procura qualquer link que contenha o ID ou pareça produto
+                                const fallbackHref = await page.evaluate((item) => {
+                                    const id = item.id;
+                                    const allLinks = Array.from(document.querySelectorAll('a'));
+                                    // Tenta link contendo o ID
+                                    const idLink = allLinks.find(a => a.href.includes(id) && !a.href.includes('busca'));
+                                    if (idLink) return idLink.href;
+
+                                    // KJU Simple Fallback: Just grab the first product item link found
+                                    const simpleLink = document.querySelector('.produtos .item a, .list_products .item a, .prod a');
+                                    if (simpleLink) return simpleLink.href;
+
+                                    return null;
+                                }, item); // Pass full item object
+
+
+                                if (fallbackHref) {
+                                    console.log(`   🔗 Link (fallback) encontrado: ${fallbackHref}`);
+                                    await page.goto(fallbackHref, { waitUntil: 'load', timeout: 30000 });
+                                } else {
+                                    throw new Error('Link visual do produto não encontrado na listagem');
+                                }
                             }
                         } catch (navErr) {
-                            console.log(`   ❌ Produto ${item.id} não encontrado na busca de ${storeName} (Erro: ${navErr.message})`);
+                            console.log(`   ❌ Link não encontrado na listagem: ${navErr.message}`);
                             continue;
                         }
                     }
 
-                    // Parse do produto usando o parser específico da loja
+                    // --- PARSE DO PRODUTO (JÁ NA PÁGINA) ---
                     const finalUrl = page.url();
                     let product = null;
 
@@ -164,9 +227,9 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
                         // Adiciona UTM se configurado
                         if (config.utmParam) {
-                            product.url = finalUrl.includes('?')
+                            product.url = finalUrl.includes('?') && !finalUrl.includes(config.utmParam)
                                 ? `${finalUrl}&${config.utmParam}`
-                                : `${finalUrl}?${config.utmParam}`;
+                                : (finalUrl.includes(config.utmParam) ? finalUrl : `${finalUrl}?${config.utmParam}`);
                         } else {
                             product.url = finalUrl;
                         }
@@ -174,6 +237,15 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         // Verificação de duplicatas
                         const normId = normalizeId(product.id);
                         const isDup = isDuplicate(normId, { force: item.isFavorito });
+
+                        // Log para debug KJU
+                        // if (storeName === 'kju') console.log(`      DEBUG KJU: Parsed ID ${product.id} vs Target ${item.id}`);
+
+                        if (!product.id || product.id === 'unknown') {
+                            // Fallback id from target if parser failed to get ID but got product
+                            console.log(`      ⚠️ ID não extraído do site. Usando ID alvo: ${item.id}`);
+                            product.id = item.id;
+                        }
 
                         if (!isDup) {
                             collectedProducts.push(product);
@@ -183,16 +255,17 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 markAsSent([product.id]);
                             }
                         } else {
-                            console.log(`   ⏭️  Skip: Duplicado no histórico.`);
+                            console.log(`   ⏭️  [${storeName}] Duplicado no histórico.`);
                         }
                     } else {
-                        console.log(`   ❌ Falha ao parsear produto na ${storeName}`);
+                        console.log(`   ❌ Falha ao parsear dados do produto.`);
                     }
 
                 } catch (err) {
-                    console.error(`   ❌ Erro ao processar ID ${item.id} na ${storeName}: ${err.message}`);
+                    console.error(`   ❌ Erro ao processar ID ${item.id}: ${err.message}`);
                 }
 
+                // Throttle
                 await new Promise(r => setTimeout(r, 1000));
             }
 
@@ -217,7 +290,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
         }
     }
 
-    console.log(`🏁 [${storeName.toUpperCase()}] DRIVE-FIRST: ${collectedProducts.length} itens recuperados.\n`);
+    // console.log(`🏁 [${storeName.toUpperCase()}] DRIVE-FIRST End: ${collectedProducts.length} itens.`);
     return collectedProducts;
 }
 
