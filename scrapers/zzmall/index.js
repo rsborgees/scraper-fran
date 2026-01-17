@@ -87,6 +87,15 @@ async function scrapeZZMall(quota = 6, parentBrowser = null) {
                 const product = await parseProductZZMall(page, url);
 
                 if (product) {
+                    // FILTER: ZZMall - NO CLOTHES (ONLY SHOES/BAGS)
+                    const normalizedCat = product.categoria ? product.categoria.toLowerCase() : '';
+                    const isCloth = ['vestido', 'calça', 'blusa', 'casaco', 'saia', 'short', 'macacão', 'top', 'biquíni', 'body'].some(c => normalizedCat.includes(c));
+
+                    if (isCloth) {
+                        console.log(`      ⛔ Ignorado (Roupa detectada): ${product.nome} (${product.categoria})`);
+                        continue;
+                    }
+
                     const normId = normalizeId(product.id);
                     if (normId && (seenInRun.has(normId) || isDuplicate(normId))) {
                         console.log(`      ⏭️  Duplicado (Histórico/Run): ${normId}`);
@@ -124,6 +133,7 @@ async function scrapeZZMall(quota = 6, parentBrowser = null) {
                     console.log(`      ✅ Coletado: ${product.nome} | R$${product.precoAtual}`);
                 }
             }
+
 
         } catch (errPromo) {
             console.log(`      ❌ Erro ao processar página de promoções: ${errPromo.message}`);
