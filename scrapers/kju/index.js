@@ -178,32 +178,60 @@ async function parseProductKJU(page, url) {
                 .trim();
 
             let container = document.querySelector('.produto-info') || document.querySelector('.info') || document.querySelector('#product-container') || document.body;
-            const priceElements = Array.from(container.querySelectorAll('.price, .current-price, .old-price, span, div, strong, b'));
-            const numericPrices = [];
+
+            // Strategy: Find explicit prices first
+            let precoOriginal = null;
+            let precoAtual = null;
+
+            // 1. Try to find explicit "old price" (De ...)
+            const oldPriceEl = container.querySelector('.old-price, .price-old, .preco-de, del, s, .strikethrough');
+            if (oldPriceEl) {
+                const txt = getSafeText(oldPriceEl);
+                const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                if (match) {
+                    precoOriginal = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+                }
+            }
+
+            // 2. Find all potential prices for Current Price (Por ...)
+            // We exclude elements that look like installments or totals
+            const priceElements = Array.from(container.querySelectorAll('.price, .current-price, .preco-por, .preco-venda, .special-price, span, div, strong, b'));
+            const potentialPrices = [];
 
             priceElements.forEach(el => {
                 const txt = getSafeText(el);
                 if (!txt.includes('R$')) return;
 
-                // Check parent text for installment info (e.g. "6x de R$ 58,10") to avoid capturing installment as promo price
+                // Stronger exclusions
                 const parentTxt = el.parentElement ? getSafeText(el.parentElement) : '';
-                if (/x\s*de|parcel|juros/i.test(txt) || /x\s*de|parcel|juros/i.test(parentTxt)) return;
+                const combinedTxt = txt + ' ' + parentTxt;
+
+                if (/x\s*de|parcel|juros|prazo|crédito|total/i.test(combinedTxt)) return;
+
+                // Avoid using the "De" price as a "Por" price candidate if possible
+                if (el === oldPriceEl || (oldPriceEl && oldPriceEl.contains(el))) return;
+
                 const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
                     let valStr = match[1].replace(/\./g, '').replace(',', '.');
                     const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0) numericPrices.push(val);
+                    if (!isNaN(val) && val > 0) potentialPrices.push(val);
                 }
             });
 
-            if (numericPrices.length === 0) return null;
-            const uniquePrices = [...new Set(numericPrices)];
-            let candidatePrices = uniquePrices.length > 3 ? uniquePrices.slice(0, 3) : uniquePrices;
-            const maxP = Math.max(...candidatePrices);
-            const validP = candidatePrices.filter(p => p > (maxP * 0.3));
+            if (potentialPrices.length > 0) {
+                // If we found explicitly old price, current is likely the min of others
+                // If we didn't find explicitly old price, current is also likely min (cash price)
+                // But we strictly DO NOT invent an old price from the max unless it was found in step 1.
+                precoAtual = Math.min(...potentialPrices);
 
-            const precoOriginal = Math.max(...validP);
-            const precoAtual = Math.min(...validP);
+                // Sanity check: if original is lower than current, invalidate original
+                if (precoOriginal !== null && precoOriginal <= precoAtual) {
+                    precoOriginal = null;
+                }
+            } else {
+                return null; // No price found
+            }
 
             // Tamanhos
             const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
@@ -213,7 +241,7 @@ async function parseProductKJU(page, url) {
                 const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
                 if (match) {
                     const normalizedSize = match[0].toUpperCase();
-                    const isDisabled = el.className.toLowerCase().includes('disable') || el.className.toLowerCase().includes('unavailable');
+                    const isDisabled = el.className.toLowerCase().includes('disable') || el.className.toLowerCase().includes('unavailable') || el.classList.contains('indisponivel');
                     if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
                         tamanhos.push(normalizedSize);
                     }
@@ -247,7 +275,7 @@ async function parseProductKJU(page, url) {
                 id,
                 nome,
                 precoAtual: precoAtual,
-                precoOriginal: precoOriginal,
+                precoOriginal: precoOriginal || precoAtual, // Fallback to equal if null, so logic downstream handles it (or just null if downstream supports it)
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href
@@ -255,7 +283,7 @@ async function parseProductKJU(page, url) {
         });
 
         if (data) {
-            console.log(`✅ KJU: ${data.nome} | R$${data.precoAtual} (${data.categoria})`);
+            console.log(`✅ KJU: ${data.nome} | R$${data.precoAtual}${data.precoOriginal > data.precoAtual ? ' (Promo de R$' + data.precoOriginal + ')' : ''}`);
         }
         return data;
 
