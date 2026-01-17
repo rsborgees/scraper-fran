@@ -183,7 +183,11 @@ async function parseProductKJU(page, url) {
 
             priceElements.forEach(el => {
                 const txt = getSafeText(el);
-                if (!txt.includes('R$') || /x\s*de|parcel|juros/i.test(txt)) return;
+                if (!txt.includes('R$')) return;
+
+                // Check parent text for installment info (e.g. "6x de R$ 58,10") to avoid capturing installment as promo price
+                const parentTxt = el.parentElement ? getSafeText(el.parentElement) : '';
+                if (/x\s*de|parcel|juros/i.test(txt) || /x\s*de|parcel|juros/i.test(parentTxt)) return;
                 const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
                     let valStr = match[1].replace(/\./g, '').replace(',', '.');
