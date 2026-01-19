@@ -108,8 +108,8 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
                     if (pageProductUrls.length === 0) {
                         console.log('      ⚠️ Nenhum produto encontrado nesta página.');
                         consecEmptyPages++;
-                        if (consecEmptyPages >= 3) {
-                            console.log('      🛑 3 páginas vazias seguidas. Próxima categoria.');
+                        if (consecEmptyPages >= 10) {
+                            console.log('      🛑 10 páginas vazias seguidas. Próxima categoria.');
                             break;
                         }
                     } else {
@@ -135,6 +135,12 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
                             const product = await parseProduct(page, url);
 
                             if (product) {
+                                // STRICT FILTER: Block accessories and bags
+                                if (product.categoria === 'acessório' || product.categoria === 'mala' || product.categoria === 'bolsa') {
+                                    console.log(`      🚫 Descartado (Categoria Proibida): ${product.categoria} - ${product.nome}`);
+                                    continue;
+                                }
+
                                 const normId = normalizeId(product.id);
                                 if (seenInRun.has(normId) || isDuplicate(normId, {}, product.preco)) continue;
 

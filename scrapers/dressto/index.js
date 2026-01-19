@@ -122,17 +122,42 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
 
                             if (normId) seenInRun.add(normId);
 
+
                             // Image Download
                             console.log(`      🖼️  Baixando imagem ${product.id}...`);
                             let imagePath = null;
                             try {
-                                const imgResult = product.imageUrl ?
-                                    await processImageDirect(product.imageUrl, 'DRESSTO', product.id) :
-                                    await processProductUrl(url, product.id);
-                                if (imgResult?.status === 'success' && imgResult.cloudinary_urls?.length) {
-                                    imagePath = imgResult.cloudinary_urls[0];
+                                // 1. Tenta buscar no Google Drive primeiro
+                                const { findFileByProductId } = require('../../driveManager'); // Lazy import/ensure import
+                                const driveFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID; // Usando a variável correta do .env
+
+                                let driveItem = null;
+                                if (driveFolderId) {
+                                    driveItem = await findFileByProductId(driveFolderId, product.id);
                                 }
-                            } catch (err) { }
+
+                                if (driveItem && driveItem.driveUrl) {
+                                    console.log(`      📁 Imagem encontrada no Drive: ${driveItem.name}`);
+                                    const imgResult = await processImageDirect(driveItem.driveUrl, 'DRESSTO', product.id);
+                                    if (imgResult?.status === 'success' && imgResult.cloudinary_urls?.length) {
+                                        imagePath = imgResult.cloudinary_urls[0];
+                                    }
+                                }
+
+                                // 2. Se não achou no Drive, vai no site (Fallback)
+                                if (!imagePath) {
+                                    console.log(`      🌐 Buscando imagem no site...`);
+                                    const imgResult = product.imageUrl ?
+                                        await processImageDirect(product.imageUrl, 'DRESSTO', product.id) :
+                                        await processProductUrl(url, product.id);
+                                    if (imgResult?.status === 'success' && imgResult.cloudinary_urls?.length) {
+                                        imagePath = imgResult.cloudinary_urls[0];
+                                    }
+                                }
+
+                            } catch (err) {
+                                console.error(`      ❌ Erro ao processar imagem: ${err.message}`);
+                            }
 
                             product.loja = 'dressto';
                             product.desconto = 0;

@@ -87,19 +87,42 @@ async function parseProduct(page, url) {
                 }
             }
 
-            // 3. PREÇO ATUAL (Prioridade #price)
+            // 3. PREÇO ATUAL (Prioridade Seletores VTEX)
             let currentPrices = [];
 
-            // Tenta o seletor oficial de preço de venda
-            const priceEl = document.querySelector('span#price');
-            if (priceEl) {
-                const txt = getSafeText(priceEl);
-                const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-                if (match) {
-                    let valStr = match[1].replace(/\./g, '').replace(',', '.');
-                    if (!valStr.includes('.')) valStr = valStr + '.00';
-                    const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0) currentPrices.push(val);
+            const mainPriceSelectors = [
+                'span#price',
+                '.vtex-store-components-3-x-sellingPriceValue',
+                '.vtex-product-price-1-x-sellingPriceValue',
+                '.ns-product-price__value',
+                '.product-prices__value'
+            ];
+
+            for (const sel of mainPriceSelectors) {
+                const els = document.querySelectorAll(sel);
+                for (const el of els) {
+                    // Verificamos se NÃO está em uma vitrine (shelf/recommendation)
+                    let area = el;
+                    let isShelf = false;
+                    while (area) {
+                        const cls = (area.className || '').toString().toLowerCase();
+                        const id = (area.id || '').toString().toLowerCase();
+                        if (cls.includes('shelf') || cls.includes('recommendation') || cls.includes('vitrine')) {
+                            isShelf = true;
+                            break;
+                        }
+                        area = area.parentElement;
+                    }
+                    if (isShelf) continue;
+
+                    const txt = getSafeText(el);
+                    const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                    if (match) {
+                        let valStr = match[1].replace(/\./g, '').replace(',', '.');
+                        if (!valStr.includes('.')) valStr = valStr + '.00';
+                        const val = parseFloat(valStr);
+                        if (!isNaN(val) && val > 0) currentPrices.push(val);
+                    }
                 }
             }
 
@@ -123,15 +146,46 @@ async function parseProduct(page, url) {
             if (currentPrices.length === 0) {
                 const allEls = Array.from(document.querySelectorAll('*'));
                 const priceCandidates = allEls.filter(el => {
+                    const tag = el.tagName.toLowerCase();
+                    if (tag === 'script' || tag === 'style' || tag === 'noscript') return false;
                     if (el.children.length > 0) return false;
                     if (el.id === 'list-price') return false;
+
                     const txt = getSafeText(el);
                     if (!txt || !txt.includes('R$')) return false;
+
                     // CRITICAL: Exclude promotional text patterns and ANY installment pattern
-                    if (/%\s*(off|desconto)/i.test(txt)) return false;
+                    if (/%\s*(off|desconto|de desconto)/i.test(txt)) return false;
                     if (/\d+\s*peças?\s*\d+/i.test(txt)) return false;
-                    if (/\d+\s*x\s*de|parcel|sem\s*juros|ou\s*\d+x/i.test(txt)) return false;
-                    return (el.offsetWidth > 0 && el.offsetHeight > 0);
+
+                    // Improved installment detection: 
+                    // Matches "6x de", "ou 6x", "parcelas", "sem juros", "vezes"
+                    if (/\d+\s*x\s*de|parcel|sem\s*juros|ou\s*\d+x|vezes/i.test(txt)) return false;
+
+                    // Check parent/grandparent for "juros" or "x" or "vezes"
+                    let parent = el.parentElement;
+                    let depth = 0;
+                    while (parent && depth < 3) {
+                        const pTxt = getSafeText(parent).toLowerCase();
+                        if (pTxt.includes('juros') || /\d+x/i.test(pTxt) || pTxt.includes('vezes') || pTxt.includes('parcel')) return false;
+                        parent = parent.parentElement;
+                        depth++;
+                    }
+
+                    // Check if it's visible
+                    if (el.offsetWidth === 0 || el.offsetHeight === 0) return false;
+
+                    // Avoid elements in common non-product areas by class/id
+                    let area = el;
+                    while (area) {
+                        const cls = (area.className || '').toString().toLowerCase();
+                        const id = (area.id || '').toString().toLowerCase();
+                        if (cls.includes('shelf') || cls.includes('recommendation') || cls.includes('footer') || cls.includes('header') || cls.includes('related') || cls.includes('vitrine')) return false;
+                        if (id.includes('shelf') || id.includes('recommendation') || id.includes('footer') || id.includes('header') || id.includes('related') || id.includes('vitrine')) return false;
+                        area = area.parentElement;
+                    }
+
+                    return true;
                 });
 
                 priceCandidates.forEach(el => {
@@ -168,7 +222,18 @@ async function parseProduct(page, url) {
                 return true;
             });
 
-            let precoAtual = filteredPrices.length > 0 ? filteredPrices[0] : null;
+            let precoAtual = null;
+            if (filteredPrices.length > 0) {
+                // Se temos precoOriginal, o atual não pode ser ABSURDAMENTE menor (ex: < 15% do preço)
+                // Isso evita pegar o valor da parcela (ex: 1/6 do preço).
+                if (precoOriginal) {
+                    const minReasonable = precoOriginal * 0.15;
+                    const reasonablePrices = filteredPrices.filter(p => p >= minReasonable);
+                    if (reasonablePrices.length > 0) precoAtual = reasonablePrices[0];
+                }
+
+                if (!precoAtual) precoAtual = filteredPrices[0];
+            }
 
             // Se ainda não achou precoAtual mas achamos UNIQUE PRICES, tenta o maior deles que NÃO seja suspeito
             if (!precoAtual && uniqueCurrentPrices.length > 0) {
@@ -200,17 +265,6 @@ async function parseProduct(page, url) {
                 precoOriginal = precoAtual;
             }
 
-            // --- TEMPORÁRIO: DESCONTO EXTRA DE 10% (Solicitado em 13/01/2026) ---
-            // Expira automaticamente em 15/01/2026 (Quinta-feira)
-            const now = new Date();
-            const expirationDate = new Date('2026-01-15T00:00:00-03:00'); // Fuso de Brasília
-
-            if (precoAtual > 0 && now < expirationDate) {
-                const precoComDescontoExtra = parseFloat((precoAtual * 0.90).toFixed(2));
-                console.log(`🎉 [TEMPORÁRIO] Aplicando 10% off: De R$${precoAtual} para R$${precoComDescontoExtra}`);
-                precoAtual = precoComDescontoExtra;
-            }
-            // ---------------------------------------------------------------------
 
             // FILTRO BAZAR (Requisito: Se estiver no Bazar, NÃO envia, independente do desconto)
             const isBazar = (function () {
@@ -244,16 +298,6 @@ async function parseProduct(page, url) {
                 return false;
             })();
 
-            // if (isBazar) {
-            //     const msg = `Produto descartado (Detectado como BAZAR)`;
-            //     console.log(`⚠️ ${msg}`);
-            //     return { error: msg, debugInfo };
-            // }
-
-            // FILTRO DE DESCONTO: REMOVIDO (Usuário liberou qualquer desconto se não for Bazar)
-            // if (percentualDesconto > 45) ... (DELETED)
-
-
             // 4. CATEGORIA (Antecipado para ajudar na validação de tamanho)
             let category = 'outros';
             const urlLower = window.location.href.toLowerCase();
@@ -265,13 +309,25 @@ async function parseProduct(page, url) {
             else if (combinedText.includes('/saia-') || combinedText.includes(' saia ')) category = 'saia';
             else if (combinedText.includes('/short-') || combinedText.includes(' short ')) category = 'short';
             else if (combinedText.includes('/blusa-') || combinedText.includes('/camisa-') || combinedText.includes(' blusa ') || combinedText.includes(' camisa ')) category = 'blusa';
-            else if (combinedText.includes('/brinco-') || combinedText.includes('/bolsa-') || combinedText.includes('/colar-') || combinedText.includes('/cinto-') || combinedText.includes('/acessorio-') || combinedText.includes(' brinco ') || combinedText.includes(' bolsa ') || combinedText.includes(' colar ') || combinedText.includes(' acessório ') || combinedText.includes(' garrafa ') || combinedText.includes(' copo ') || combinedText.includes(' necessaire ')) category = 'acessório';
+            else if (combinedText.includes('/mala') || combinedText.includes(' mala ') || combinedText.includes(' mochil') || combinedText.includes(' rodinha')) category = 'mala';
+            else if (combinedText.includes('/brinco-') || combinedText.includes('/bolsa') || combinedText.includes(' bolsa ') || combinedText.includes('/colar-') || combinedText.includes('/cinto-') || combinedText.includes('/acessorio-') || combinedText.includes(' brinco ') || combinedText.includes(' colar ') || combinedText.includes(' acessório ') || combinedText.includes(' garrafa ') || combinedText.includes(' copo ') || combinedText.includes(' necessaire ')) category = 'acessório';
             else if (combinedText.includes('/calca-') || combinedText.includes(' calça ')) category = 'calça';
 
-            // 🚫 BLOQUEIO TOTAL DE ACESSÓRIOS
-            if (category === 'acessório') {
-                return { error: 'Acessório bloqueado (Garrafas, Copos, Bolsas e similares)' };
+            // 🚫 BLOQUEIO DE ACESSÓRIOS E MALAS
+            if (category === 'acessório' || category === 'mala') {
+                return { error: `${category.charAt(0).toUpperCase() + category.slice(1)} bloqueado(a)` };
             }
+
+            // --- DESCONTO EXTRA DE 10% EM ROUPAS SEM PROMOÇÃO ---
+            const clothingCategories = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho'];
+            const isNoPromoClothing = clothingCategories.includes(category) && (precoOriginal === precoAtual);
+
+            if (precoAtual > 0 && isNoPromoClothing) {
+                const precoComDescontoExtra = parseFloat((precoAtual * 0.90).toFixed(2));
+                console.log(`🎉 [PROMO] Aplicando 10% off (Roupa sem promo): De R$${precoAtual} para R$${precoComDescontoExtra}`);
+                precoAtual = precoComDescontoExtra;
+            }
+            // -----------------------------------------------------
 
             // 5. TAMANHOS (Sincronização Refinada)
             const sizeContainers = Array.from(document.querySelectorAll('li.group\\/zoom-sku, [class*="skuSelector"], .size-item, .vtex-store-components-3-x-skuSelectorItem'));
@@ -305,9 +361,9 @@ async function parseProduct(page, url) {
             // FALLBACK PARA TAMANHOS
             if (uniqueSizes.length === 0) {
                 // SÓ assume UN se for acessório ou categoria desconhecida que não parece roupa
-                const clothingCategories = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho'];
+                const clothingCategoriesList = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho'];
 
-                if (clothingCategories.includes(category)) {
+                if (clothingCategoriesList.includes(category)) {
                     // É roupa e não tem tamanho -> Provavelmente ESGOTADO
                     return { error: `Produto ESGOTADO (Sem tamanhos disponíveis para ${category})` };
                 } else {

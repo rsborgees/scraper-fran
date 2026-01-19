@@ -134,7 +134,7 @@ async function scrapeKJU(quota = 6, parentBrowser = null) {
                 product.url = url.includes('?') ? `${url}&ref=7B1313` : `${url}?ref=7B1313`;
                 product.loja = 'kju';
                 product.imagePath = imagePath;
-                markAsSent([product.id]);
+                markAsSent([product.id]); // DISABLED FOR TESTING
                 products.push(product);
             }
 
@@ -177,14 +177,14 @@ async function parseProductKJU(page, url) {
                 .replace(/\s*-\s*Loja KJU.*$/i, '')
                 .trim();
 
-            let container = document.querySelector('.produto-info') || document.querySelector('.info') || document.querySelector('#product-container') || document.body;
+            let container = document.querySelector('.detalhes') || document.querySelector('.produto-info') || document.querySelector('.info') || document.querySelector('#product-container') || document.body;
 
             // Strategy: Find explicit prices first
             let precoOriginal = null;
             let precoAtual = null;
 
             // 1. Try to find explicit "old price" (De ...)
-            const oldPriceEl = container.querySelector('.old-price, .price-old, .preco-de, del, s, .strikethrough');
+            const oldPriceEl = container.querySelector('.old-price, .price-old, .preco-de, .valor_de, del, s, .strikethrough');
             if (oldPriceEl) {
                 const txt = getSafeText(oldPriceEl);
                 const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
@@ -195,41 +195,83 @@ async function parseProductKJU(page, url) {
 
             // 2. Find all potential prices for Current Price (Por ...)
             // We exclude elements that look like installments or totals
-            const priceElements = Array.from(container.querySelectorAll('.price, .current-price, .preco-por, .preco-venda, .special-price, span, div, strong, b'));
-            const potentialPrices = [];
 
-            priceElements.forEach(el => {
-                const txt = getSafeText(el);
-                if (!txt.includes('R$')) return;
+            // PRIORITY: Check for specific Tray Commerce structure first
+            // This avoids issues where the price is near installment text and gets discarded by the aggressive filter
+            // Structure 1: .valor .valor_final span (seen in some products)
+            // Structure 2: .valores .valor span (seen in others, where .valor matches parent of span)
+            const specificPriceEl = container.querySelector('.valor .valor_final span, .valor .valor_final, .valores .valor span, .detalhes .price span');
 
-                // Stronger exclusions
-                const parentTxt = el.parentElement ? getSafeText(el.parentElement) : '';
-                const combinedTxt = txt + ' ' + parentTxt;
-
-                if (/x\s*de|parcel|juros|prazo|crédito|total/i.test(combinedTxt)) return;
-
-                // Avoid using the "De" price as a "Por" price candidate if possible
-                if (el === oldPriceEl || (oldPriceEl && oldPriceEl.contains(el))) return;
-
+            if (specificPriceEl) {
+                const txt = getSafeText(specificPriceEl);
                 const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
                 if (match) {
-                    let valStr = match[1].replace(/\./g, '').replace(',', '.');
-                    const val = parseFloat(valStr);
-                    if (!isNaN(val) && val > 0) potentialPrices.push(val);
-                }
-            });
-
-            if (potentialPrices.length > 0) {
-                // If we found explicitly old price, current is likely the min of others
-                // If we didn't find explicitly old price, current is also likely min (cash price)
-                // But we strictly DO NOT invent an old price from the max unless it was found in step 1.
-                precoAtual = Math.min(...potentialPrices);
-
-                // Sanity check: if original is lower than current, invalidate original
-                if (precoOriginal !== null && precoOriginal <= precoAtual) {
-                    precoOriginal = null;
+                    const val = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+                    if (!isNaN(val) && val > 0) {
+                        precoAtual = val;
+                        // If we found the specific reliable price, we can skip the heuristic search
+                    }
                 }
             } else {
+                // No specific selector found, proceed with heuristic search
+            }
+
+            if (!precoAtual) {
+                const priceElements = Array.from(container.querySelectorAll('.valor, .price, .current-price, .preco-por, .preco-venda, .special-price, span, div, strong, b'));
+                const potentialPrices = [];
+
+                priceElements.forEach(el => {
+                    const txt = getSafeText(el);
+                    if (!txt.includes('R$')) return;
+
+                    // Stronger exclusions
+                    // Exclude multi-installment, fees, credit specific strings, but ALLOW "1x de" as it is usually the cash price
+                    const parentTxt = el.parentElement ? getSafeText(el.parentElement) : '';
+                    const grandParentTxt = (el.parentElement && el.parentElement.parentElement) ? getSafeText(el.parentElement.parentElement) : '';
+                    const combinedTxt = txt + ' ' + parentTxt + ' ' + grandParentTxt;
+
+                    // Regex matches "2x" through "12x" (and more), plus keywords like "juros" (unless it is "sem juros" attached to 1x, which is tricky).
+                    // Easier: Exclude "Xx de" where X > 1. 
+                    // Exclude "pix", "boleto", "vista".
+
+                    if (/(?<!1)x\s*de|parcel|crédito|total|pix|boleto|vista/i.test(combinedTxt)) {
+                        // Lookbehind (?<!1) checks that 'x' is NOT preceded by '1'. So "1x" matches nothing (OK), "2x" matches (Excluded).
+                        // However, JS lookbehind support is good in Node 16+. 
+                        // Safe alternative: check for specific [2-9]x or \d{2}x
+                        return;
+                    }
+
+                    // If it mentions "juros" but NOT "1x", exclude.
+                    if (/juros/i.test(combinedTxt) && !/1x/i.test(combinedTxt)) {
+                        return;
+                    }
+
+                    // Avoid using the "De" price as a "Por" price candidate if possible
+                    if (el === oldPriceEl || (oldPriceEl && oldPriceEl.contains(el))) return;
+
+                    const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
+                    if (match) {
+                        let valStr = match[1].replace(/\./g, '').replace(',', '.');
+                        const val = parseFloat(valStr);
+                        console.log(`   Candidate Price: ${val} (Source: ${el.tagName}.${el.className})`);
+                        if (!isNaN(val) && val > 0) potentialPrices.push(val);
+                    }
+                });
+
+                if (potentialPrices.length > 0) {
+                    // If we found explicitly old price, current is likely the min of others
+                    // If we didn't find explicitly old price, current is also likely min (cash price)
+                    // But we strictly DO NOT invent an old price from the max unless it was found in step 1.
+                    precoAtual = Math.min(...potentialPrices);
+
+                    // Sanity check: if original is lower than current, invalidate original
+                    if (precoOriginal !== null && precoOriginal <= precoAtual) {
+                        precoOriginal = null;
+                    }
+                }
+            }
+
+            if (!precoAtual) {
                 return null; // No price found
             }
 
@@ -275,7 +317,7 @@ async function parseProductKJU(page, url) {
                 id,
                 nome,
                 precoAtual: precoAtual,
-                precoOriginal: precoOriginal || precoAtual, // Fallback to equal if null, so logic downstream handles it (or just null if downstream supports it)
+                precoOriginal: precoOriginal, // Can be null now, to indicate no promotion
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href

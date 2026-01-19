@@ -18,10 +18,15 @@ function getInstallments(price) {
  * KJU TEMPLATE
  */
 function buildKjuMessage(produto) {
-    const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
-    const priceLine = isPromotional
-        ? `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`
-        : `Por *${formatPrice(produto.precoAtual)}* 🔥`;
+    const isPromotional = produto.precoOriginal && (produto.precoOriginal > produto.precoAtual);
+
+    let priceLine;
+    if (isPromotional) {
+        priceLine = `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`;
+    } else {
+        // User Request: "só colocar por" se não tiver promoção
+        priceLine = `Por *${formatPrice(produto.precoAtual)}* 🔥`;
+    }
 
     return `
 ⭕️ Farm na Kju 🤩‼️
@@ -138,11 +143,10 @@ function buildFarmMessage(produto, timerData = null) {
     // Monta a linha de preço
     let priceLine;
     if (isPromotional) {
-        priceLine = `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`;
+        priceLine = `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* usando o código da vendedora 🔥`;
     } else {
-        // Se NÃO for promoção (preço cheio), calcula 10% OFF manual
-        const discountedPrice = produto.precoAtual * 0.9;
-        priceLine = `De ~${formatPrice(produto.precoAtual)}~ Por *${formatPrice(discountedPrice)}* usando o código da vendedora 🔥`;
+        // Agora o preço já vem tratado do parser (10% aplicado apenas se for roupa sem promoção)
+        priceLine = `*${formatPrice(produto.precoAtual)}* 🔥`;
     }
 
     // Monta a mensagem final: Progressivo (se houver) -> Nome -> Tamanhos -> Preço -> Cupom -> Código -> Link -> Grupo
