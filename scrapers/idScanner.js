@@ -16,12 +16,12 @@ const { scrapeLiveByName } = require('./live/nameScanner');
 const STORE_CONFIG = {
     dressto: {
         baseUrl: 'https://www.dressto.com.br',
-        // User provided specific robust URL pattern
+        // Direct search URL that often shows results instead of redirecting
         directUrlBuilder: (id) => `https://www.dressto.com.br/${id}?_q=${id}&map=ft`,
-        // Fallback search (though directUrlBuilder acts as a search too)
-        searchUrl: (id) => `https://www.dressto.com.br/${id}?map=ft`,
+        searchUrl: (id) => `https://www.dressto.com.br/${id}?_q=${id}&map=ft`,
         searchInputSelector: 'input[type="search"], input[placeholder*="Buscar"], .vtex-store-components-3-x-searchBarIcon',
-        productLinkSelector: 'a.vtex-product-summary-2-x-clearLink, a[href$="/p"]',
+        // Updated selector to match research
+        productLinkSelector: '.dresstoshop-commercegrowth-custom-0-x-skuselector__item, a.vtex-product-summary-2-x-clearLink, a[href$="/p"]',
         parser: 'dressto',
         utmParam: null
     },

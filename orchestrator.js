@@ -92,13 +92,12 @@ async function runAllScrapers(overrideQuotas = null) {
 
                     console.log(`📊 [FARM] ${sortedFarmDriveItems.length} itens disponíveis no Drive (${farmDriveItems.filter(i => i.isFavorito).length} favoritos)`);
 
-                    // IMPORTANTE: Passa TODOS os candidatos do Drive, não limita a 50
-                    // O scraper interno vai respeitar a quota total do orchestrator
-                    const totalQuota = Object.values(quotas).reduce((a, b) => a + b, 0);
+                    // O scraper interno vai respeitar a quota da FARM
+                    const farmQuota = quotas.farm;
 
                     // Reutiliza o browser instanciado
                     // UPDATE: Agora retorna objeto com stats
-                    const { products: scrapedDriveItems, attemptedIds, stats } = await scrapeSpecificIds(context, sortedFarmDriveItems, totalQuota);
+                    const { products: scrapedDriveItems, attemptedIds, stats } = await scrapeSpecificIds(context, sortedFarmDriveItems, farmQuota);
 
                     scrapedDriveItems.forEach(p => p.message = buildFarmMessage(p, p.timerData));
 

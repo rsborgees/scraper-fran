@@ -143,9 +143,14 @@ function isDuplicate(id, options = {}, price = 0) {
             return false;
         }
 
-        // REGRA PADRÃO: Produtos normais NUNCA repetem
-        console.log(`   🚫 ID Duplicado detectado: ${normId} (Match: ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h [Regra: Sem Repetição]`);
-        return true;
+        // REGRA PADRÃO (RELAXADA): Itens podem repetir após 72h
+        if (ageHours < MAX_AGE_HOURS) {
+            console.log(`   🚫 ID Duplicado detectado: ${normId} (Match: ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h [Regra: ${MAX_AGE_HOURS}h]`);
+            return true;
+        }
+
+        console.log(`   ✅ ID Liberado por tempo: ${normId} (match ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h.`);
+        return false;
     }
 
     return false;

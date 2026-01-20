@@ -162,7 +162,7 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
                             product.loja = 'dressto';
                             product.desconto = 0;
                             product.imagePath = imagePath || 'error.jpg';
-                            markAsSent([product.id]);
+                            // Removido markAsSent daqui para evitar "queimar" produtos não selecionados
                             products.push(product);
 
                             if (product.categoria === 'vestido') collectedVestidos++;
@@ -239,7 +239,10 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
     // Ordenação final no output? Não necessário.
 
     console.log(`\n✅ Dress To Selecionados (${selectedProducts.length}):`);
-    selectedProducts.forEach(p => console.log(`   - ${p.nome} (${p.categoria}) | R$${p.precoAtual}`));
+    selectedProducts.forEach(p => {
+        console.log(`   - ${p.nome} (${p.categoria}) | R$${p.precoAtual}`);
+        markAsSent([p.id]); // Marca apenas os que serão enviados
+    });
 
     return selectedProducts.slice(0, quota);
 }

@@ -9,24 +9,34 @@ async function test() {
     await page.waitForTimeout(4000);
 
     const data = await page.evaluate(() => {
-        const sizeEls = Array.from(document.querySelectorAll('[class*="skuselector__item"]'));
+        const sizeEls = Array.from(document.querySelectorAll('.dresstoshop-commercegrowth-custom-0-x-skuselector__item'));
         console.log('Total size elements found:', sizeEls.length);
 
         const tamanhos = [];
-        sizeEls.forEach((el, idx) => {
-            console.log(`\n--- Element ${idx} ---`);
-            console.log('innerHTML:', el.innerHTML);
-            console.log('textContent:', el.textContent);
-            console.log('childNodes[0]:', el.childNodes[0] ? el.childNodes[0].textContent : 'N/A');
-            console.log('className:', el.className);
+        sizeEls.forEach((li, idx) => {
+            let sizeText = '';
+            for (let node of li.childNodes) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const t = node.textContent.trim();
+                    if (t) {
+                        sizeText = t;
+                        break;
+                    }
+                }
+            }
 
-            const txt = el.childNodes[0] ? el.childNodes[0].textContent.trim() : '';
-            const isUnavailable = el.className.includes('--unavailable') ||
-                el.className.includes('disabled') ||
-                el.getAttribute('aria-disabled') === 'true';
+            if (!sizeText) {
+                sizeText = li.innerText.split('\n')[0].trim();
+            }
 
-            if (txt && !isUnavailable) {
-                tamanhos.push(txt.toUpperCase());
+            const isUnavailable = li.className.includes('--unavailable') ||
+                li.className.includes('disabled') ||
+                li.getAttribute('aria-disabled') === 'true';
+
+            const isValidSize = sizeText && sizeText.length <= 4 && !sizeText.includes('disponível') && !sizeText.includes('olho');
+
+            if (isValidSize && !isUnavailable) {
+                tamanhos.push(sizeText.toUpperCase());
             }
         });
 

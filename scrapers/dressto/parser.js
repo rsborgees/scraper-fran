@@ -58,24 +58,31 @@ async function parseProductDressTo(page, url) {
             const tamanhos = [];
 
             sizeElements.forEach(li => {
-                // Extrai apenas o texto direto do <li>, ignorando o <span> tooltip
+                // Extract ONLY the text from the LI itself, ignoring any children spans/tooltips
                 let sizeText = '';
-
                 for (let node of li.childNodes) {
                     if (node.nodeType === Node.TEXT_NODE) {
-                        const text = node.textContent.trim();
-                        if (text) {
-                            sizeText = text;
-                            break; // Pega só o primeiro text node (o tamanho)
+                        const t = node.textContent.trim();
+                        if (t) {
+                            sizeText = t;
+                            break;
                         }
                     }
+                }
+
+                // If no direct text node, try getting innerText but stripping common tooltip patterns
+                if (!sizeText) {
+                    sizeText = li.innerText.split('\n')[0].trim();
                 }
 
                 const isUnavailable = li.className.includes('--unavailable') ||
                     li.className.includes('disabled') ||
                     li.getAttribute('aria-disabled') === 'true';
 
-                if (sizeText && !isUnavailable) {
+                // Valid size labels in Brazil are usually PP, P, M, G, GG, numbers, or unique letters
+                const isValidSize = sizeText && sizeText.length <= 4 && !sizeText.includes('disponível') && !sizeText.includes('olho');
+
+                if (isValidSize && !isUnavailable) {
                     tamanhos.push(sizeText.toUpperCase());
                 }
             });
