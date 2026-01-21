@@ -89,7 +89,14 @@ async function scrapeZZMall(quota = 6, parentBrowser = null) {
                 if (product) {
                     // FILTER: ZZMall - NO CLOTHES (ONLY SHOES/BAGS)
                     const normalizedCat = product.categoria ? product.categoria.toLowerCase() : '';
-                    const isCloth = ['vestido', 'calça', 'blusa', 'casaco', 'saia', 'short', 'macacão', 'top', 'biquíni', 'body'].some(c => normalizedCat.includes(c));
+                    const productNomeLower = product.nome.toLowerCase();
+
+                    // List of terms that definitely indicate clothing
+                    const clothingTerms = ['vestido', 'blusa', 'casaco', 'saia', 'short', 'macacão', 'top', 'biquíni', 'body', 'camisa', 'jaqueta', 'blazer', 'pantalo', 'regata', 't-shirt', 'tricot'];
+
+                    // Specific check for "calça" vs "calçado"
+                    const hasCalca = /\bcalça\b/.test(normalizedCat) || /\bcalça\b/.test(productNomeLower);
+                    const isCloth = clothingTerms.some(c => normalizedCat.includes(c) || productNomeLower.includes(c)) || hasCalca;
 
                     if (isCloth) {
                         console.log(`      ⛔ Ignorado (Roupa detectada): ${product.nome} (${product.categoria})`);
