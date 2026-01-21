@@ -3,6 +3,8 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { runAllScrapers } = require('./orchestrator');
+const { checkFarmTimer } = require('./scrapers/farm/timer_check');
+
 
 const { getPromoSummary } = require('./scrapers/farm/promoScanner');
 
@@ -172,7 +174,16 @@ function setupDailySchedule() {
         await runDailyPromoJob();
     }, { timezone });
 
+    // 3. Reloginho Check: De 1h em 1h, 24/7
+    const reloginhoCron = '0 * * * *';
+    console.log(`   📅 Reloginho: ${reloginhoCron} (De 1h em 1h)`);
+
+    cron.schedule(reloginhoCron, async () => {
+        await checkFarmTimer();
+    }, { timezone });
+
     console.log('✅ Cron Jobs Iniciados! (Timezone: São Paulo)\n');
+
 }
 
 /**

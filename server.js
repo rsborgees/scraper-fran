@@ -124,13 +124,10 @@ app.listen(PORT, () => {
     console.log(`👉 ${DATA_DIR}`);
     console.log('==================================================\n');
 
-    // 🕒 Inicia monitoramento do cronômetro Farm (30 em 30 min)
-    console.log('🕒 Iniciando monitoramento de cronômetro Farm...');
-    checkFarmTimer(); // Primeira execução imediata
-    setInterval(() => {
-        checkFarmTimer().catch(err => console.error('Erro no timer_check (setInterval):', err));
-    }, 60 * 60 * 1000); // 1 hora (60 minutos)
+    // 🕒 O monitoramento do cronômetro Farm (Reloginho) agora é gerenciado pelo cronScheduler (setupDailySchedule)
+    checkFarmTimer().catch(err => console.error('Erro no timer_check inicial:', err));
 });
+
 
 // Debug: Prevent process from exiting
 setInterval(() => {

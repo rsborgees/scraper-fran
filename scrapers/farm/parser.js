@@ -22,6 +22,14 @@ async function parseProduct(page, url) {
 
     console.log(`\n🔎 Analisando: ${url.split('/').pop()}`);
 
+    // Console Listener (Browser -> Node)
+    page.on('console', msg => {
+        const text = msg.text();
+        if (text.includes('[isForbidden]') || text.includes('[DEBUG]')) {
+            console.log(`📺 [Browser Console] ${text}`);
+        }
+    });
+
     try {
         // NAVEGAÇÃO
         try {
@@ -298,24 +306,53 @@ async function parseProduct(page, url) {
                 return false;
             })();
 
-            // 4. CATEGORIA (Antecipado para ajudar na validação de tamanho)
-            let category = 'outros';
+            // 4. CATEGORIA E BLOQUEIOS
+            let category = 'desconhecido';
             const urlLower = window.location.href.toLowerCase();
-            const bodyText = getSafeText(document.body).substring(0, 3000).toLowerCase();
-            const combinedText = (urlLower + ' ' + bodyText);
+            const nameLower = name.toLowerCase();
 
-            if (combinedText.includes('/vestido-') || combinedText.includes(' vestido ')) category = 'vestido';
-            else if (combinedText.includes('/macacao-') || combinedText.includes('/macaquinho-') || combinedText.includes(' macacão ') || combinedText.includes(' macaquinho ')) category = 'macacão';
-            else if (combinedText.includes('/saia-') || combinedText.includes(' saia ')) category = 'saia';
-            else if (combinedText.includes('/short-') || combinedText.includes(' short ')) category = 'short';
-            else if (combinedText.includes('/blusa-') || combinedText.includes('/camisa-') || combinedText.includes(' blusa ') || combinedText.includes(' camisa ')) category = 'blusa';
-            else if (combinedText.includes('/mala') || combinedText.includes(' mala ') || combinedText.includes(' mochil') || combinedText.includes(' rodinha')) category = 'mala';
-            else if (combinedText.includes('/brinco-') || combinedText.includes('/bolsa') || combinedText.includes(' bolsa ') || combinedText.includes('/colar-') || combinedText.includes('/cinto-') || combinedText.includes('/acessorio-') || combinedText.includes(' brinco ') || combinedText.includes(' colar ') || combinedText.includes(' acessório ') || combinedText.includes(' garrafa ') || combinedText.includes(' copo ') || combinedText.includes(' necessaire ')) category = 'acessório';
-            else if (combinedText.includes('/calca-') || combinedText.includes(' calça ')) category = 'calça';
+            // Pega o texto do Breadcrumb se existir
+            const breadcrumbEl = document.querySelector('.vtex-breadcrumb__container') || document.querySelector('[class*="breadcrumb"]');
+            const breadcrumbText = breadcrumbEl ? getSafeText(breadcrumbEl).toLowerCase() : '';
 
-            // 🚫 BLOQUEIO DE ACESSÓRIOS E MALAS
-            if (category === 'acessório' || category === 'mala') {
-                return { error: `${category.charAt(0).toUpperCase() + category.slice(1)} bloqueado(a)` };
+            // Strict Text: Apenas áreas que REALMENTE definem o produto
+            const strictText = (urlLower + ' ' + nameLower + ' ' + breadcrumbText);
+
+            // DEFINIÇÃO DE CATEGORIAS (PRIORIDADE NO STRICT TEXT)
+            if (strictText.includes('/vestido') || strictText.includes('vestido')) category = 'vestido';
+            else if (strictText.includes('/macacao') || strictText.includes('/macaquinho') || strictText.includes('macacão') || strictText.includes('macaquinho')) category = 'macacão';
+            else if (strictText.includes('/conjunto') || strictText.includes('conjunto')) category = 'conjunto';
+            else if (strictText.includes('/saia') || strictText.includes('saia')) category = 'saia';
+            else if (strictText.includes('/short') || strictText.includes('short')) category = 'short';
+            else if (strictText.includes('/calca') || strictText.includes('calça')) category = 'calça';
+            else if (strictText.includes('/blusa') || strictText.includes('/camisa') || strictText.includes('/t-shirt') || strictText.includes('blusa') || strictText.includes('camisa') || strictText.includes('t-shirt')) category = 'blusa';
+            else if (strictText.includes('/casaco') || strictText.includes('/jaqueta') || strictText.includes('/moletom') || strictText.includes('casaco') || strictText.includes('jaqueta') || strictText.includes('moletom')) category = 'casaco';
+            else if (strictText.includes('/body') || strictText.includes('/kimono') || strictText.includes('/top') || strictText.includes('body') || strictText.includes('kimono') || strictText.includes('top')) category = 'top/body';
+
+            // BLOQUEIO EXPLÍCITO DE CATEGORIAS PROIBIDAS (Usando STRICT TEXT para evitar menu/footer)
+            const isForbidden = (function () {
+                // Acessórios / Malas
+                if (/\/mala(-|\/)/i.test(strictText) || /\bmala\b/i.test(strictText)) return 'mala';
+                if (/mochila/i.test(strictText) || /rodinha/i.test(strictText)) return 'mala';
+
+                if (/\/brinco-/i.test(strictText) || /\/bolsa(-|\/|\?)/i.test(strictText) || /\bbolsa\b/i.test(strictText) || /\/colar-/i.test(strictText) || /\/cinto-/i.test(strictText) || (/\/acessorio-/i.test(strictText) && !strictText.includes('acessorio-feminino')) || /\bbrinco\b/i.test(strictText) || /\bcolar\b/i.test(strictText) || /\bacessório\b/i.test(strictText) || /\bnecessaire\b/i.test(strictText) || /\bóculos\b/i.test(strictText) || /\bscrunchie\b/i.test(strictText) || /\btiara\b/i.test(strictText) || /\blenço\b/i.test(strictText) || /\bpochete\b/i.test(strictText) || /\bcarteira\b/i.test(strictText) || /\bchaveiro\b/i.test(strictText) || /\bmeia\b/i.test(strictText) || /\bluva\b/i.test(strictText) || /\bcachecol\b/i.test(strictText) || /\btouca\b/i.test(strictText) || /\bboné\b/i.test(strictText) || /\bchapéu\b/i.test(strictText)) return 'acessório';
+
+                // Roupas de Banho
+                if (/\/biquini-/i.test(strictText) || /\/maio-/i.test(strictText) || /\/tanga-/i.test(strictText) || /\/sunga-/i.test(strictText) || /\bbiquíni\b/i.test(strictText) || /\bmaiô\b/i.test(strictText) || /\bbiquini\b/i.test(strictText) || /\bmaio\b/i.test(strictText) || /\btanga\b/i.test(strictText) || /\bsunga\b/i.test(strictText) || /saída de praia/i.test(strictText)) return 'banho';
+
+                // Garrafas / Copos / Casa
+                if (/\/garrafa-/i.test(strictText) || /\/copo-/i.test(strictText) || /\/squeeze-/i.test(strictText) || /\/marmita-/i.test(strictText) || /\/caneca-/i.test(strictText) || /\bgarrafa\b/i.test(strictText) || /\bcopo\b/i.test(strictText) || /\bsqueeze\b/i.test(strictText) || /\bmarmita\b/i.test(strictText) || /\bcaneca\b/i.test(strictText) || /\bkit\b/i.test(strictText) || /\bvela\b/i.test(strictText) || /\bcaderno\b/i.test(strictText) || /\badesivo\b/i.test(strictText) || /\bestojo\b/i.test(strictText) || /\bbeauty\b/i.test(strictText)) return 'utilitário/casa';
+
+                return null;
+            })();
+
+            if (isForbidden && category === 'desconhecido') {
+                return { error: `${isForbidden.charAt(0).toUpperCase() + isForbidden.slice(1)} bloqueado(a)` };
+            }
+
+            // 🚫 BLOQUEIO DE CATEGORIA DESCONHECIDA (Se não é uma das roupas permitidas, bloqueia)
+            if (category === 'desconhecido') {
+                return { error: 'Categoria não identificada ou não permitida (Bloqueio Preventivo)' };
             }
 
             // --- DESCONTO EXTRA DE 10% EM ROUPAS SEM PROMOÇÃO ---

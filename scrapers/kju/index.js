@@ -313,11 +313,20 @@ async function parseProductKJU(page, url) {
                 }
             }
 
+            // --- DESCONTO EXTRA DE 10% EM PEÇAS SEM PROMOÇÃO (Regra Vendedora) ---
+            if (precoAtual > 0 && (!precoOriginal || precoOriginal <= precoAtual)) {
+                precoOriginal = precoAtual; // Define o original como o preço cheio
+                const precoComDescontoExtra = parseFloat((precoAtual * 0.90).toFixed(2));
+                console.log(`🎉 [PROMO KJU] Aplicando 10% off (Vendedora): De R$${precoAtual} para R$${precoComDescontoExtra}`);
+                precoAtual = precoComDescontoExtra;
+            }
+            // ---------------------------------------------------------------------
+
             return {
                 id,
                 nome,
                 precoAtual: precoAtual,
-                precoOriginal: precoOriginal, // Can be null now, to indicate no promotion
+                precoOriginal: precoOriginal, // Agora garantido ter o preço cheio se houve desconto
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href

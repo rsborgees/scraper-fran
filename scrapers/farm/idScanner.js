@@ -109,7 +109,8 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
                         nome: mergedProducts.map(p => p.nome).join(' + '),
                         precoAtual: parseFloat(mergedProducts.reduce((sum, p) => sum + p.precoAtual, 0).toFixed(2)),
                         precoOriginal: parseFloat(mergedProducts.reduce((sum, p) => sum + (p.precoOriginal || p.precoAtual), 0).toFixed(2)),
-                        isSet: true
+                        isSet: true,
+                        items: mergedProducts
                     };
                 } else {
                     finalProduct = mergedProducts[0];

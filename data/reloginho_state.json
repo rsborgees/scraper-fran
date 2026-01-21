@@ -1,9 +1,10 @@
 {
   "ativo": true,
-  "cupom": "CARIOCA20",
-  "discountCode": "CARIOCA20",
+  "cupom": "QUERO20",
+  "discountCode": "QUERO20",
   "discountPercent": "20% OFF",
   "tempoRestante": "EM BREVE",
   "progressive": true,
-  "lastSent": 1768919761725
+  "rawHTML": "<section id=\"2937555081-0\" data-manifest-key=\"site/sections/Header/Header.tsx\"><header data-header=\"true\" class=\"transition-[height] duration-300 ease-in-out relative header-desktop\"><div data-header-container=\"true\" class=\"fixed top-0 left-0 w-full z-30 header-container\"><div class=\"bg-base-100 relative w-full\"><nav data-scrolled=\"true\" data-navbar=\"true\" class=\"transition-[height] duration-300 ease-in-out h-16 flex justify-between items-center px-10 xl:px-16 group/navbar\"><div class=\"flex item",
+  "lastSent": 1769001153859
 }

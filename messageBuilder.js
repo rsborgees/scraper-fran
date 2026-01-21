@@ -97,59 +97,68 @@ ${LINKTREE}`;
  * Se timerAtivo = true, usa cupom do banner. Se false, usa texto padrão.
  */
 function buildFarmMessage(produto, timerData = null) {
-    const sizes = produto.tamanhos ? produto.tamanhos.join(' ') : 'P M G';
-
-    // Bloco do Desconto Progressivo (Campanha Atual)
+    // 1. Lógica do Cupom e Banner (Global para o post)
     let progressiveHeader = "";
-    // Exibe se o scraper detectou a campanha OU se não temos dados (assume ativo por segurança/padrão recente)
-    // Exibe SOMENTE se a campanha for explicitamente detectada
     if (timerData && timerData.progressive) {
-        progressiveHeader = `Desconto Progressivo🔥
-
-1️⃣ peça  20% off
-2️⃣ peças  25% off
-3️⃣ peças  30% off`;
+        progressiveHeader = `Desconto Progressivo🔥\n\n1️⃣ peça  20% off\n2️⃣ peças  25% off\n3️⃣ peças  30% off`;
     }
 
-    // Verificação de Promoção (De/Por)
-    const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
-
-    // Lógica do Cupom
     let cupomText = "";
-    // Se temos timer ativo OU campanha progressiva, motra linha de cupom
     if (timerData && (timerData.ativo || timerData.progressive)) {
-        const perc = timerData.discountPercent; // ex: "25% OFF"
-        const code = timerData.discountCode;    // ex: "QUERO25"
-
-        // Prioriza EXIBIR APENAS O CUPOM se ele existir (pedido do usuário)
-        if (code) {
-            cupomText = `Cupom: *${code}*`;
-        } else if (perc) {
-            cupomText = `Cupom: *${perc} no site*`;
-        } else {
-            // Fallback se ativou mas não achou textos específicos
+        const code = timerData.discountCode;
+        const perc = timerData.discountPercent;
+        if (code) cupomText = `Cupom: *${code}*`;
+        else if (perc) cupomText = `Cupom: *${perc} no site*`;
+        else {
             const fallback = (timerData.cupom && timerData.cupom !== 'NO SITE') ? timerData.cupom : 'Confira o desconto no site';
             cupomText = `Cupom: *${fallback}*`;
         }
     }
-    // NOTA: Se não tem cupom ativo e não é promocional, a mensagem de desconto entra no priceLine abaixo,
-    // então não precisamos definir cupomText aqui.
 
-    // Adiciona parâmetros de vendedora na URL de forma robusta usando utilitário
-    const finalUrl = appendQueryParams(produto.url, {
-        utm_campaign: SELLER_CODE
-    });
+    // 2. Se for Conjunto, formata cada item individualmente
+    if (produto.isSet && produto.items && produto.items.length > 0) {
+        let itemsMsg = "";
+        produto.items.forEach((item, index) => {
+            const sizes = item.tamanhos ? item.tamanhos.join(' ') : 'P M G';
+            const isPromotional = item.precoOriginal && item.precoOriginal > item.precoAtual;
 
-    // Monta a linha de preço
+            let priceLine;
+            if (isPromotional) {
+                priceLine = `De ~${formatPrice(item.precoOriginal)}~ *${formatPrice(item.precoAtual)}*`;
+            } else {
+                priceLine = `Por *${formatPrice(item.precoAtual)}*`;
+            }
+
+            // Adiciona parâmetros de vendedora na URL individual
+            const itemUrl = appendQueryParams(item.url, { utm_campaign: SELLER_CODE });
+
+            itemsMsg += `*${item.nome}* ${sizes} ${priceLine}\n${itemUrl}\n\n`;
+        });
+
+        const parts = [
+            progressiveHeader,
+            itemsMsg.trim(),
+            `Código de vendedora *${SELLER_CODE}*`,
+            cupomText,
+            `🌈*Vaga pra entrar no grupo:*`,
+            LINKTREE
+        ];
+
+        return parts.filter(p => p && p.trim() !== "").join('\n\n');
+    }
+
+    // 3. Lógica para Produto Único (Legado/Padrão)
+    const sizes = produto.tamanhos ? produto.tamanhos.join(' ') : 'P M G';
+    const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
+    const finalUrl = appendQueryParams(produto.url, { utm_campaign: SELLER_CODE });
+
     let priceLine;
     if (isPromotional) {
         priceLine = `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* usando o código da vendedora 🔥`;
     } else {
-        // Agora o preço já vem tratado do parser (10% aplicado apenas se for roupa sem promoção)
         priceLine = `*${formatPrice(produto.precoAtual)}* 🔥`;
     }
 
-    // Monta a mensagem final: Progressivo (se houver) -> Nome -> Tamanhos -> Preço -> Cupom -> Código -> Link -> Grupo
     const parts = [
         progressiveHeader,
         produto.nome,
@@ -162,8 +171,7 @@ function buildFarmMessage(produto, timerData = null) {
         LINKTREE
     ];
 
-    // Filtra partes vazias (ex: progressiveHeader se inativo) e junta
-    return parts.filter(p => p.trim() !== "").join('\n\n');
+    return parts.filter(p => p && p.trim() !== "").join('\n\n');
 }
 
 /**

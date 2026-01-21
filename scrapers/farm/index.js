@@ -135,9 +135,10 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
                             const product = await parseProduct(page, url);
 
                             if (product) {
-                                // STRICT FILTER: Block accessories and bags
-                                if (product.categoria === 'acessório' || product.categoria === 'mala' || product.categoria === 'bolsa') {
-                                    console.log(`      🚫 Descartado (Categoria Proibida): ${product.categoria} - ${product.nome}`);
+                                // STRICT FILTER: Block non-clothing categories
+                                const forbiddenCategories = ['acessório', 'mala', 'bolsa', 'banho', 'utilitário/casa', 'desconhecido'];
+                                if (forbiddenCategories.includes(product.categoria)) {
+                                    console.log(`      🚫 Descartado (Categoria Proibida/Não Permitida): ${product.categoria} - ${product.nome}`);
                                     continue;
                                 }
 
