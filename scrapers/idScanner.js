@@ -57,22 +57,32 @@ const STORE_CONFIG = {
 };
 
 /**
- * Scraper focado em IDs específicos para múltiplas lojas
+ * Scraper focado em IDs específicos para múltiplas lojas (Drive-First)
  * @param {object} contextOrBrowser Playwright Browser or BrowserContext instance
  * @param {Array} driveItems Lista de objetos { id, driveUrl, isFavorito, store }
  * @param {string} storeName Nome da loja (dressto, kju, zzmall, live)
  * @param {number} quota Meta máxima de itens para esta loja
+ * @returns {Promise<{products: Array, attemptedIds: Array, stats: object}>}
  */
 async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName, quota = 999) {
     const config = STORE_CONFIG[storeName];
     if (!config) {
         console.log(`❌ [ID Scanner] Loja não configurada: ${storeName}`);
-        return [];
+        return { products: [], attemptedIds: [], stats: { found: 0, errors: 0 } };
     }
 
-    console.log(`\n🔍 [${storeName.toUpperCase()}] DRIVE-FIRST: Buscando ${driveItems.length} itens (Meta: ${quota})...`);
+    console.log(`\n🔍 [${storeName.toUpperCase()}] DRIVE-FIRST: Processando ${driveItems.length} candidatos (Meta: ${quota})...`);
 
     const collectedProducts = [];
+    const attemptedIds = [];
+    const stats = {
+        total: driveItems.length,
+        checked: 0,
+        found: 0,
+        duplicates: 0,
+        notFound: 0,
+        errors: 0
+    };
 
     // Separa itens por Nome (Feature Live) e por ID (Padrão)
     const nameBasedItems = driveItems.filter(i => i.searchByName);
@@ -83,6 +93,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
         const page = await contextOrBrowser.newPage({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         });
+
         try {
             for (const item of idBasedItems) {
                 // Stop if quota reached
@@ -91,20 +102,28 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     break;
                 }
 
-                console.log(`\n🔍 [${storeName}] Buscando ID ${item.id} (${item.driveUrl ? 'Com Drive URL' : 'Sem Drive URL'})...`);
+                stats.checked++;
+                attemptedIds.push(item.id);
+                console.log(`\n🔍 [${storeName}] Buscando ID ${item.id} (${item.isFavorito ? '⭐ Favorito' : 'Regular'})...`);
+
+                // Check Duplicates internally (but after logging attempt so user sees progress)
+                const normIdCheck = normalizeId(item.id);
+                if (!item.isFavorito && isDuplicate(normIdCheck)) {
+                    console.log(`   ⏭️  Pulando: Já enviado recentemente.`);
+                    stats.duplicates++;
+                    continue;
+                }
 
                 try {
                     // --- ESTRATÉGIA DE NAVEGAÇÃO ---
-
-                    // 1. Tenta Direct URL (se configurada)
-                    // Para DressTo, isso é uma URL de busca robusta.
                     let navigationSuccess = false;
 
+                    // Para DressTo, usamos a busca direta que é mais estável
                     if (config.directUrlBuilder) {
                         const directUrl = config.directUrlBuilder(item.id);
                         try {
-                            // console.log(`      🚀 Tentando Direct URL: ${directUrl}`);
-                            await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                            const waitCondition = storeName === 'dressto' ? 'networkidle' : 'domcontentloaded';
+                            await page.goto(directUrl, { waitUntil: waitCondition, timeout: 45000 });
                             await new Promise(r => setTimeout(r, 2000));
                             navigationSuccess = true;
                         } catch (e) {
@@ -112,32 +131,24 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         }
                     }
 
-                    // 2. Se não tem Direct URL configurada ou falhou muito feio, usa Search URL padrão
                     if (!navigationSuccess) {
                         const searchUrl = config.searchUrl(item.id);
-                        // console.log(`      🔎 Tentando Search URL: ${searchUrl}`);
                         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
-                        await new Promise(r => setTimeout(r, 2000));
+                        await new Promise(r => setTimeout(r, 2500));
                     }
 
                     // --- DETECÇÃO DE RESULTADO ---
-
                     let currentUrl = page.url();
                     let isProductPage = currentUrl.includes('/p') || currentUrl.includes('/produto');
 
-                    // Advanced detection (if store doesn't use /p/ or /produto/ in URL)
                     if (!isProductPage) {
                         isProductPage = await page.evaluate(() => {
                             return !!document.querySelector('.codigo_produto, .productReference, [itemprop="identifier"], .vtex-product-identifier');
                         });
                     }
 
-                    if (isProductPage) {
-                        console.log(`   ✨ Página do produto detectada!`);
-                    } else {
-                        // Não é página de produto direta. Verifica se é lista de resultados.
-
-                        // Primeiro, check de "Não Encontrado" explícito
+                    if (!isProductPage) {
+                        // Não é página de produto. Verifica se é lista ou 404.
                         const notFound = await page.evaluate(() => {
                             const text = document.body.innerText || '';
                             return text.includes('Nenhum produto foi encontrado') ||
@@ -147,125 +158,83 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         });
 
                         if (notFound) {
-                            console.log(`   ❌ Produto ${item.id} não encontrado (Store msg).`);
+                            console.log(`   ❌ Produto ${item.id} não disponível no site.`);
+                            stats.notFound++;
                             continue;
                         }
 
-                        // Tenta encontrar o link do produto na listagem
+                        // Tenta encontrar o link
                         try {
                             const selector = config.productLinkSelector;
-                            // console.log(`      🖱️ Procurando link c/ seletor: ${selector}`);
-
-                            // Busca link que não seja "indesejado" (ex: filtro, categoria etc)
                             const href = await page.evaluate((sel) => {
                                 const anchors = Array.from(document.querySelectorAll(sel));
-                                // Procura o primeiro link visível e válido
                                 for (const a of anchors) {
-                                    if (a.href && !a.href.includes('javascript') && !a.href.includes('#')) {
-                                        return a.href;
-                                    }
+                                    if (a.href && !a.href.includes('javascript') && !a.href.includes('#')) return a.href;
                                 }
                                 return null;
                             }, selector);
 
                             if (href) {
-                                console.log(`   🔗 Link encontrado na busca: ${href}`);
+                                console.log(`   🔗 Link encontrado: ${href}`);
                                 await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 30000 });
                                 await new Promise(r => setTimeout(r, 1500));
                             } else {
-                                // Scraper KJU as vezes falha aqui.
-
-                                // Fallback: Procura qualquer link que contenha o ID ou pareça produto
-                                const fallbackHref = await page.evaluate((item) => {
-                                    const id = item.id;
-                                    const allLinks = Array.from(document.querySelectorAll('a'));
-                                    // Tenta link contendo o ID
-                                    const idLink = allLinks.find(a => a.href.includes(id) && !a.href.includes('busca'));
-                                    if (idLink) return idLink.href;
-
-                                    // KJU Simple Fallback: Just grab the first product item link found
-                                    const simpleLink = document.querySelector('.produtos .item a, .list_products .item a, .prod a');
-                                    if (simpleLink) return simpleLink.href;
-
-                                    return null;
-                                }, item); // Pass full item object
-
-
-                                if (fallbackHref) {
-                                    console.log(`   🔗 Link (fallback) encontrado: ${fallbackHref}`);
-                                    await page.goto(fallbackHref, { waitUntil: 'load', timeout: 30000 });
-                                } else {
-                                    throw new Error('Link visual do produto não encontrado na listagem');
-                                }
+                                // Diagnostic Screenshot
+                                const path = require('path');
+                                const fs = require('fs');
+                                const debugDir = path.join(__dirname, '../debug');
+                                if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir);
+                                const debugName = `debug_id_fail_${storeName}_${item.id}_${Date.now()}.png`;
+                                await page.screenshot({ path: path.join(debugDir, debugName) }).catch(() => { });
+                                console.log(`   ❌ Link não encontrado na listagem. Print salvo: debug/${debugName}`);
+                                stats.notFound++;
+                                continue;
                             }
                         } catch (navErr) {
-                            console.log(`   ❌ Link não encontrado na listagem: ${navErr.message}`);
+                            console.log(`   ❌ Erro ao navegar para o link: ${navErr.message}`);
+                            stats.errors++;
                             continue;
                         }
                     }
 
-                    // --- PARSE DO PRODUTO (JÁ NA PÁGINA) ---
+                    // --- PARSE ---
                     const finalUrl = page.url();
                     let product = null;
 
-                    if (config.parser === 'dressto') {
-                        product = await parseProductDressTo(page, finalUrl);
-                    } else if (config.parser === 'kju') {
-                        product = await parseProductKJU(page, finalUrl);
-                    } else if (config.parser === 'zzmall') {
-                        product = await parseProductZZMall(page, finalUrl);
-                    } else if (config.parser === 'live') {
-                        product = await parseProductLive(page, finalUrl);
-                    }
+                    if (config.parser === 'dressto') product = await parseProductDressTo(page, finalUrl);
+                    else if (config.parser === 'kju') product = await parseProductKJU(page, finalUrl);
+                    else if (config.parser === 'zzmall') product = await parseProductZZMall(page, finalUrl);
+                    else if (config.parser === 'live') product = await parseProductLive(page, finalUrl);
 
                     if (product) {
-                        // Sobrescreve com dados do Drive
                         product.imageUrl = item.driveUrl;
                         product.imagePath = item.driveUrl;
                         product.favorito = item.isFavorito || false;
                         product.loja = storeName;
+                        product.id = product.id && product.id !== 'unknown' ? product.id : item.id;
 
-                        // Adiciona UTM se configurado
                         if (config.utmParam) {
-                            product.url = finalUrl.includes('?') && !finalUrl.includes(config.utmParam)
-                                ? `${finalUrl}&${config.utmParam}`
-                                : (finalUrl.includes(config.utmParam) ? finalUrl : `${finalUrl}?${config.utmParam}`);
+                            product.url = finalUrl.includes('?') ? `${finalUrl}&${config.utmParam}` : `${finalUrl}?${config.utmParam}`;
                         } else {
                             product.url = finalUrl;
                         }
 
-                        // Verificação de duplicatas
-                        const normId = normalizeId(product.id);
-                        const isDup = isDuplicate(normId, { force: item.isFavorito });
+                        collectedProducts.push(product);
+                        console.log(`   ✅ [${storeName}] Capturado: ${product.nome}`);
+                        stats.found++;
 
-                        // Log para debug KJU
-                        // if (storeName === 'kju') console.log(`      DEBUG KJU: Parsed ID ${product.id} vs Target ${item.id}`);
+                        if (!item.isFavorito) markAsSent([product.id]);
 
-                        if (!product.id || product.id === 'unknown') {
-                            // Fallback id from target if parser failed to get ID but got product
-                            console.log(`      ⚠️ ID não extraído do site. Usando ID alvo: ${item.id}`);
-                            product.id = item.id;
-                        }
-
-                        if (!isDup) {
-                            collectedProducts.push(product);
-                            console.log(`   ✅ [${storeName}] Capturado: ${product.nome}`);
-
-                            if (!item.isFavorito) {
-                                markAsSent([product.id]);
-                            }
-                        } else {
-                            console.log(`   ⏭️  [${storeName}] Duplicado no histórico.`);
-                        }
                     } else {
-                        console.log(`   ❌ Falha ao parsear dados do produto.`);
+                        console.log(`   ❌ Falha ao parsear dados (Produto pode estar sem estoque)`);
+                        stats.errors++;
                     }
 
                 } catch (err) {
-                    console.error(`   ❌ Erro ao processar ID ${item.id}: ${err.message}`);
+                    console.error(`   ❌ Erro no processamento de ${item.id}: ${err.message}`);
+                    stats.errors++;
                 }
 
-                // Throttle
                 await new Promise(r => setTimeout(r, 1000));
             }
 
@@ -284,14 +253,14 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
             try {
                 const nameProducts = await scrapeLiveByName(contextOrBrowser, nameBasedItems, remainingQuota);
                 collectedProducts.push(...nameProducts);
+                stats.found += nameProducts.length;
             } catch (e) {
                 console.error(`❌ Erro no scrapeLiveByName: ${e.message}`);
             }
         }
     }
 
-    // console.log(`🏁 [${storeName.toUpperCase()}] DRIVE-FIRST End: ${collectedProducts.length} itens.`);
-    return collectedProducts;
+    return { products: collectedProducts, attemptedIds, stats };
 }
 
 module.exports = { scrapeSpecificIdsGeneric, STORE_CONFIG };

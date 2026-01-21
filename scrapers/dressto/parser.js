@@ -5,7 +5,15 @@ async function parseProductDressTo(page, url) {
     try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
         // Espera de estabilização extra para sites VTEX pesados
-        await page.waitForTimeout(4000);
+        await page.waitForTimeout(6000);
+
+        // Garante que o H1 ou algum seletor de preço apareça
+        try {
+            await page.waitForSelector('h1, .vtex-product-price-1-x-sellingPriceValue', { timeout: 15000 });
+        } catch (e) {
+            console.log(`      ⚠️ Timeout esperando elementos básicos de ${url}`);
+        }
+
 
         const data = await page.evaluate(() => {
             const getSafeText = (el) => {
@@ -15,7 +23,7 @@ async function parseProductDressTo(page, url) {
             };
 
             // Nome
-            const h1 = document.querySelector('h1');
+            const h1 = document.querySelector('h1, .vtex-store-components-3-x-productNameContainer, [class*="productName"]');
             const nome = getSafeText(h1);
             if (!nome) return null;
 

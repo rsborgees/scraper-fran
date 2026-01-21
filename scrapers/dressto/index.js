@@ -41,16 +41,22 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
 
             try {
                 await page.goto(targetUrl, {
-                    waitUntil: 'load',
+                    waitUntil: 'networkidle', // Tenta esperar por rede ociosa para VTEX IO
                     timeout: 60000
                 });
 
                 // Pequena pausa para garantir carregamento dinâmico (VTEX)
-                await page.waitForTimeout(2000 + Math.random() * 3000);
+                await page.waitForTimeout(5000);
+
                 // Explicit wait for any product link to ensure page is actually ready
                 try {
-                    await page.waitForSelector('a.vtex-product-summary-2-x-clearLink, a[href$="/p"]', { timeout: 15000 });
-                } catch (e) { console.log('      ⚠️ Timeout esperando carregamento da lista (tentando continuar mesmo assim)...'); }
+                    await page.waitForSelector('a.vtex-product-summary-2-x-clearLink, a[href$="/p"], .vtex-product-summary-2-x-image', { timeout: 30000 });
+                } catch (e) {
+                    console.log('      ⚠️ Timeout esperando carregamento da lista (tentando salvar debug)...');
+                    const debugName = `debug_dressto_fail_${pageNum}_${Date.now()}.png`;
+                    await page.screenshot({ path: path.join(DEBUG_DIR, debugName) }).catch(() => { });
+                    console.log(`      📸 Screenshot salvo em debug/${debugName}`);
+                }
 
                 await page.waitForTimeout(3000);
 
@@ -74,6 +80,11 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
 
                 if (productUrls.length === 0) {
                     console.log('      ⚠️ Nenhum produto encontrado nesta página.');
+
+                    // Extra debug for 0 items
+                    const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 500));
+                    console.log(`      📄 Body Snippet: ${bodySnippet.replace(/\n/g, ' ')}...`);
+
                     consecEmptyPages++;
                     if (consecEmptyPages >= 3) break;
                 } else {

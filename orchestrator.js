@@ -120,10 +120,8 @@ async function runAllScrapers(overrideQuotas = null) {
                 const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
 
                 for (const store of otherStores) {
-                    const items = driveItemsByStore[store].filter(item => {
-                        if (item.isFavorito) return true;
-                        return !isDuplicate(normalizeId(item.id));
-                    });
+                    // REMOVIDO isDuplicate PREVIO: O scraper interno vai lidar para mostrar o log de tentativa
+                    const items = driveItemsByStore[store];
 
                     if (items.length > 0) {
                         const limitedItems = items
@@ -131,7 +129,7 @@ async function runAllScrapers(overrideQuotas = null) {
                             .slice(0, 50);
 
                         console.log(`🔍 [${store.toUpperCase()}] Iniciando Drive-First (${items.length} itens)...`);
-                        const scrapedItems = await scrapeSpecificIdsGeneric(context, limitedItems, store, quotas[store]);
+                        const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, store, quotas[store]);
 
                         // Apply message builder
                         scrapedItems.forEach(p => {
@@ -143,6 +141,8 @@ async function runAllScrapers(overrideQuotas = null) {
 
                         allProducts.push(...scrapedItems);
                         driveProducts.push(...scrapedItems);
+
+                        console.log(`📊 [${store.toUpperCase()}] Stats Drive: ${stats.found} capturados, ${stats.notFound} não disponiveis, ${stats.duplicates} duplicados.`);
                     }
                 }
             }
