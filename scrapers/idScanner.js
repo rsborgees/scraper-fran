@@ -122,9 +122,19 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     if (config.directUrlBuilder) {
                         const directUrl = config.directUrlBuilder(item.id);
                         try {
-                            const waitCondition = storeName === 'dressto' ? 'networkidle' : 'domcontentloaded';
-                            await page.goto(directUrl, { waitUntil: waitCondition, timeout: 45000 });
-                            await new Promise(r => setTimeout(r, 2000));
+                            const waitCondition = storeName === 'dressto' ? 'domcontentloaded' : 'domcontentloaded'; // Always use domcontentloaded for performance
+                            await page.goto(directUrl, { waitUntil: waitCondition, timeout: storeName === 'dressto' ? 60000 : 35000 });
+
+                            // DressTo extra stabilization
+                            if (storeName === 'dressto') {
+                                try {
+                                    await page.waitForSelector(config.productLinkSelector + ', .vtex-product-identifier, .vtex-rich-text-0-x-paragraph--not-found, h2:has-text("OPS")', { timeout: 15000 });
+                                } catch (e) {
+                                    console.log('      ⚠️ Timeout esperando estabilização da página DressTo');
+                                }
+                            }
+
+                            await new Promise(r => setTimeout(r, 1500));
                             navigationSuccess = true;
                         } catch (e) {
                             console.log(`      ⚠️ Falha na Direct URL: ${e.message}`);
@@ -154,7 +164,8 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             return text.includes('Nenhum produto foi encontrado') ||
                                 text.includes('não encontrado') ||
                                 text.includes('Ops, sua busca') ||
-                                text.includes('Página inválida');
+                                text.includes('Página inválida') ||
+                                text.includes('NÃO ENCONTRAMOS O QUE VOCÊ BUSCOU');
                         });
 
                         if (notFound) {
@@ -166,6 +177,14 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         // Tenta encontrar o link
                         try {
                             const selector = config.productLinkSelector;
+
+                            // Wait for the selector to appear if it's not a product page
+                            try {
+                                await page.waitForSelector(selector, { timeout: storeName === 'dressto' ? 20000 : 10000 });
+                            } catch (e) {
+                                console.log(`      ⚠️ Timeout esperando link do produto (${selector})`);
+                            }
+
                             const href = await page.evaluate((sel) => {
                                 const anchors = Array.from(document.querySelectorAll(sel));
                                 for (const a of anchors) {

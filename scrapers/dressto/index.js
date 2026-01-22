@@ -41,8 +41,8 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
 
             try {
                 await page.goto(targetUrl, {
-                    waitUntil: 'networkidle', // Tenta esperar por rede ociosa para VTEX IO
-                    timeout: 60000
+                    waitUntil: 'domcontentloaded', // Relaxation: VTEX IO networkidle is too slow
+                    timeout: 90000
                 });
 
                 // Pequena pausa para garantir carregamento dinâmico (VTEX)

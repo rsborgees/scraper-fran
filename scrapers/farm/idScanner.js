@@ -127,7 +127,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
                 finalProduct.url = appendQueryParams(finalProduct.url, { utm_campaign: "7B1313" });
                 finalProduct.loja = 'farm';
 
-                const isDup = isDuplicate(normalizeId(finalProduct.id), { force: item.isFavorito }, finalProduct.preco);
+                const isDup = isDuplicate(normalizeId(finalProduct.id), { force: item.isFavorito, maxAgeHours: 48 }, finalProduct.preco);
 
                 if (!isDup) {
                     collectedProducts.push(finalProduct);

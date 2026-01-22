@@ -81,7 +81,8 @@ async function runAllScrapers(overrideQuotas = null) {
 
                 const farmDriveItems = Array.from(uniqueFarmItems.values()).filter(item => {
                     if (item.isFavorito) return true;
-                    return !isDuplicate(normalizeId(item.id));
+                    // Farm Drive: 48h (2 dias)
+                    return !isDuplicate(normalizeId(item.id), { force: item.isFavorito, maxAgeHours: 48 }, item.preco);
                 });
 
                 if (farmDriveItems.length > 0) {
