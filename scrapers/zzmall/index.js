@@ -91,12 +91,32 @@ async function scrapeZZMall(quota = 6, parentBrowser = null) {
                     const normalizedCat = product.categoria ? product.categoria.toLowerCase() : '';
                     const productNomeLower = product.nome.toLowerCase();
 
-                    // List of terms that definitely indicate clothing
-                    const clothingTerms = ['vestido', 'blusa', 'casaco', 'saia', 'short', 'macacão', 'top', 'biquíni', 'body', 'camisa', 'jaqueta', 'blazer', 'pantalo', 'regata', 't-shirt', 'tricot'];
+                    // List of terms that definitely indicate clothing - EXPANDED
+                    const clothingTerms = [
+                        'vestido', 'blusa', 'casaco', 'saia', 'short', 'macacão', 'macacao', 'top',
+                        'biquíni', 'biquini', 'body', 'camisa', 'jaqueta', 'blazer', 'pantalo',
+                        'regata', 't-shirt', 'tshirt', 'tricot', 'tricô', 'camiseta', 'bermuda',
+                        'moletom', 'cardigan', 'kimono', 'chemise', 'macaquinho', 'parka', 'colete',
+                        'pijama', 'lingerie', 'cueca', 'calcinha', 'sutiã', 'sutia', 'meia',
+                        'legging', 'fitness', 'sunga', 'bata', 'túnica', 'tunica', 'tricô', 'malha',
+                        'suéter', 'sueter', 'pullover', 'sobretudo', 'trench', 'corset', 'corselet'
+                    ];
 
-                    // Specific check for "calça" vs "calçado"
-                    const hasCalca = /\bcalça\b/.test(normalizedCat) || /\bcalça\b/.test(productNomeLower);
-                    const isCloth = clothingTerms.some(c => normalizedCat.includes(c) || productNomeLower.includes(c)) || hasCalca;
+                    // Refined exclusion: Use word boundaries to avoid matching "calçado" for "calça"
+                    const hasCalca = /\bcalça\b/i.test(normalizedCat) || /\bcalça\b/i.test(productNomeLower);
+
+                    // Check clothing terms with word boundaries
+                    const matchedClothingTerm = clothingTerms.find(term => {
+                        const regex = new RegExp(`\\b${term}\\b`, 'i');
+                        return regex.test(normalizedCat) || regex.test(productNomeLower);
+                    });
+
+                    let isCloth = !!matchedClothingTerm || hasCalca || normalizedCat === 'roupa';
+
+                    // Safety: IF it's explicitly categorized as shoe or bag, don't ignore it as cloth
+                    if (normalizedCat === 'calçado' || normalizedCat === 'bolsa') {
+                        isCloth = false;
+                    }
 
                     if (isCloth) {
                         console.log(`      ⛔ Ignorado (Roupa detectada): ${product.nome} (${product.categoria})`);
@@ -270,14 +290,41 @@ async function parseProductZZMall(page, url) {
             });
             const uniqueTamanhos = [...new Set(tamanhos)];
 
-            // Categoria (Expandido para Roupas)
+            // Categoria (Improved detection via dataLayer or Breadcrumbs)
             let categoria = 'outros';
-            if (bodyText.includes('sapato') || bodyText.includes('calçado') || bodyText.includes('tênis') || bodyText.includes('bota')) categoria = 'calçado';
-            else if (bodyText.includes('bolsa') || bodyText.includes('mochila')) categoria = 'bolsa';
-            else if (bodyText.includes('vestido')) categoria = 'vestido';
-            else if (bodyText.includes('calça') || bodyText.includes('jeans')) categoria = 'calça';
-            else if (bodyText.includes('blusa') || bodyText.includes('top') || bodyText.includes('camisa')) categoria = 'blusa';
-            else if (bodyText.includes('casaco') || bodyText.includes('jaqueta') || bodyText.includes('blazer')) categoria = 'casaco';
+
+            // Try dataLayer first (VTEX standard)
+            const dataLayer = window.dataLayer || [];
+            const productEvent = dataLayer.find(item => item.productProperty && item.productProperty.productItem);
+            let fullCategory = '';
+
+            if (productEvent && productEvent.productProperty.productItem.length > 0) {
+                fullCategory = (productEvent.productProperty.productItem[0].category || '').toLowerCase();
+            } else {
+                // Fallback to breadcrumbs (avoiding footer)
+                const breadcrumbContainer = document.querySelector('.product__breadcrumbs--container, .breadcrumb-list, .vtex-breadcrumb-1-x-container');
+                if (breadcrumbContainer) {
+                    fullCategory = breadcrumbContainer.innerText.toLowerCase();
+                }
+            }
+
+            if (fullCategory) {
+                if (fullCategory.includes('sapato') || fullCategory.includes('calçado') || fullCategory.includes('tênis') || fullCategory.includes('bota') || fullCategory.includes('scarpin') || fullCategory.includes('rasteira') || fullCategory.includes('sapatilha') || fullCategory.includes('sandália') || fullCategory.includes('sandalia')) {
+                    categoria = 'calçado';
+                } else if (fullCategory.includes('bolsa') || fullCategory.includes('mochila') || fullCategory.includes('carteira') || fullCategory.includes('clutch') || fullCategory.includes('mala')) {
+                    categoria = 'bolsa';
+                } else if (fullCategory.includes('roupas') || fullCategory.includes('vestuário') || fullCategory.includes('clothing') || fullCategory.includes('moda') || fullCategory.includes('vestuario')) {
+                    categoria = 'roupa';
+                } else if (fullCategory.includes('vestido')) {
+                    categoria = 'vestido';
+                } else if (fullCategory.includes('calça') || fullCategory.includes('jeans')) {
+                    categoria = 'calça';
+                } else if (fullCategory.includes('blusa') || fullCategory.includes('top') || fullCategory.includes('camisa') || fullCategory.includes('camiseta') || fullCategory.includes('t-shirt') || fullCategory.includes('polo')) {
+                    categoria = 'blusa';
+                } else if (fullCategory.includes('casaco') || fullCategory.includes('jaqueta') || fullCategory.includes('blazer')) {
+                    categoria = 'casaco';
+                }
+            }
 
             // NÃO DESCARTA MAIS ROUPAS
             // if (!categoria || ...) { return null } -> REMOVIDO
