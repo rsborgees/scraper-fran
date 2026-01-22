@@ -50,9 +50,10 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
 
                 // Explicit wait for any product link to ensure page is actually ready
                 try {
-                    await page.waitForSelector('a.vtex-product-summary-2-x-clearLink, a[href$="/p"], .vtex-product-summary-2-x-image', { timeout: 30000 });
+                    await page.waitForSelector('a.vtex-product-summary-2-x-clearLink, a[href$="/p"], .vtex-product-summary-2-x-image', { timeout: 45000 });
                 } catch (e) {
-                    console.log('      ⚠️ Timeout esperando carregamento da lista (tentando salvar debug)...');
+                    const pageTitle = await page.title().catch(() => 'unknown');
+                    console.log(`      ⚠️ Timeout esperando carregamento da lista [Title: ${pageTitle}] (tentando salvar debug)...`);
                     const debugName = `debug_dressto_fail_${pageNum}_${Date.now()}.png`;
                     await page.screenshot({ path: path.join(DEBUG_DIR, debugName) }).catch(() => { });
                     console.log(`      📸 Screenshot salvo em debug/${debugName}`);

@@ -91,7 +91,8 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
     // 1. Processa itens por ID (Padrão)
     if (idBasedItems.length > 0) {
         const page = await contextOrBrowser.newPage({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            // Synchronized with browser_setup.js for consistent anti-detection
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
         });
 
         try {
@@ -128,14 +129,22 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             // DressTo extra stabilization
                             if (storeName === 'dressto') {
                                 try {
-                                    await page.waitForSelector(config.productLinkSelector + ', .vtex-product-identifier, .vtex-rich-text-0-x-paragraph--not-found, h2:has-text("OPS")', { timeout: 15000 });
+                                    // Increased timeout for stabilization in server environments
+                                    const stabilizationTimeout = 40000;
+                                    const selectors = config.productLinkSelector + `, .vtex-product-identifier, .vtex-rich-text-0-x-paragraph--not-found, h2:has-text("OPS"), a[href*="${item.id}"]`;
+
+                                    await page.waitForSelector(selectors, { timeout: stabilizationTimeout });
+                                    navigationSuccess = true;
                                 } catch (e) {
-                                    console.log('      ⚠️ Timeout esperando estabilização da página DressTo');
+                                    const title = await page.title().catch(() => 'unknown');
+                                    console.log(`      ⚠️ Timeout estabilizando DressTo [Title: ${title}] - tentando continuar...`);
+                                    navigationSuccess = true;
                                 }
+                            } else {
+                                navigationSuccess = true;
                             }
 
                             await new Promise(r => setTimeout(r, 1500));
-                            navigationSuccess = true;
                         } catch (e) {
                             console.log(`      ⚠️ Falha na Direct URL: ${e.message}`);
                         }
@@ -177,21 +186,39 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         // Tenta encontrar o link
                         try {
                             const selector = config.productLinkSelector;
+                            // Add a dynamic selector based on the ID we are looking for
+                            const idSelector = `a[href*="${item.id}"]`;
 
-                            // Wait for the selector to appear if it's not a product page
+                            // Increased timeout for link detection in server environments
                             try {
-                                await page.waitForSelector(selector, { timeout: storeName === 'dressto' ? 20000 : 10000 });
+                                await page.waitForSelector(`${selector}, ${idSelector}`, { timeout: storeName === 'dressto' ? 45000 : 10000 });
                             } catch (e) {
-                                console.log(`      ⚠️ Timeout esperando link do produto (${selector})`);
+                                const pageTitle = await page.title().catch(() => 'N/A');
+                                console.log(`      ⚠️ Timeout esperando link (${item.id}) [Title: ${pageTitle}]`);
                             }
 
-                            const href = await page.evaluate((sel) => {
+                            let href = await page.evaluate(({ sel, idSel }) => {
+                                // Try ID specific selector first
+                                const idLink = document.querySelector(idSel);
+                                if (idLink && idLink.href && !idLink.href.includes('javascript')) return idLink.href;
+
                                 const anchors = Array.from(document.querySelectorAll(sel));
                                 for (const a of anchors) {
                                     if (a.href && !a.href.includes('javascript') && !a.href.includes('#')) return a.href;
                                 }
                                 return null;
-                            }, selector);
+                            }, { sel: selector, idSel: idSelector });
+
+                            // --- [FALLBACK HTML SEARCH] ---
+                            if (!href && storeName === 'dressto') {
+                                console.log(`      🔍 Link não encontrado por seletor. Tentando busca exaustiva no HTML para ID ${item.id}...`);
+                                href = await page.evaluate((id) => {
+                                    const allLinks = Array.from(document.querySelectorAll('a'));
+                                    // Look for any link that contains the ID in its href (VTEX slugs usually have the ID)
+                                    const match = allLinks.find(a => a.href && a.href.includes(id) && !a.href.includes('javascript'));
+                                    return match ? match.href : null;
+                                }, item.id);
+                            }
 
                             if (href) {
                                 console.log(`   🔗 Link encontrado: ${href}`);
