@@ -89,8 +89,16 @@ function saveHistory(idsObject) {
  */
 function normalizeId(id) {
     if (!id) return '';
+    const sid = id.toString().trim();
+
+    // Se contém letras e possui um tamanho razoável,
+    // mantemos como está para evitar colisões em IDs alfanuméricos.
+    if (/[a-zA-Z]/.test(sid) && sid.length >= 4) {
+        return sid.toUpperCase();
+    }
+
     // Remove tudo que não é dígito e depois remove zeros à esquerda
-    return id.toString().trim().replace(/\D/g, '').replace(/^0+/, '');
+    return sid.replace(/\D/g, '').replace(/^0+/, '');
 }
 /**
  * Verifica se um ID é duplicado

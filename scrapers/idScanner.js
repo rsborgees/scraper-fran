@@ -49,7 +49,7 @@ const STORE_CONFIG = {
         baseUrl: 'https://www.liveoficial.com.br',
         directUrlBuilder: (id) => `https://www.liveoficial.com.br/${id}?map=ft`,
         searchUrl: (id) => `https://www.liveoficial.com.br/${id}?map=ft`,
-        searchInputSelector: 'input[type="search"], .search-input',
+        searchInputSelector: 'input.bn-search__input, input[type="search"], .search-input',
         productLinkSelector: 'a[href$="/p"], a.vtex-product-summary-2-x-clearLink',
         parser: 'live',
         utmParam: null

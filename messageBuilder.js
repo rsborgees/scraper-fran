@@ -72,12 +72,20 @@ function buildLiveMessage(products) {
     let msg = `LIVE! ✨\n\n`;
 
     products.forEach(p => {
-        const original = '';
-        const link = `${p.url}?size=${p.tamanhos ? p.tamanhos[0] : 'M'}`; // Exemplo de query param para tamanho
+        const isPromotional = p.precoOriginal && (p.precoOriginal > p.precoAtual);
+        let priceLine;
+        if (isPromotional) {
+            priceLine = `De ~${formatPrice(p.precoOriginal)}~ Por *${formatPrice(p.precoAtual)}* 🔥`;
+        } else {
+            priceLine = `Por *${formatPrice(p.precoAtual)}* 🔥`;
+        }
+
+        const link = appendQueryParams(p.url, { utm_campaign: SELLER_CODE });
 
         msg += `
 ${p.nome}
-${original}Por *${formatPrice(p.precoAtual)}* 🔥
+${p.cor_tamanhos || (p.tamanhos ? p.tamanhos.join(' ') : 'UN')}
+${priceLine}
 ${getInstallments(p.precoAtual)}
 
 ${link}

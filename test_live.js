@@ -1,13 +1,13 @@
+const { scrapeLive } = require('./scrapers/live/index');
 
-const { scrapeLive } = require('./scrapers/live');
-
-(async () => {
+async function test() {
     try {
-        console.log('--- TEST LIVE SCRAPER ---');
-        const products = await scrapeLive(6, true); // ignoreDuplicates = true
-        console.log('--- OUTPUT ---');
-        console.log(JSON.stringify(products, null, 2));
-    } catch (e) {
-        console.error(e);
+        console.log('Running Live scraper test...');
+        const results = await scrapeLive(2, true);
+        console.log('Scraper results:', JSON.stringify(results, null, 2));
+    } catch (error) {
+        console.error('Test failed:', error);
     }
-})();
+}
+
+test();

@@ -51,7 +51,7 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
                 '.modal-close',
                 'button:has(svg)',
                 '[aria-label="Close"]',
-                '.sc-f0c9328e-0 i', // Ícone de fechar comum no site
+                '.sc-f0c9328e-0 i',
                 'div[active="true"] button'
             ];
 
@@ -64,7 +64,6 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
                 });
             }
 
-            // Tenta forçar o clique em botões de "Fechar" pelo texto
             const buttons = Array.from(document.querySelectorAll('button, span, a'));
             const closeBtn = buttons.find(b => {
                 const t = (b.innerText || '').toLowerCase().trim();
@@ -74,11 +73,9 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
         });
         await page.waitForTimeout(3000);
 
-        // Screenshot
         if (!fs.existsSync(DEBUG_DIR)) fs.mkdirSync(DEBUG_DIR, { recursive: true });
         await page.screenshot({ path: path.join(DEBUG_DIR, 'live_list.png') });
 
-        // 📜 Rolagem mais profunda para carregar produtos
         console.log('   📜 Rolando página para carregar produtos...');
         await page.evaluate(async () => {
             for (let i = 0; i < 5; i++) {
@@ -87,28 +84,16 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
             }
         });
 
-        // Coleta URLs de produtos (Links terminando em /p ou contendo /p/)
         const productUrls = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll('a[href]'));
-            console.log(`Total links found on page: ${links.length}`);
-
-            // Log a few links to see what they look like
-            const sampleLinks = links.slice(0, 10).map(a => a.href);
-            console.log(`Sample links: ${JSON.stringify(sampleLinks)}`);
-
             return [...new Set(links.map(a => a.href))]
                 .filter(url => {
                     try {
                         const parsed = new URL(url);
                         if (parsed.hostname !== window.location.hostname && !url.startsWith('/')) return false;
-
                         const path = parsed.pathname;
-
-                        // URLs de produtos na Live geralmente terminam em /p ou /p/ e são longas
-                        // Mas vamos ser mais flexíveis se não acharmos nada
                         const isProductPattern = (path.endsWith('/p') || path.includes('/p/')) && path.length > 10;
                         const isExcluded = path.includes('/carrinho') || path.includes('/login') || path === '/produtos/p';
-
                         return isProductPattern && !isExcluded;
                     } catch (e) {
                         return false;
@@ -118,9 +103,6 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
 
         console.log(`   🔎 Encontrados ${productUrls.length} produtos candidatos.`);
         if (productUrls.length === 0) {
-            const totalA = await page.evaluate(() => document.querySelectorAll('a').length);
-            console.log(`   ⚠️ Nenhum produto encontrado com padrão /p. Total de links na página: ${totalA}`);
-            // Fallback: Pega todos os links longos que não são categorias conhecidas
             const fallbackUrls = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href]'));
                 return [...new Set(links.map(a => a.href))].filter(url => {
@@ -131,20 +113,14 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
                     } catch (e) { return false; }
                 });
             });
-            console.log(`   💡 Fallback encontrou ${fallbackUrls.length} links longos.`);
-            productUrls.push(...fallbackUrls.slice(0, 20)); // Limita fallback
+            productUrls.push(...fallbackUrls.slice(0, 20));
         }
 
         for (const url of productUrls) {
             if (products.length >= quota * 3) break;
-
             console.log(`\n   🔎 Processando: ${url}`);
-
-            // Random delay entre produtos
             await page.waitForTimeout(1000 + Math.random() * 2000);
-
             const product = await parseProductLive(page, url);
-
             if (!product) continue;
 
             if (!ignoreDuplicates && isDuplicate(product.id, {}, product.preco)) {
@@ -161,7 +137,6 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
             products.push(product);
         }
 
-
     } catch (error) {
         console.error(`Erro no scraper Live: ${error.message}`);
     } finally {
@@ -172,13 +147,11 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
         }
     }
 
-    // LÓGICA DE PAREAMENTO (CONJUNTOS & PEÇA ÚNICA)
     console.log(`\n🧩 Tentando formar conjuntos com ${products.length} produtos...`);
     const sets = [];
     const onePieces = [];
     const usedIndices = new Set();
 
-    // 1. Identificação de Categorias
     products.forEach((p, i) => {
         const nome = p.nome.toLowerCase();
         if (nome.includes('macacão') || nome.includes('vestido') || nome.includes('macaquinho') || nome.includes('body')) {
@@ -194,19 +167,12 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
         }
     });
 
-    // 2. Formação de Pares (Top + Bottom) - Lógica Relaxada (Greedy)
     const tops = products.filter((p, i) => !usedIndices.has(i) && p.type === 'top');
     const bottoms = products.filter((p, i) => !usedIndices.has(i) && p.type === 'bottom');
 
-    // Ordena por preço (maior primeiro) para formar conjuntos "premium" se possível, ou aleatório?
-    // User não especificou. Vamos apenas iterar.
-
     for (const top of tops) {
         if (usedIndices.has(products.indexOf(top))) continue;
-
-        // Tenta achar qualquer bottom e disponível
         const match = bottoms.find(b => !usedIndices.has(products.indexOf(b)));
-
         if (match) {
             sets.push(top);
             sets.push(match);
@@ -216,60 +182,28 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
         }
     }
 
-    // 3. Montagem da Seleção Final
-    // A ordem importa para o Orchestrator (que agrupa de 2 em 2).
-    // MAS, como temos OnePieces (1 item) e Sets (2 itens), o Orchestrator precisa ser atualizado.
-    // Por enquanto, vamos retornar uma lista mista, mas vamos tentar garantir integridade.
-
     let finalSelection = [];
-
-    // Adiciona OnePieces
-    // Se quota 2: 2 OnePieces? Ou 1 Set?
-    // Vamos priorizar Sets se houver, depois OnePieces.
-
-    // Adiciona Sets (Pares)
     finalSelection.push(...sets);
-
-    // Adiciona OnePieces
     finalSelection.push(...onePieces);
 
-    // Se ainda faltar, podemos passar singles? O usuário disse: "não duas partes de cima".
-    // Então NÃO passamos singles soltos de Top/Bottom se não formarem par.
-    // A menos que seja muito necessário. Vamos evitar.
+    const singles = products.filter((p, i) => !usedIndices.has(i));
+    if (finalSelection.length < quota && singles.length > 0) {
+        finalSelection.push(...singles);
+    }
 
     if (finalSelection.length > quota) {
-        // Corta para caber na quota
-        // Cuidado para não quebrar um Set no meio.
-        // Sets estão em índices pares (0,1), (2,3)...
         if (sets.length >= quota) {
             finalSelection = sets.slice(0, quota);
-            // Se quota for ímpar (ex: 3) e cortarmos um set (0,1,2), o item 2 fica órfão.
-            // Se o item na borda for parte de um set, removemos ele.
             if (finalSelection.length % 2 !== 0 && finalSelection[finalSelection.length - 1].type !== 'onepiece') {
                 finalSelection.pop();
             }
         } else {
-            // Aceita todos os sets e preenche com OnePieces
             finalSelection = finalSelection.slice(0, quota);
         }
     }
 
-    console.log(`   ⚖️ Seleção: ${sets.length / 2} Conjuntos + ${onePieces.length} Peças Únicas`);
-
-    // Processa imagens (apenas dos selecionados) e marca como enviado
     const output = [];
     for (const p of finalSelection.slice(0, quota)) {
-        // Image logic moved here to save resources on unused items? 
-        // Actually we already checked imageUrl in the parser, but download happens here?
-        // No, the original code downloaded inside the loop. 
-        // To optimize, we should have pushed `product` to `products` WITHOUT downloading, and download only `finalSelection`.
-        // BUT, the parser extracts the ID.
-        // Let's keep the download logic in the loop for now to be safe with the "optimizations" previously made, 
-        // OR better: Move download to here.
-
-        // Since I removed the inner loop download block in this replacement (it was replaced by 'products.push'), 
-        // I need to add the download logic back here.
-
         console.log(`🖼️  [Final] Baixando imagem: ${p.nome}...`);
         try {
             let imgResult;
@@ -287,147 +221,101 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
         output.push(p);
     }
 
-    console.log(`\n✅ LIVE: ${output.length}/${quota} produtos selecionados (Conjuntos priorizados)`);
     return output;
 }
 
 async function parseProductLive(page, url) {
     try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        // Espera de estabilização extra para sites VTEX pesados
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await page.waitForTimeout(4000);
 
         const data = await page.evaluate(() => {
             const getSafeText = (el) => {
                 if (!el) return '';
-                const txt = el.innerText || el.textContent || '';
-                return (typeof txt === 'string') ? txt.trim() : '';
+                return el.innerText ? el.innerText.trim() : el.textContent ? el.textContent.trim() : '';
             };
 
-            // Nome
-            const h1 = document.querySelector('h1');
-            const nome = getSafeText(h1);
-            if (!nome) return null;
+            const nomeEl = document.querySelector('h1, [class*="productName"], .vtex-store-components-3-x-productBrand, .productName');
+            const nome = getSafeText(nomeEl);
 
-            // Preço - Estratégia Otimizada (Meta Tags + Seletores Específicos)
-            let numericPrices = [];
-
-            // 1. Meta Tags (CUIDADO: Em LIVE, meta tag as vezes aponta para produto errado '199.90' vs '489.90')
-            // Desabilitado temporariamente pois mostrou-se não confiável para este site específico no debug
-            /*
-            const metaPrice = document.querySelector('meta[property="product:price:amount"], meta[itemprop="price"]');
-            if (metaPrice) {
-                const val = parseFloat(metaPrice.content);
-                if (!isNaN(val) && val > 0) numericPrices.push(val);
+            if (!nome) {
+                console.log('DEBUG: Nome não encontrado');
+                return null;
             }
-            */
 
-            // 2. Busca Híbrida Inteligente (Prioriza DIVs limpas)
-            const allElements = Array.from(document.querySelectorAll('*'))
-                .filter(el => {
-                    // Pega apenas elementos folha (sem filhos diretos de texto misturado, mas aqui verificamos children.length)
-                    // DIVs podem ter filhos, então cuidado. O debug mostrou DIV com texto direto?
-                    // Debug: "tag": "DIV", "text": "R$ 489,90" -> significa que o innerText é esse.
-                    // Se tiver filhos, innerText é a soma.
-                    // Vamos pegar elementos cujo texto direto contenha R$
+            // 1. Extração de Preço via JSON-LD (Mais confiável)
+            let preco = 0;
+            let precoOriginal = 0;
 
-                    const txt = (el.innerText || '').trim();
-                    return txt.includes('R$') && el.offsetWidth > 0;
-                });
+            const jsonLdScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+            for (const script of jsonLdScripts) {
+                try {
+                    const data = JSON.parse(script.innerHTML);
+                    const products = Array.isArray(data) ? data : [data];
+                    const product = products.find(item => item['@type'] === 'Product' || (typeof item['@type'] === 'string' && item['@type'].includes('Product')));
 
-            // Separa em candidatos Fortes (DIV) e Fracos (STRONG, SPAN, P)
-            // No caso da Live, o preço principal apareceu em DIV. Recomendações em STRONG.
-            const strongCandidates = [];
-            const weakCandidates = [];
-
-            allElements.forEach(el => {
-                const txt = (el.innerText || '').trim();
-
-                // Filtros de Exclusão (Parcelamento / Juros)
-                if (/\d+\s*x|x\s*de|\/|parcel|sem\s+juros|em\s+até|juros|cashback/i.test(txt)) return;
-                // Exclui se o texto completo é muito longo (provavelmente um bloco de texto)
-                if (txt.length > 50) return;
-
-                const match = txt.match(/R\$\s*([\d\.]+(?:,\d{2})?)/);
-                if (match) {
-                    let valStr = match[1].replace(/\./g, '').replace(',', '.');
-                    const val = parseFloat(valStr);
-
-                    if (!isNaN(val) && val >= 50) { // Filtro minimo R$50 to avoid installments
-                        if (el.tagName === 'DIV' || el.classList.contains('skuBestPrice') || el.classList.contains('vtex-product-price-1-x-sellingPriceValue')) {
-                            strongCandidates.push(val);
-                        } else {
-                            weakCandidates.push(val);
+                    if (product && product.offers) {
+                        const offers = Array.isArray(product.offers) ? product.offers : [product.offers];
+                        const validOffers = offers.filter(o => o.price && parseFloat(o.price) > 0);
+                        if (validOffers.length > 0) {
+                            preco = parseFloat(validOffers[0].price);
+                            precoOriginal = validOffers[0].listPrice ? parseFloat(validOffers[0].listPrice) : (validOffers[0].highPrice ? parseFloat(validOffers[0].highPrice) : preco);
+                            break;
                         }
                     }
-                }
-            });
-
-            // Se tiver candidatos fortes (DIVs), usa eles.
-            if (strongCandidates.length > 0) {
-                // Remove duplicatas e ordena
-                const unique = [...new Set(strongCandidates)].sort((a, b) => a - b);
-                // Pega o menor preço forte (geralmente preço a vista/promocional dentro do bloco principal)
-                numericPrices = unique;
-            } else {
-                // Fallback para fracos
-                const unique = [...new Set(weakCandidates)].sort((a, b) => a - b);
-                numericPrices = unique;
+                } catch (e) { }
             }
 
-            if (numericPrices.length === 0) return null;
+            // Fallback para UI
+            if (preco === 0) {
+                const mainContainer = document.querySelector('.vtex-flex-layout-0-x-flexRowContent--product-main, .vtex-product-details-1-x-container') || document;
+                const sellingPriceEl = mainContainer.querySelector('[class*="sellingPriceValue"], .sc-79aad9d-3');
+                const listPriceEl = mainContainer.querySelector('[class*="listPrice"], [class*="ListPrice"], .sc-d49848f0-16');
 
-            // O menor preço válido
-            const preco = numericPrices[0];
+                if (sellingPriceEl) {
+                    preco = parseFloat(getSafeText(sellingPriceEl).replace(/[^\d,]/g, '').replace(',', '.'));
+                }
+                if (listPriceEl) {
+                    precoOriginal = parseFloat(getSafeText(listPriceEl).replace(/[^\d,]/g, '').replace(',', '.'));
+                } else {
+                    precoOriginal = preco;
+                }
+            }
 
             // Tamanhos
-            const sizeEls = Array.from(document.querySelectorAll('[class*="size"], [class*="tamanho"], button, li, label'));
+            const sizeEls = Array.from(document.querySelectorAll('[class*="sku-selector"], [class*="size"], [class*="tamanho"], button, li, label'));
             const tamanhos = [];
 
             sizeEls.forEach(el => {
                 let txt = getSafeText(el).toUpperCase();
-                // Limpeza: "TAMANHO P" -> "P", "TAM: 38" -> "38"
                 txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
 
                 const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
                 if (match) {
                     const normalizedSize = match[0].toUpperCase();
-                    const isDisabled = el.className.toLowerCase().includes('disable') ||
+                    const style = window.getComputedStyle(el);
+
+                    const isCrossedOut = style.textDecoration.includes('line-through') ||
+                        style.backgroundImage.includes('svg') ||
+                        style.backgroundImage.includes('data:image') ||
+                        (style.opacity && Number(style.opacity) < 0.6) ||
+                        el.className.toLowerCase().includes('disable') ||
                         el.className.toLowerCase().includes('unavailable') ||
                         el.getAttribute('aria-disabled') === 'true';
-                    if (!isDisabled && (el.offsetWidth > 0 || el.offsetHeight > 0)) {
+
+                    if (!isCrossedOut && el.offsetWidth > 0) {
                         tamanhos.push(normalizedSize);
                     }
                 }
             });
 
-            // Categoria (Mapeamento mais preciso)
-            let categoria = 'outros';
-            const breadcrumb = getSafeText(document.querySelector('.breadcrumb, .vtex-breadcrumb-1-x-container')).toLowerCase();
-            const lowerNome = nome.toLowerCase();
-            const combinedText = (lowerNome + ' ' + breadcrumb).toLowerCase();
-
-            if (combinedText.includes('vestido')) categoria = 'vestido';
-            else if (combinedText.includes('macacão')) categoria = 'macacão';
-            else if (combinedText.includes('blusa') || combinedText.includes('camiseta') || combinedText.includes('regata') || combinedText.includes('top')) categoria = 'blusa';
-            else if (combinedText.includes('legging') || combinedText.includes('calça') || combinedText.includes('short') || combinedText.includes('saia')) categoria = 'roupa';
-            else if (combinedText.includes('jaqueta') || combinedText.includes('casaco')) categoria = 'roupa';
-            else categoria = 'roupa'; // Default para Live que vende majoritariamente vestuário
-
-            // ID (Tenta buscar no seletor da VTEX específico ou na URL)
-            let id = 'unknown';
             const refEl = document.querySelector('.vtex-product-identifier, .productReference, .sku');
-            if (refEl) {
-                id = getSafeText(refEl).replace(/\D/g, '');
-            }
+            let id = refEl ? getSafeText(refEl).replace(/\D/g, '') : 'unknown';
 
             if (id === 'unknown' || id === '') {
-                // Tenta pegar o código numérico da URL (geralmente antes do /p)
                 const urlMatch = window.location.href.match(/(\d+)(AZ|00|BC|[\-\/])/);
-                if (urlMatch) {
-                    id = urlMatch[1];
-                } else {
-                    // Fallback para qualquer sequência numérica longa
+                if (urlMatch) id = urlMatch[1];
+                else {
                     const longNumMatch = window.location.href.match(/(\d{5,})/);
                     if (longNumMatch) id = longNumMatch[1];
                 }
@@ -437,38 +325,18 @@ async function parseProductLive(page, url) {
                 id,
                 nome,
                 preco,
-                preco_original: Math.max(...numericPrices, preco),
+                preco_original: precoOriginal || preco,
                 tamanhos: [...new Set(tamanhos)],
-                categoria,
                 url: window.location.href,
                 imageUrl: (function () {
-                    // Estratégia Híbrida Robustez + Velocidade
-
-                    // 1. Meta Tag (Geralmente a mais rápida e confiável)
                     const ogImg = document.querySelector('meta[property="og:image"]');
                     if (ogImg && ogImg.content) return ogImg.content;
-
-                    // 2. Busca por padrão de URL (/product/)
                     const imgs = Array.from(document.querySelectorAll('img'));
-                    const productImg = imgs.find(img =>
-                        img.src &&
-                        img.src.includes('/product/') &&
-                        img.width > 200
-                    );
-                    if (productImg) return productImg.src;
-
-                    // 3. Fallback: Qualquer imagem grande
-                    const fallback = imgs.find(img => img.width > 300 && img.height > 300);
-                    return fallback ? fallback.src : null;
+                    const productImg = imgs.find(img => img.src && img.src.includes('/product/') && img.width > 200);
+                    return productImg ? productImg.src : null;
                 })()
             };
-
-            return finalData;
         });
-
-        if (data) {
-            console.log(`✅ Live: ${data.nome} | R$${data.preco}`);
-        }
 
         return data;
 

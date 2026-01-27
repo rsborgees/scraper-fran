@@ -20,15 +20,37 @@ async function scrapeLiveByName(browser, driveItems, quota) {
     const page = await browser.newPage();
 
     try {
+        console.log(`      🚙 Navegando para a home da Live...`);
         await page.goto('https://www.liveoficial.com.br', { waitUntil: 'domcontentloaded', timeout: 60000 });
-        page.on('console', msg => console.log('PAGE LOG:', msg.text()));
 
-        // Wait for page to fully load including scripts
-        console.log(`   ⏳ Aguardando página carregar completamente...`);
-        await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {
-            console.log(`   ⚠️ Network idle timeout - prosseguindo mesmo assim`);
-        });
-        await page.waitForTimeout(3000);
+        const closePopups = async () => {
+            const popupSelectors = [
+                'button.sc-f0c9328e-3',
+                'button[class*="close"]',
+                '.modal-close',
+                '[aria-label="Close"]',
+                'button:has-text("×")',
+                'button:has-text("Fechar")',
+                '.sc-f0c9328e-0 button',
+                '.modal-body button'
+            ];
+            for (const selector of popupSelectors) {
+                try {
+                    const btns = page.locator(selector);
+                    const count = await btns.count();
+                    for (let i = 0; i < count; i++) {
+                        const btn = btns.nth(i);
+                        if (await btn.isVisible({ timeout: 500 })) {
+                            await btn.click({ force: true });
+                            console.log(`      ✅ Popup fechado: ${selector}`);
+                            await page.waitForTimeout(501);
+                        }
+                    }
+                } catch (e) { }
+            }
+        };
+
+        await closePopups();
 
         for (const item of uniqueItems) {
             if (collectedProducts.length >= quota) break;
@@ -36,241 +58,146 @@ async function scrapeLiveByName(browser, driveItems, quota) {
             console.log(`\n🔍 Buscando por nome: "${item.name}"...`);
 
             try {
-                // 1. Initial Page Load & Popup Handling
-                console.log(`      🚙 Navegando para a home da Live...`);
-                await page.goto('https://www.liveoficial.com.br/', { waitUntil: 'networkidle', timeout: 90000 });
-                await page.waitForTimeout(3000);
-
-                const closePopups = async () => {
-                    const popupSelectors = [
-                        'button.sc-f0c9328e-3',
-                        'button[class*="close"]',
-                        '.modal-close',
-                        '[aria-label="Close"]',
-                        'button:has-text("×")',
-                        'button:has-text("Fechar")',
-                        '.sc-f0c9328e-0 button',
-                        '.modal-body button'
-                    ];
-                    for (const selector of popupSelectors) {
-                        try {
-                            const btns = page.locator(selector);
-                            const count = await btns.count();
-                            for (let i = 0; i < count; i++) {
-                                const btn = btns.nth(i);
-                                if (await btn.isVisible({ timeout: 500 })) {
-                                    await btn.click({ force: true });
-                                    console.log(`      ✅ Popup fechado: ${selector}`);
-                                    await page.waitForTimeout(500);
-                                }
-                            }
-                        } catch (e) { }
-                    }
-                };
-
-                await closePopups();
-
-                // 2. Interaction with search input
-                console.log(`      🔎 Usando a barra de pesquisas para: "${item.name}"`);
-                const searchInputSelector = 'input.bn-search__input';
-                const searchButtonSelector = 'button.bn-search__submit';
+                const searchInputSelector = 'input.bn-search__input, .search-input, input[type="search"]';
+                const cleanQuery = item.name.toLowerCase()
+                    .replace(/live!/g, '')
+                    .replace(/live/g, '')
+                    .replace(/icon/g, '')
+                    .replace(/favorito/g, '')
+                    .replace(/[!@#$%^&*(),.?":{}|<>]/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
 
                 try {
-                    await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 15000 });
+                    await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 8000 });
                     const searchInput = page.locator(searchInputSelector).first();
-                    await searchInput.scrollIntoViewIfNeeded();
                     await searchInput.click();
-                    await page.waitForTimeout(500);
+                    const waitTime = 1000;
+                    await page.waitForTimeout(waitTime);
 
-                    // Human-like typing
+                    console.log(`      🔎 Digitando busca: "${cleanQuery}"`);
                     await searchInput.fill('');
-                    await page.keyboard.type(item.name, { delay: 100 });
+                    await searchInput.type(cleanQuery, { delay: 50 });
                     await page.waitForTimeout(1000);
-
-                    // Try press Enter
                     await page.keyboard.press('Enter');
-
-                    // Also try clicking the button if page doesn't change
-                    const currentUrl = page.url();
-                    await page.waitForTimeout(2000);
-                    if (page.url() === currentUrl) {
-                        console.log(`      🖱️ Clicando no botão de busca (Enter não mudou página)...`);
-                        const searchBtn = page.locator(searchButtonSelector).first();
-                        if (await searchBtn.isVisible()) {
-                            await searchBtn.click();
-                        }
-                    }
                 } catch (e) {
-                    console.log(`      ⚠️ Falha ao interagir com a barra de busca: ${e.message}`);
-                    await page.screenshot({ path: `debug/live_search_error_${item.name.replace(/ /g, '_')}.png` });
-                    continue;
+                    console.log(`      ⚠️ Busca via input falhou, tentando URL direta...`);
+                    const searchUrl = `https://www.liveoficial.com.br/busca?q=${encodeURIComponent(cleanQuery)}`;
+                    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
                 }
 
-                console.log(`      ⏳ Aguardando resultados...`);
-                // Wait for any indicator of results or just a broad timeout
-                await page.waitForTimeout(8000);
+                await page.waitForTimeout(7000);
                 await closePopups();
 
-                // Find the product that matches the name
-                const foundProductUrl = await page.evaluate(async (searchTerm) => {
-                    const findLink = () => {
-                        const links = Array.from(document.querySelectorAll('a[href]'));
-                        console.log(`Debug: Total links found on page: ${links.length}`);
+                console.log(`      ⏳ Analisando candidatos...`);
+                const foundProductUrl = await page.evaluate((searchTerm) => {
+                    const links = Array.from(document.querySelectorAll('a[href]'));
+                    const searchTermLower = searchTerm.toLowerCase();
+                    const searchWords = searchTermLower.split(' ').filter(w => w.length > 2);
 
-                        const searchWords = searchTerm.toLowerCase().split(' ').filter(w => w.length > 2);
+                    const candidates = links.map(a => {
+                        const url = a.getAttribute('href') || '';
+                        const text = (a.innerText || '').toLowerCase().trim();
+                        const title = (a.title || '').toLowerCase().trim();
+                        return { fullUrl: a.href, url: url, text: `${text} ${title}`.toLowerCase() };
+                    }).filter(c => {
+                        const isProd = c.url.match(/-[a-zA-Z0-9]{4,}\/p(\?|$)/) || c.url.includes('/p/');
+                        if (!isProd) return false;
+                        const productWords = c.text.split(/\s+/).filter(w => w.length > 3);
+                        return productWords.some(pw => searchTermLower.includes(pw));
+                    });
 
-                        const candidates = links.map(a => {
-                            const url = a.getAttribute('href') || '';
-                            const text = (a.innerText || '').toLowerCase().trim();
-                            const title = (a.title || '').toLowerCase().trim();
-                            const img = a.querySelector('img');
-                            const imgAlt = img ? (img.alt || '').toLowerCase().trim() : '';
+                    if (candidates.length === 0) return null;
 
-                            return {
-                                fullUrl: a.href,
-                                url: url,
-                                combinedText: `${text} ${title} ${imgAlt}`.toLowerCase()
-                            };
-                        }).filter(c => {
-                            // STRICT VTEX PRODUCT PATTERN: ends in /p or /p?
-                            const isProd = c.url.match(/-[a-zA-Z0-9]{4,}\/p(\?|$)/) || c.url.includes('/p/');
-                            if (!isProd) return false;
-
-                            // Check for strict name match: at least 70% of words
-                            let matches = 0;
-                            searchWords.forEach(w => {
-                                if (c.combinedText.includes(w)) matches++;
-                            });
-
-                            const matchRatio = matches / searchWords.length;
-                            if (matchRatio >= 0.7) {
-                                console.log(`Debug: Candidate found! Match: ${matchRatio.toFixed(2)} URL: ${c.fullUrl}`);
-                                return true;
-                            }
-                            return false;
+                    candidates.forEach(c => {
+                        let score = 0;
+                        searchWords.forEach(w => {
+                            if (c.text.includes(w)) score += 10;
+                            if (c.fullUrl.toLowerCase().includes(w)) score += 5;
                         });
-
-                        if (candidates.length === 0) return null;
-
-                        // Score based on name matching
-                        candidates.forEach(c => {
-                            let score = 0;
-                            searchWords.forEach(w => {
-                                if (c.combinedText.includes(w)) score += 10;
-                                if (c.fullUrl.toLowerCase().includes(w)) score += 5;
-                            });
-                            c.score = score;
-                        });
-
-                        candidates.sort((a, b) => b.score - a.score);
-                        return candidates[0].fullUrl;
-                    };
-
-                    // Try immediate find
-                    let link = findLink();
-                    if (link) return link;
-
-                    // Poll for 5 seconds
-                    for (let i = 0; i < 5; i++) {
-                        await new Promise(r => setTimeout(r, 1000));
-                        link = findLink();
-                        if (link) return link;
-                    }
-                    return null;
+                        c.score = score;
+                    });
+                    candidates.sort((a, b) => b.score - a.score);
+                    return candidates[0].fullUrl;
                 }, item.name);
 
                 if (!foundProductUrl) {
                     console.log(`      ⚠️ Nenhum produto encontrado para "${item.name}"`);
-                    await page.screenshot({ path: `debug/live_results_fail_${item.name.replace(/ /g, '_')}.png` });
                     continue;
                 }
 
                 console.log(`      🔗 Navegando para o produto: ${foundProductUrl}`);
-                await page.goto(foundProductUrl, { waitUntil: 'networkidle', timeout: 60000 });
+                await page.goto(foundProductUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
                 await page.waitForTimeout(5000);
 
-                // 2. Extract Colors & Sizes
-                // Restriction: Look only inside the product info container to avoid menu items
-                const productInfoSelector = '.vtex-flex-layout-0-x-flexRowContent--product-main, .vtex-product-details-1-x-container, .product-info, main';
-
-                // Helper to get sizes from current view
                 const getSizes = async () => {
-                    return await page.evaluate((infoSel) => {
-                        const container = document.querySelector(infoSel) || document;
-                        const sizes = [];
-                        // Specifically look for SKU selector items
-                        const allLis = Array.from(container.querySelectorAll('li[class*="sku"], li[class*="size"], li'));
+                    return await page.evaluate(() => {
+                        const productInfoSelector = '.vtex-flex-layout-0-x-flexRowContent--product-main, .vtex-product-details-1-x-container, .product-info, main';
+                        const container = document.querySelector(productInfoSelector) || document;
+                        const finalSizes = [];
+                        const validSizeNames = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'U', 'ÚNICA', 'UNICA', '34', '36', '38', '40', '42', '44', '46'];
 
-                        // heuristic: text is standard size, no image child
-                        const sizeLis = allLis.filter(li => {
-                            const text = li.innerText.trim();
-                            const hasImg = li.querySelector('img');
-                            // Standard BR sizes + numeric
-                            return !hasImg && text.length <= 5 && ['PP', 'P', 'M', 'G', 'GG', 'XG', 'U', 'ÚNICA', 'UNICA', '34', '36', '38', '40', '42', '44', '46'].includes(text.toUpperCase());
-                        });
+                        validSizeNames.forEach(sizeName => {
+                            const elements = Array.from(container.querySelectorAll('li, div, label, span, button'))
+                                .filter(el => (el.innerText || '').trim().toUpperCase() === sizeName);
 
-                        sizeLis.forEach(el => {
-                            const params = el.innerText.trim();
-                            const style = window.getComputedStyle(el);
-                            const isCrossedOut = style.textDecoration.includes('line-through') ||
-                                (style.opacity && Number(style.opacity) < 0.5) ||
-                                el.className.includes('disabled') ||
-                                el.className.includes('--unavailable') ||
-                                el.className.includes('unavailable');
+                            if (elements.length > 0) {
+                                const isSomeOutOfStock = elements.some(el => {
+                                    const style = window.getComputedStyle(el);
+                                    const parentStyle = el.parentElement ? window.getComputedStyle(el.parentElement) : { backgroundImage: '', opacity: '1', textDecoration: '' };
 
-                            if (!isCrossedOut) {
-                                sizes.push(params);
+                                    const hasSvg = style.backgroundImage.includes('svg') ||
+                                        style.backgroundImage.includes('data:image') ||
+                                        parentStyle.backgroundImage.includes('svg') ||
+                                        parentStyle.backgroundImage.includes('data:image') ||
+                                        Array.from(el.querySelectorAll('*')).some(child => {
+                                            const s = window.getComputedStyle(child);
+                                            return s.backgroundImage.includes('svg') || s.backgroundImage.includes('data:image');
+                                        });
+
+                                    const isDisabled = style.textDecoration.includes('line-through') ||
+                                        parentStyle.textDecoration.includes('line-through') ||
+                                        hasSvg ||
+                                        (style.opacity && Number(style.opacity) < 0.6) ||
+                                        (parentStyle.opacity && Number(parentStyle.opacity) < 0.6) ||
+                                        el.className.toLowerCase().includes('disable') ||
+                                        el.className.toLowerCase().includes('unavailable') ||
+                                        (el.parentElement && el.parentElement.className.toLowerCase().includes('unavailable')) ||
+                                        el.getAttribute('aria-disabled') === 'true';
+
+                                    return isDisabled;
+                                });
+
+                                if (!isSomeOutOfStock) {
+                                    finalSizes.push(sizeName);
+                                }
                             }
                         });
-                        return [...new Set(sizes)]; // Unique sizes
-                    }, productInfoSelector);
+                        return finalSizes;
+                    });
                 };
 
-
-                // Iterate Colors
-                const colorElsHandle = await page.evaluateHandle((infoSel) => {
-                    const container = document.querySelector(infoSel) || document;
-                    const allLis = Array.from(container.querySelectorAll('li'));
-                    return allLis.filter(li => {
-                        const img = li.querySelector('img');
-                        if (!img) return false;
-                        // Color swatches are usually small and inside sku selector
-                        const isSwatch = li.className.toLowerCase().includes('sku') ||
-                            li.className.toLowerCase().includes('color') ||
-                            (img.width < 100 && img.height < 100);
-                        return isSwatch && !li.closest('header') && !li.closest('footer') && !li.closest('nav');
-                    });
-                }, productInfoSelector);
-
-                // Get count safely
-                const colorCount = await page.evaluate(lis => lis.length, colorElsHandle);
-                console.log(`      🎨 ${colorCount} possíveis cores detectadas.`);
-
+                const possibleColors = page.locator('img[src*="/color/"], .vtex-sku-selector-1-x-item img, [class*="sku"] img');
+                const locatorCount = await possibleColors.count();
                 let availableInfo = [];
 
-                if (colorCount > 0) {
-                    // We need to re-locate them as Playwright locators to click
-                    // Use a selector that matches the logic
-                    const possibleColors = page.locator('li').filter({ has: page.locator('img') });
-                    const locatorCount = await possibleColors.count();
-
+                if (locatorCount > 0 && locatorCount < 20) {
+                    console.log(`      🎨 Cores detectadas: ${locatorCount}`);
                     for (let i = 0; i < locatorCount; i++) {
-                        const el = possibleColors.nth(i);
+                        const img = possibleColors.nth(i);
+                        if (!(await img.isVisible())) continue;
+                        await img.scrollIntoViewIfNeeded();
 
-                        // Verify size again before clicking (Playwright locator check)
-                        const box = await el.boundingBox();
-                        if (!box || box.width > 120) continue; // Skip if large (gallery)
+                        const alt = await img.getAttribute('alt');
+                        const src = await img.getAttribute('src');
+                        let colorName = alt || `Cor ${i + 1}`;
 
-                        // Get Color Name FIRST
-                        let colorName = `Cor ${i + 1}`;
-                        const img = el.locator('img').first();
-                        if (await img.count()) {
-                            colorName = await img.getAttribute('alt') || await img.getAttribute('title') || colorName;
-                        }
+                        if (alt && /whatsapp|transparent|stamp|bojo|bolso|care|prote|compres/i.test(alt)) continue;
+                        if (src && /whatsapp|stamp/i.test(src)) continue;
 
-                        // Click Color
-                        await el.click();
-                        await page.waitForTimeout(1500); // Wait for sizes to update
+                        console.log(`      🖱️ Clicando na cor: ${colorName}`);
+                        await img.click({ force: true });
+                        await page.waitForTimeout(3500);
 
                         const sizes = await getSizes();
                         if (sizes.length > 0) {
@@ -278,67 +205,45 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                         }
                     }
                 } else {
-                    // Single color
                     const sizes = await getSizes();
-                    if (sizes.length > 0) {
-                        availableInfo.push(`Única: ${sizes.join(' ')}`);
-                    }
+                    if (sizes.length > 0) availableInfo.push(`Única: ${sizes.join(' ')}`);
                 }
 
                 if (availableInfo.length === 0) {
-                    console.log(`      ⚠️ Produto sem estoque (sem tamanhos detectados).`);
-                    const content = await page.content();
-                    const fs = require('fs');
-                    fs.writeFileSync('debug/live_no_sizes.html', content);
-                    console.log(`      📸 Dumped HTML to debug/live_no_sizes.html`);
+                    console.log(`      ⚠️ Produto sem estoque.`);
                     continue;
                 }
 
-                // 3. Parse Base Data
                 const productData = await parseProductLive(page, page.url());
-
                 if (productData) {
-                    // Update Sizes field with the Detailed String
-                    // Ex: "rosa: P M G; azul: P"
-                    productData.tamanhos = availableInfo; // Replacing array with Array of strings, or join them?
-                    // Orchestrator expects array? Or string?
-                    // 'tamanhos' usually is array of strings. 
-                    // Let's store the raw detailed info in a new field 'grade_detalhada' ??
-                    // User said: "pegar os tamanhos com base nas cores, ex: rosa: g gg pp"
-                    // If I put this in 'tamanhos', it might break filters expecting ["P", "M"].
-                    // But maybe for this specific "Live" feature, we want this string structure.
-
-                    // Let's keep 'tamanhos' as the flat list of all sizes available (for consistency)
-                    // and add 'observacao' or 'descricao' with the breakdown.
-
                     const allSizes = new Set();
                     availableInfo.forEach(s => {
                         const parts = s.split(':')[1].trim().split(' ');
                         parts.forEach(p => allSizes.add(p));
                     });
                     productData.tamanhos = [...allSizes];
-
-                    // Add details to a custom field
-                    productData.cor_tamanhos = availableInfo.join(' | ');
-
-                    // Override ID with Drive File ID if real ID is weak? 
-                    // No, use Real ID found on page for history tracking.
-                    // But duplicates? User wants specific items from Drive.
-
-                    productData.imageUrl = item.driveUrl; // Use Drive Image
+                    productData.cor_tamanhos = availableInfo.join('\n');
+                    productData.imageUrl = item.driveUrl;
                     productData.imagePath = item.driveUrl;
                     productData.isFavorito = item.isFavorito;
+                    productData.loja = 'live';
+                    productData.precoAtual = productData.preco;
+                    productData.precoOriginal = productData.preco_original || productData.preco;
 
                     collectedProducts.push(productData);
                     console.log(`      ✅ Coletado: ${productData.nome} (${productData.cor_tamanhos})`);
+
+                    const { markAsSent } = require('../../historyManager');
+                    markAsSent([productData.id]);
                 }
 
+                await page.goto('https://www.liveoficial.com.br', { waitUntil: 'domcontentloaded' });
+                await closePopups();
+
             } catch (err) {
-                console.error(`      ❌ Erro ao processar item "${item.name}":`, err.message);
-                await page.screenshot({ path: `debug/error_live_${item.name}.png` });
+                console.error(`      ❌ Erro ao processar "${item.name}":`, err.message);
             }
         }
-
     } finally {
         await page.close();
     }
