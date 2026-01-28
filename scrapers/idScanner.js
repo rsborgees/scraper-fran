@@ -92,8 +92,19 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
     if (idBasedItems.length > 0) {
         const page = await contextOrBrowser.newPage({
             // Synchronized with browser_setup.js for consistent anti-detection
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            locale: 'pt-BR',
+            extraHTTPHeaders: {
+                'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
+            }
         });
+
+        // Anti-redirection cookie for DressTo (Force BR)
+        if (storeName === 'dressto') {
+            await contextOrBrowser.addCookies([
+                { name: 'vtex_segment', value: 'eydjdXJyZW5jeUNvZGUnOiAnQlJMJywgY291bnRyeUNvZGUnOiAnQlJBJywgJ2xvY2FsZUNvZGUnOiAncHQtQlInIH0=', domain: '.dressto.com.br', path: '/' }
+            ]).catch(() => { });
+        }
 
         try {
             for (const item of idBasedItems) {
@@ -132,6 +143,14 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                     // Increased timeout for stabilization in server environments
                                     const stabilizationTimeout = 40000;
                                     const selectors = config.productLinkSelector + `, .vtex-product-identifier, .vtex-rich-text-0-x-paragraph--not-found, h2:has-text("OPS"), a[href*="${item.id}"]`;
+
+                                    // Para DressTo, verificamos se o redirecionamento global ocorreu
+                                    const title = await page.title().catch(() => '');
+                                    if (title.includes('Bringing Joy') || title.includes('Fashion')) {
+                                        console.log(`      ⚠️ Detectado redirecionamento global (DressTo Global). Forçando versão BR...`);
+                                        await page.goto(`https://www.dressto.com.br/?sc=1`, { waitUntil: 'domcontentloaded' });
+                                        await page.goto(directUrl, { waitUntil: 'domcontentloaded' });
+                                    }
 
                                     await page.waitForSelector(selectors, { timeout: stabilizationTimeout });
                                     navigationSuccess = true;
