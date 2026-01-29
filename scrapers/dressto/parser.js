@@ -3,7 +3,10 @@
  */
 async function parseProductDressTo(page, url) {
     try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        // 🛡️ ANTI-REDIRECT: Garantir sc=1 em DressTo para evitar Shopify Redirect
+        const targetUrl = url.includes('sc=1') ? url : (url.includes('?') ? `${url}&sc=1` : `${url}?sc=1`);
+
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
         // Espera de estabilização extra para sites VTEX pesados
         await page.waitForTimeout(6000);
 
@@ -19,7 +22,7 @@ async function parseProductDressTo(page, url) {
         try {
             await page.waitForSelector('h1, .vtex-product-price-1-x-sellingPriceValue, .vtex-product-identifier', { timeout: 15000 });
         } catch (e) {
-            console.log(`      ⚠️ Timeout esperando elementos básicos de ${url} [Title: ${await page.title().catch(() => 'unknown')}]`);
+            console.log(`      ⚠️ Timeout esperando elementos básicos de ${targetUrl} [Title: ${await page.title().catch(() => 'unknown')}]`);
         }
 
 

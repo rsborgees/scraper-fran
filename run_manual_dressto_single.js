@@ -41,11 +41,23 @@ async function run() {
 
     // 2. Scrape do Produto
     console.log('\n🌐 Iniciando Browser...');
-    const { browser, page } = await initBrowser();
+    const { browser, context, page } = await initBrowser();
 
     try {
-        console.log(`📄 Acessando ${TARGET_URL}...`);
-        const product = await parseProductDressTo(page, TARGET_URL);
+        // 🛡️ ANTI-REDIRECT: Enforce Brazil Region
+        await context.addCookies([
+            {
+                name: 'vtex_segment',
+                value: 'eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9',
+                domain: '.dressto.com.br',
+                path: '/'
+            }
+        ]).catch(() => { });
+
+        // Force sc=1 in the URL
+        const finalUrl = TARGET_URL.includes('?') ? `${TARGET_URL}&sc=1` : `${TARGET_URL}?sc=1`;
+        console.log(`📄 Acessando ${finalUrl}...`);
+        const product = await parseProductDressTo(page, finalUrl);
 
         if (!product) {
             throw new Error('Falha ao parsear produto. Verifique a URL ou seletores.');
