@@ -37,13 +37,11 @@ async function initBrowser() {
         ]
     };
 
-    /*
     if (isHeadless) {
         // Tenta usar o novo modo headless se disponível (melhor para anti-bot)
         // Mas deixa o Playwright gerenciar via opção 'headless: true' ou args
         launchOptions.args.push('--headless=new');
     }
-    */
 
     const browser = await chromium.launch(launchOptions);
 
@@ -110,13 +108,14 @@ async function initBrowser() {
     });
 
     // 🚀 OTIMIZAÇÃO: Bloqueia apenas recursos pesados desnecessários
-    await page.route('**/*', (route) => {
-        const type = route.request().resourceType();
-        if (['media', 'font'].includes(type)) {
-            return route.abort();
-        }
-        return route.continue();
-    });
+    // DISABLED FOR DEBUGGING: Blocking fonts/media might trigger anti-bots on sensitive sites
+    // await page.route('**/*', (route) => {
+    //     const type = route.request().resourceType();
+    //     if (['media', 'font'].includes(type)) {
+    //         return route.abort();
+    //     }
+    //     return route.continue();
+    // });
 
     console.log(`✅ [V3.0] Navegador iniciado com sucesso (${mode} + Anti-Detection).`);
     return { browser, context, page };

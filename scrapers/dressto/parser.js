@@ -26,7 +26,7 @@ async function parseProductDressTo(page, url) {
         }
 
 
-        const data = await page.evaluate(() => {
+        const data = await page.evaluate(async () => {
             const getSafeText = (el) => {
                 if (!el) return '';
                 const txt = el.innerText || el.textContent || '';
@@ -143,6 +143,19 @@ async function parseProductDressTo(page, url) {
                 id = stateProduct.productReference || stateProduct.productId;
             }
 
+            // Tenta extrair ID da URL se ainda não tiver
+            if (id === 'unknown' || id.length < 5) {
+                const urlMatch = window.location.href.match(/(\d{7,})/);
+                if (urlMatch) id = urlMatch[1];
+            }
+
+            // 🕵️ PLANO C: VTEX API FETCH
+            // Se tudo falhou (DOM vazio, State vazio), tentamos a API pública de catálogo
+            if ((!nome || !precoAtual) && id && id !== 'unknown') {
+                // Sincrono: não podemos usar await dentro desse bloco síncrono da evaluate facilmente sem mudar a estrutura
+                // Mas evaluate suporta async se a função inteira for async. E ela é.
+            }
+
             // Image
             let imageUrl = (function () {
                 const bestImgEl = document.querySelector('.vtex-store-components-3-x-productImageTag, img[data-zoom]');
@@ -156,6 +169,59 @@ async function parseProductDressTo(page, url) {
                 }
                 return null;
             })();
+
+            // 🕵️ PLANO C: VTEX API FETCH (Executado se falha anterior)
+            if ((!nome || !precoAtual) && id && id.length > 4) {
+                try {
+                    const apiUrl = `/api/catalog_system/pub/products/search?ft=${id}&sc=1`;
+                    console.log('      🔄 Tentando fallback via API Fetch: ' + apiUrl);
+                    const resp = await fetch(apiUrl);
+                    if (resp.ok) {
+                        const json = await resp.json();
+                        if (json && json.length > 0) {
+                            const pApi = json[0];
+                            // Preenche dados faltantes
+                            if (!nome) nome = pApi.productName;
+                            if (!categoria || categoria === 'outros') {
+                                const catRaw = (pApi.categories && pApi.categories.length) ? pApi.categories[0].toLowerCase() : '';
+                                if (catRaw.includes('vestido')) categoria = 'vestido';
+                                else if (catRaw.includes('macac')) categoria = 'macacão';
+                                else if (catRaw.includes('saia')) categoria = 'saia';
+                                else if (catRaw.includes('short')) categoria = 'short';
+                                else if (catRaw.includes('blus') || catRaw.includes('top')) categoria = 'blusa';
+                                else if (catRaw.includes('brinc') || catRaw.includes('colar') || catRaw.includes('bolsa')) categoria = 'acessório';
+                                else if (catRaw.includes('calc')) categoria = 'calça';
+                            }
+
+                            // Preços e Tamanhos do primeiro item disponível
+                            const item = pApi.items.find(i => i.sellers && i.sellers[0].commertialOffer.AvailableQuantity > 0) || pApi.items[0];
+                            if (item) {
+                                const comm = item.sellers[0].commertialOffer;
+                                precoAtual = comm.Price;
+                                precoOriginal = comm.ListPrice;
+
+                                // Tamanhos disponíveis
+                                pApi.items.forEach(itm => {
+                                    if (itm.sellers[0].commertialOffer.AvailableQuantity > 0) {
+                                        tamanhos.push(itm.name.toUpperCase());
+                                    }
+                                });
+
+                                // Image
+                                if (!imageUrl && item.images && item.images.length) imageUrl = item.images[0].imageUrl;
+                            }
+                        }
+                    }
+                } catch (errApi) {
+                    console.error('      ❌ Erro no Fallback API: ' + errApi.message);
+                }
+            }
+
+            // Garante precoOriginal >= precoAtual
+            if (!precoOriginal) precoOriginal = precoAtual;
+            if (precoOriginal < precoAtual) precoOriginal = precoAtual;
+
+            if (tamanhos.length === 0) return null;
 
             return {
                 id,
