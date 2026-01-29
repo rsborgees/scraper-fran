@@ -43,6 +43,10 @@ async function run() {
     console.log('\n🌐 Iniciando Browser...');
     const { browser, context, page } = await initBrowser();
 
+    // 🕵️ DEBUG: Ouvir logs do browser
+    page.on('console', msg => console.log('   [BROWSER] ' + msg.text()));
+
+
     try {
         // 🛡️ ANTI-REDIRECT: Enforce Brazil Region
         await context.addCookies([
