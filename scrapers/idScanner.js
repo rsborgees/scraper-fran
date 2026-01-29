@@ -17,8 +17,8 @@ const STORE_CONFIG = {
     dressto: {
         baseUrl: 'https://www.dressto.com.br',
         // Direct search URL that often shows results instead of redirecting
-        directUrlBuilder: (id) => `https://www.dressto.com.br/${id}?_q=${id}&map=ft`,
-        searchUrl: (id) => `https://www.dressto.com.br/${id}?_q=${id}&map=ft`,
+        directUrlBuilder: (id) => `https://www.dressto.com.br/${id}?_q=${id}&map=ft&sc=1`,
+        searchUrl: (id) => `https://www.dressto.com.br/${id}?_q=${id}&map=ft&sc=1`,
         searchInputSelector: 'input[type="search"], input[placeholder*="Buscar"], .vtex-store-components-3-x-searchBarIcon',
         // Updated selector to match research
         productLinkSelector: '.dresstoshop-commercegrowth-custom-0-x-skuselector__item, a.vtex-product-summary-2-x-clearLink, a[href$="/p"]',

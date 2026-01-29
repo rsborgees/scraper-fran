@@ -30,13 +30,23 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
         shouldCloseBrowser = true;
     }
 
+    // 🛡️ ANTI-REDIRECT: Enforce Brazil Region via Cookies
+    await page.context().addCookies([
+        {
+            name: 'vtex_segment',
+            value: 'eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9',
+            domain: '.dressto.com.br',
+            path: '/'
+        }
+    ]).catch(() => { });
+
     try {
         let pageNum = 1;
         let consecEmptyPages = 0;
         const maxPages = 5; // Suficiente para preencher a quota de Dress To
 
         while (products.length < quota && pageNum <= maxPages) {
-            const targetUrl = `https://www.dressto.com.br/nossas-novidades?page=${pageNum}`;
+            const targetUrl = `https://www.dressto.com.br/nossas-novidades?page=${pageNum}&sc=1`;
             console.log(`   📄 Página ${pageNum}: ${targetUrl}`);
 
             try {

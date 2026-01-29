@@ -10,7 +10,17 @@ async function runDiagnostic() {
     if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir);
 
     try {
-        const targetUrl = 'https://www.dressto.com.br/nossas-novidades';
+        // 🛡️ ANTI-REDIRECT: Enforce Brazil Region via Cookies
+        await context.addCookies([
+            {
+                name: 'vtex_segment',
+                value: 'eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9',
+                domain: '.dressto.com.br',
+                path: '/'
+            }
+        ]);
+
+        const targetUrl = 'https://www.dressto.com.br/nossas-novidades?sc=1'; // sc=1 forces Brazil Sales Channel
         console.log(`📡 Navegando para: ${targetUrl}`);
 
         const response = await page.goto(targetUrl, {
