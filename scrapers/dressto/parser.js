@@ -1,6 +1,75 @@
 /**
  * Parser para produtos Dress To (VTEX IO)
  */
+
+// 🆘 PLANO D: Server-Side API Fallback (quando o browser falha completamente)
+async function fetchViaVtexAPI(productSlug) {
+    try {
+        // VTEX API funciona melhor com o slug completo do produto
+        const apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search/${productSlug}?sc=1`;
+        console.log(`      🔄 [SERVER-SIDE] Tentando API VTEX: ${apiUrl}`);
+
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            console.log(`      ❌ API retornou status ${response.status}`);
+            return null;
+        }
+
+        const json = await response.json();
+        if (!json || json.length === 0) {
+            console.log(`      ❌ API não retornou produtos para ID ${productId}`);
+            return null;
+        }
+
+        const pApi = json[0];
+
+        // Categoria
+        let categoria = 'outros';
+        const catRaw = (pApi.categories && pApi.categories.length) ? pApi.categories[0].toLowerCase() : '';
+        if (catRaw.includes('vestido')) categoria = 'vestido';
+        else if (catRaw.includes('macac')) categoria = 'macacão';
+        else if (catRaw.includes('saia')) categoria = 'saia';
+        else if (catRaw.includes('short')) categoria = 'short';
+        else if (catRaw.includes('blus') || catRaw.includes('top')) categoria = 'blusa';
+        else if (catRaw.includes('brinc') || catRaw.includes('colar') || catRaw.includes('bolsa')) categoria = 'acessório';
+        else if (catRaw.includes('calc')) categoria = 'calça';
+
+        // Primeiro item disponível
+        const item = pApi.items.find(i => i.sellers && i.sellers[0].commertialOffer.AvailableQuantity > 0) || pApi.items[0];
+        if (!item) return null;
+
+        const comm = item.sellers[0].commertialOffer;
+
+        // Tamanhos disponíveis
+        const tamanhos = [];
+        pApi.items.forEach(itm => {
+            if (itm.sellers[0].commertialOffer.AvailableQuantity > 0) {
+                tamanhos.push(itm.name.toUpperCase());
+            }
+        });
+
+        if (tamanhos.length === 0) return null;
+
+        const result = {
+            id: pApi.productReference || productId,
+            nome: pApi.productName,
+            precoAtual: comm.Price,
+            precoOriginal: comm.ListPrice || comm.Price,
+            tamanhos: [...new Set(tamanhos)],
+            categoria,
+            url: `https://www.dressto.com.br${pApi.link}`,
+            imageUrl: (item.images && item.images.length) ? item.images[0].imageUrl : null
+        };
+
+        console.log(`      ✅ [SERVER-SIDE] Produto extraído via API: ${result.nome}`);
+        return result;
+
+    } catch (err) {
+        console.error(`      ❌ [SERVER-SIDE] Erro na API: ${err.message}`);
+        return null;
+    }
+}
+
 async function parseProductDressTo(page, url) {
     try {
         // 🛡️ ANTI-REDIRECT: Garantir sc=1 em DressTo para evitar Shopify Redirect
@@ -16,6 +85,27 @@ async function parseProductDressTo(page, url) {
             console.log('      ⚠️ Detectado "Render Server - Error" no parser. Recarregando...');
             await page.reload({ waitUntil: 'domcontentloaded' });
             await page.waitForTimeout(5000);
+
+            // Verifica novamente após reload
+            const titleAfterReload = await page.title().catch(() => 'unknown');
+            if (titleAfterReload.includes('Render Server - Error')) {
+                console.log('      🆘 Erro 500 persistiu após reload. Ativando fallback SERVER-SIDE...');
+
+                // Extrai SLUG completo da URL (ex: vestido-cropped-estampa-mares-01342814-2384)
+                const urlPath = new URL(targetUrl).pathname;
+                const slugMatch = urlPath.match(/\/([^\/]+)\/p$/);
+                if (slugMatch) {
+                    const productSlug = slugMatch[1];
+                    console.log(`      🔍 Slug extraído da URL: ${productSlug}`);
+                    const apiResult = await fetchViaVtexAPI(productSlug);
+                    if (apiResult) {
+                        return apiResult;
+                    }
+                }
+
+                console.log('      ❌ Fallback SERVER-SIDE também falhou.');
+                return null;
+            }
         }
 
         // Garante que o H1 ou algum seletor de preço apareça
