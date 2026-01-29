@@ -149,6 +149,8 @@ async function parseProductDressTo(page, url) {
                 if (urlMatch) id = urlMatch[1];
             }
 
+            console.log(`[DEBUG_PARSER] ID: ${id}, Nome: ${nome}, Preco: ${precoAtual}`);
+
             // 🕵️ PLANO C: VTEX API FETCH
             // Se tudo falhou (DOM vazio, State vazio), tentamos a API pública de catálogo
             if ((!nome || !precoAtual) && id && id !== 'unknown') {
