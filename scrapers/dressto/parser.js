@@ -30,17 +30,22 @@ async function parseProductDressTo(page, url) {
                 return (typeof txt === 'string') ? txt.trim() : '';
             };
 
+            // 🕵️ FALLBACK ESTRATÉGIA: VTEX __STATE__
+            // Se a página visual falhou (Erro 500), tentamos extrair do objeto de estado global
+            const state = window.__STATE__;
+            let stateProduct = null;
+            if (state) {
+                const productKey = Object.keys(state).find(k => k.startsWith('Product:'));
+                if (productKey) stateProduct = state[productKey];
+            }
+
             // Nome
             const h1 = document.querySelector('h1, .vtex-store-components-3-x-productNameContainer, [class*="productName"]');
-            const nome = getSafeText(h1);
+            let nome = getSafeText(h1);
+            if (!nome && stateProduct) nome = stateProduct.productName;
             if (!nome) return null;
 
-            // Preço Original SOMENTE (ignorar promoções)
-            // Tenta pegar o preço principal exibido. Se tiver 'old', ignora e pega o 'old' como original? 
-            // "Capture APENAS o preço original exibido na página" -> Geralmente o maior valor se houver riscado, ou o único valor.
-            // DressTo markup: <s>Original</s> ... Current. Or just Current.
-
-            // 1. Preços (VTEX Selectors)
+            // Preço (VTEX Selectors)
             const getPriceValue = (sel) => {
                 const el = document.querySelector(sel);
                 if (!el) return null;
@@ -48,67 +53,73 @@ async function parseProductDressTo(page, url) {
                 return parseFloat(txt);
             };
 
-            const originalPriceVal = getPriceValue('.vtex-product-price-1-x-listPriceValue, .vtex-product-price-1-x-listPrice--product__info');
-            const currentPriceVal = getPriceValue('.vtex-product-price-1-x-sellingPriceValue, .vtex-product-price-1-x-sellingPrice--product__info');
+            let precoOriginal = getPriceValue('.vtex-product-price-1-x-listPriceValue, .vtex-product-price-1-x-listPrice--product__info');
+            let precoAtual = getPriceValue('.vtex-product-price-1-x-sellingPriceValue, .vtex-product-price-1-x-sellingPrice--product__info');
 
-            let precoOriginal = originalPriceVal;
-            let precoAtual = currentPriceVal;
-
-            // Fallback Genérico (Caso seletores mudem)
-            if (!precoAtual) {
-                const allPrices = Array.from(document.querySelectorAll('.vtex-product-price-1-x-currencyContainer, [class*="product-price"]'))
-                    .map(el => getSafeText(el))
-                    .filter(txt => txt.includes('R$'));
-
-                // Lógica simplificada de fallback aqui se necessário, mas os seletores acima são bem estáveis na VTEX
+            // Fallback Preço via __STATE__
+            if (!precoAtual && stateProduct) {
+                // Procura a oferta no state
+                const skuKey = (stateProduct.items && stateProduct.items.length > 0) ? stateProduct.items[0].id : null;
+                if (skuKey) {
+                    const priceKey = Object.keys(state).find(k => k.includes(`Price({"item":${JSON.stringify(skuKey)}`) || k.includes(`{"item":${JSON.stringify(skuKey)}`));
+                    if (priceKey && state[priceKey]) {
+                        precoAtual = state[priceKey].sellingPrice;
+                        precoOriginal = state[priceKey].listPrice || precoAtual;
+                    }
+                }
             }
 
-            // Garantia de sanidade
+            // Garante precoOriginal >= precoAtual
             if (!precoOriginal) precoOriginal = precoAtual;
             if (precoOriginal < precoAtual) precoOriginal = precoAtual;
 
             // 2. Tamanhos
-            // DressTo usa <li> elements com tooltips em <span> para baixo estoque
-            // Ex: <li>M<span class="tooltip">1 disponível</span></li>
             const sizeElements = Array.from(document.querySelectorAll('li[class*="skuselector__item"]'));
             const tamanhos = [];
 
             sizeElements.forEach(li => {
-                // Extract ONLY the text from the LI itself, ignoring any children spans/tooltips
                 let sizeText = '';
                 for (let node of li.childNodes) {
                     if (node.nodeType === Node.TEXT_NODE) {
                         const t = node.textContent.trim();
-                        if (t) {
-                            sizeText = t;
-                            break;
-                        }
+                        if (t) { sizeText = t; break; }
                     }
                 }
-
-                // If no direct text node, try getting innerText but stripping common tooltip patterns
-                if (!sizeText) {
-                    sizeText = li.innerText.split('\n')[0].trim();
-                }
+                if (!sizeText) sizeText = li.innerText.split('\n')[0].trim();
 
                 const isUnavailable = li.className.includes('--unavailable') ||
                     li.className.includes('disabled') ||
                     li.getAttribute('aria-disabled') === 'true';
 
-                // Valid size labels in Brazil are usually PP, P, M, G, GG, numbers, or unique letters
-                const isValidSize = sizeText && sizeText.length <= 4 && !sizeText.includes('disponível') && !sizeText.includes('olho');
-
+                const isValidSize = sizeText && sizeText.length <= 4 && !sizeText.includes('disponível');
                 if (isValidSize && !isUnavailable) {
                     tamanhos.push(sizeText.toUpperCase());
                 }
             });
 
+            // Fallback Tamanhos via __STATE__
+            if (tamanhos.length === 0 && stateProduct && stateProduct.items) {
+                stateProduct.items.forEach(item => {
+                    const sku = state[`Item:${item.id}`];
+                    // Verifica se tem estoque no SKU ou via Seller
+                    const isAvailable = item.sellers && item.sellers.some(s => {
+                        const comm = state[s.id];
+                        return comm && comm.commertialOffer && comm.commertialOffer.AvailableQuantity > 0;
+                    });
+
+                    if (isAvailable && item.name) {
+                        tamanhos.push(item.name.toUpperCase());
+                    }
+                });
+            }
+
             if (tamanhos.length === 0) return null;
 
-            // Categoria (INFERÊNCIA MAIS PRECISA)
+            // Categoria
             let categoria = 'outros';
             const pageTitle = (document.title || '').toLowerCase();
-            const breadcrumb = getSafeText(document.querySelector('.vtex-breadcrumb-1-x-container')).toLowerCase();
+            const breadcrumbEl = document.querySelector('.vtex-breadcrumb-1-x-container');
+            const breadcrumb = (breadcrumbEl ? getSafeText(breadcrumbEl) : '').toLowerCase();
             const fullText = (pageTitle + ' ' + breadcrumb + ' ' + nome.toLowerCase());
 
             if (fullText.includes('vestido')) categoria = 'vestido';
@@ -119,58 +130,39 @@ async function parseProductDressTo(page, url) {
             else if (fullText.includes('brinco') || fullText.includes('bolsa') || fullText.includes('colar') || fullText.includes('cinto') || fullText.includes('acessório')) categoria = 'acessório';
             else if (fullText.includes('calça')) categoria = 'calça';
 
-            // ID (Referência VTEX)
+            // ID
             let id = 'unknown';
             const refEl = document.querySelector('.vtex-product-identifier, .vtex-product-identifier--product-reference');
             if (refEl) {
-                // Formato esperado: 01.33.2394_198 ou 01.33.2394|471
-                let rawText = getSafeText(refEl);
-                // Divide por qualquer separador comum
-                const parts = rawText.split(/[|_-]/);
-                id = parts[0].replace(/\D/g, '');
+                id = getSafeText(refEl).split(/[|_-]/)[0].replace(/\D/g, '');
+            }
+            if ((id === 'unknown' || id.length < 5) && stateProduct) {
+                id = stateProduct.productReference || stateProduct.productId;
             }
 
-            if (id === 'unknown' || id.length < 6) {
-                // Fallback para URL se o ID extraído for inválido ou muito curto
-                // Tenta achar padrão de 8 digitos na URL também
-                // Ex: .../vestido-longo-01332394/p
-                const urlMatch = window.location.href.match(/(\d{7,})/);
-                if (urlMatch) id = urlMatch[1];
-            }
+            // Image
+            let imageUrl = (function () {
+                const bestImgEl = document.querySelector('.vtex-store-components-3-x-productImageTag, img[data-zoom]');
+                if (bestImgEl) return bestImgEl.currentSrc || bestImgEl.src;
+
+                if (stateProduct && stateProduct.items && stateProduct.items.length > 0) {
+                    const firstItem = stateProduct.items[0];
+                    if (firstItem.images && firstItem.images.length > 0) {
+                        return firstItem.images[0].imageUrl;
+                    }
+                }
+                return null;
+            })();
 
             return {
                 id,
                 nome,
-                precoAtual: precoAtual,
-                precoOriginal: precoOriginal,
+                precoAtual,
+                precoOriginal,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
                 url: window.location.href,
-                imageUrl: (function () {
-                    const gallerySelectors = [
-                        '.vtex-store-components-3-x-productImageTag',
-                        '.product-image',
-                        '.image-gallery img',
-                        'img[data-zoom]'
-                    ];
-
-                    let candidates = [];
-                    for (const sel of gallerySelectors) {
-                        const els = document.querySelectorAll(sel);
-                        if (els.length > 0) candidates.push(...Array.from(els));
-                    }
-                    if (candidates.length === 0) {
-                        candidates = Array.from(document.querySelectorAll('img'))
-                            .filter(img => img.width > 250 && img.height > 250);
-                    }
-                    if (candidates.length === 0) {
-                        const ogImg = document.querySelector('meta[property="og:image"]');
-                        if (ogImg && ogImg.content) return ogImg.content;
-                    }
-
-                    const bestImg = candidates.find(img => (img.currentSrc || img.src) && !(img.src || '').includes('svg'));
-                    return bestImg ? (bestImg.currentSrc || bestImg.src) : null;
-                })()
+                imageUrl
             };
         });
 
