@@ -101,6 +101,17 @@ async function parseProductDressTo(page, url) {
                     if (apiResult) {
                         return apiResult;
                     }
+                } else {
+                    // Tenta extrair ID da URL (ex: ?_q=02083385 ou /02083385)
+                    const idFromUrl = targetUrl.match(/[?&_q=\/](\d{8})/);
+                    if (idFromUrl) {
+                        const productId = idFromUrl[1];
+                        console.log(`      🔍 ID extraído da URL (sem slug): ${productId}`);
+                        const apiResult = await fetchViaVtexAPI(productId);
+                        if (apiResult) {
+                            return apiResult;
+                        }
+                    }
                 }
 
                 console.log('      ❌ Fallback SERVER-SIDE também falhou.');

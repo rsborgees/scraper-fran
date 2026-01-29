@@ -130,49 +130,67 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     // --- ESTRATÉGIA DE NAVEGAÇÃO ---
                     let navigationSuccess = false;
 
-                    // Para DressTo, usamos a busca direta que é mais estável
-                    if (config.directUrlBuilder) {
-                        const directUrl = config.directUrlBuilder(item.id);
+                    // DressTo: Estratégia especial para evitar "Render Server Error"
+                    if (storeName === 'dressto') {
                         try {
-                            const waitCondition = storeName === 'dressto' ? 'domcontentloaded' : 'domcontentloaded'; // Always use domcontentloaded for performance
-                            await page.goto(directUrl, { waitUntil: waitCondition, timeout: storeName === 'dressto' ? 60000 : 35000 });
+                            // 1. Navega para a home primeiro para estabelecer sessão
+                            console.log('      🏠 Navegando para home DressTo...');
+                            await page.goto('https://www.dressto.com.br/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+                            await page.waitForTimeout(3000);
 
-                            // DressTo extra stabilization
-                            if (storeName === 'dressto') {
-                                try {
-                                    // Increased timeout for stabilization in server environments
-                                    const stabilizationTimeout = 40000;
-                                    const selectors = config.productLinkSelector + `, .vtex-product-identifier, .vtex-rich-text-0-x-paragraph--not-found, h2:has-text("OPS"), a[href*="${item.id}"]`;
+                            // 2. Verifica se não foi redirecionado para versão global
+                            let title = await page.title().catch(() => '');
+                            if (title.includes('Bringing Joy') || title.includes('Fashion')) {
+                                console.log(`      ⚠️ Redirecionamento global detectado. Forçando BR...`);
+                                await page.goto('https://www.dressto.com.br/?sc=1', { waitUntil: 'domcontentloaded' });
+                                await page.waitForTimeout(2000);
+                            }
 
-                                    // Para DressTo, verificamos se o redirecionamento global ocorreu
-                                    let title = await page.title().catch(() => '');
+                            // 3. Usa a busca do site ao invés de URL direta
+                            console.log(`      🔍 Buscando ID ${item.id} via campo de busca...`);
+                            const searchInput = '#downshift-0-input, input[placeholder*="Digite sua busca"], input[placeholder*="buscar"]';
+                            const searchIcon = 'button[title="Buscar"], [class*="SearchCustom_icon"]';
 
-                                    // Handle Render Server - Error
-                                    if (title.includes('Render Server - Error')) {
-                                        console.log('      ⚠️ Detectado "Render Server - Error" no ID Scanner. Recarregando...');
-                                        await page.reload({ waitUntil: 'domcontentloaded' });
-                                        await page.waitForTimeout(5000);
-                                        title = await page.title().catch(() => '');
-                                    }
-
-                                    if (title.includes('Bringing Joy') || title.includes('Fashion')) {
-                                        console.log(`      ⚠️ Detectado redirecionamento global (DressTo Global). Forçando versão BR...`);
-                                        await page.goto(`https://www.dressto.com.br/?sc=1`, { waitUntil: 'domcontentloaded' });
-                                        await page.goto(directUrl, { waitUntil: 'domcontentloaded' });
-                                    }
-
-                                    await page.waitForSelector(selectors, { timeout: stabilizationTimeout });
-                                    navigationSuccess = true;
-                                } catch (e) {
-                                    const title = await page.title().catch(() => 'unknown');
-                                    const finalUrl = page.url();
-                                    console.log(`      ⚠️ Timeout estabilizando DressTo [Title: ${title}] [URL: ${finalUrl}] - tentando continuar...`);
-                                    navigationSuccess = true;
+                            // Tenta abrir o campo de busca se necessário
+                            const isVisible = await page.isVisible(searchInput).catch(() => false);
+                            if (!isVisible) {
+                                const hasIcon = await page.isVisible(searchIcon).catch(() => false);
+                                if (hasIcon) {
+                                    await page.click(searchIcon);
+                                    await page.waitForTimeout(1000);
                                 }
+                            }
+
+                            // Preenche e busca
+                            await page.waitForSelector(searchInput, { state: 'visible', timeout: 15000 });
+                            await page.fill(searchInput, item.id);
+                            await page.press(searchInput, 'Enter');
+                            await page.waitForTimeout(3000);
+
+                            // Verifica se chegou em uma página de resultados ou produto
+                            const currentUrl = page.url();
+                            if (currentUrl.includes('/p')) {
+                                // Já está na página do produto
+                                navigationSuccess = true;
                             } else {
+                                // Está na listagem, precisa clicar no produto
+                                const productLink = config.productLinkSelector;
+                                await page.waitForSelector(productLink, { timeout: 15000 });
                                 navigationSuccess = true;
                             }
 
+                        } catch (dresstoErr) {
+                            console.log(`      ❌ Erro na estratégia DressTo: ${dresstoErr.message}`);
+                            // Fallback para URL direta mesmo assim
+                        }
+                    }
+
+                    // Para outras lojas ou fallback DressTo, usa a URL direta
+                    if (!navigationSuccess && config.directUrlBuilder) {
+                        const directUrl = config.directUrlBuilder(item.id);
+                        try {
+                            await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+                            navigationSuccess = true;
                             await new Promise(r => setTimeout(r, 1500));
                         } catch (e) {
                             console.log(`      ⚠️ Falha na Direct URL: ${e.message}`);
@@ -254,16 +272,37 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 30000 });
                                 await new Promise(r => setTimeout(r, 1500));
                             } else {
-                                // Diagnostic Screenshot
-                                const path = require('path');
-                                const fs = require('fs');
-                                const debugDir = path.join(__dirname, '../debug');
-                                if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir);
-                                const debugName = `debug_id_fail_${storeName}_${item.id}_${Date.now()}.png`;
-                                await page.screenshot({ path: path.join(debugDir, debugName) }).catch(() => { });
-                                console.log(`   ❌ Link não encontrado na listagem. Print salvo: debug/${debugName}`);
-                                stats.notFound++;
-                                continue;
+                                // 🆘 FALLBACK ESPECIAL DRESSTO: Se não achou link E tem erro 500, pula navegação
+                                if (storeName === 'dressto') {
+                                    const pageTitle = await page.title().catch(() => 'unknown');
+                                    if (pageTitle.includes('Render Server - Error')) {
+                                        console.log(`   🆘 Erro 500 detectado no ID Scanner. Delegando para parser com fallback API...`);
+                                        // Não precisa navegar - o parser vai detectar o erro 500 e usar a API
+                                        // Continua para o parse abaixo
+                                    } else {
+                                        // Não é erro 500, é realmente produto não encontrado
+                                        const path = require('path');
+                                        const fs = require('fs');
+                                        const debugDir = path.join(__dirname, '../debug');
+                                        if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir);
+                                        const debugName = `debug_id_fail_${storeName}_${item.id}_${Date.now()}.png`;
+                                        await page.screenshot({ path: path.join(debugDir, debugName) }).catch(() => { });
+                                        console.log(`   ❌ Link não encontrado na listagem. Print salvo: debug/${debugName}`);
+                                        stats.notFound++;
+                                        continue;
+                                    }
+                                } else {
+                                    // Outras lojas - comportamento normal
+                                    const path = require('path');
+                                    const fs = require('fs');
+                                    const debugDir = path.join(__dirname, '../debug');
+                                    if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir);
+                                    const debugName = `debug_id_fail_${storeName}_${item.id}_${Date.now()}.png`;
+                                    await page.screenshot({ path: path.join(debugDir, debugName) }).catch(() => { });
+                                    console.log(`   ❌ Link não encontrado na listagem. Print salvo: debug/${debugName}`);
+                                    stats.notFound++;
+                                    continue;
+                                }
                             }
                         } catch (navErr) {
                             console.log(`   ❌ Erro ao navegar para o link: ${navErr.message}`);
