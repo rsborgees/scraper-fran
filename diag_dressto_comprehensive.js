@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 async function runDiagnostic() {
-    console.log('🔍 [DIAGNOSTIC COMPREHENSIVO] Iniciando análise DressTo...');
+    console.log('🔍 [DIAGNOSTIC COMPREHENSIVO V2] Iniciando análise DressTo...');
 
     const { browser, context, page } = await initBrowser();
     const debugDir = path.join(__dirname, 'debug');
@@ -20,30 +20,36 @@ async function runDiagnostic() {
             }
         ]);
 
-        const targetUrl = 'https://www.dressto.com.br/nossas-novidades?sc=1'; // sc=1 forces Brazil Sales Channel
+        const targetUrl = 'https://www.dressto.com.br/nossas-novidades?sc=1';
         console.log(`📡 Navegando para: ${targetUrl}`);
 
-        const response = await page.goto(targetUrl, {
+        let response = await page.goto(targetUrl, {
             waitUntil: 'domcontentloaded',
             timeout: 60000
         });
 
-        console.log(`📥 Status HTTP: ${response.status()}`);
+        console.log(`📥 Status Inicial: ${response.status()}`);
+        let title = await page.title();
+        console.log(`📄 Título Inicial: ${title}`);
+
+        // 🔄 TESTANDO RECUPERAÇÃO AUTOMÁTICA
+        if (title.includes('Render Server - Error') || response.status() === 500) {
+            console.log('⚠️ ERRO DE RENDERIZAÇÃO DETECTADO. Tentando recarregar (Simulando correção)...');
+            await page.waitForTimeout(5000);
+            response = await page.reload({ waitUntil: 'domcontentloaded' });
+            console.log(`📥 Status após Reload: ${response.status()}`);
+            title = await page.title();
+            console.log(`📄 Título após Reload: ${title}`);
+        }
 
         // Espera extra para JS carregar
         await page.waitForTimeout(10000);
 
         const finalUrl = page.url();
-        const title = await page.title();
         console.log(`🔗 URL Final: ${finalUrl}`);
-        console.log(`📄 Título: ${title}`);
-
-        if (finalUrl.includes('dressto.com/') && !finalUrl.includes('.com.br')) {
-            console.log('⚠️ REDIRECIONAMENTO INTERNACIONAL DETECTADO!');
-        }
 
         // Tira print mesmo headless
-        const screenshotPath = path.join(debugDir, 'diag_dressto_server_view.png');
+        const screenshotPath = path.join(debugDir, 'diag_dressto_server_recovery.png');
         await page.screenshot({ path: screenshotPath, fullPage: true });
         console.log(`📸 Screenshot salvo em: ${screenshotPath}`);
 
@@ -55,16 +61,15 @@ async function runDiagnostic() {
             results.allLinksCount = document.querySelectorAll('a').length;
             results.productLinksCount = Array.from(document.querySelectorAll('a')).filter(a => a.href.includes('/p')).length;
             results.bodySnippet = document.body.innerText.substring(0, 500);
-            results.htmlLang = document.documentElement.lang;
             return results;
         });
 
         console.log('📊 Diagnóstico de DOM:', JSON.stringify(diagnostics, null, 2));
 
         if (diagnostics.productLinksCount === 0) {
-            console.log('❌ Nenhum link de produto encontrado.');
+            console.log('❌ Nenhum link de produto encontrado após recuperação.');
         } else {
-            console.log(`✅ Encontrados ${diagnostics.productLinksCount} links que parecem ser de produtos.`);
+            console.log(`✅ Sucesso! Encontrados ${diagnostics.productLinksCount} links de produtos.`);
         }
 
     } catch (err) {
