@@ -145,7 +145,16 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                     const selectors = config.productLinkSelector + `, .vtex-product-identifier, .vtex-rich-text-0-x-paragraph--not-found, h2:has-text("OPS"), a[href*="${item.id}"]`;
 
                                     // Para DressTo, verificamos se o redirecionamento global ocorreu
-                                    const title = await page.title().catch(() => '');
+                                    let title = await page.title().catch(() => '');
+
+                                    // Handle Render Server - Error
+                                    if (title.includes('Render Server - Error')) {
+                                        console.log('      ⚠️ Detectado "Render Server - Error" no ID Scanner. Recarregando...');
+                                        await page.reload({ waitUntil: 'domcontentloaded' });
+                                        await page.waitForTimeout(5000);
+                                        title = await page.title().catch(() => '');
+                                    }
+
                                     if (title.includes('Bringing Joy') || title.includes('Fashion')) {
                                         console.log(`      ⚠️ Detectado redirecionamento global (DressTo Global). Forçando versão BR...`);
                                         await page.goto(`https://www.dressto.com.br/?sc=1`, { waitUntil: 'domcontentloaded' });
@@ -156,7 +165,8 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                     navigationSuccess = true;
                                 } catch (e) {
                                     const title = await page.title().catch(() => 'unknown');
-                                    console.log(`      ⚠️ Timeout estabilizando DressTo [Title: ${title}] - tentando continuar...`);
+                                    const finalUrl = page.url();
+                                    console.log(`      ⚠️ Timeout estabilizando DressTo [Title: ${title}] [URL: ${finalUrl}] - tentando continuar...`);
                                     navigationSuccess = true;
                                 }
                             } else {

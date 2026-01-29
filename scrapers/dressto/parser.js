@@ -7,11 +7,19 @@ async function parseProductDressTo(page, url) {
         // Espera de estabilização extra para sites VTEX pesados
         await page.waitForTimeout(6000);
 
+        // Check for VTEX error
+        const pageTitle = await page.title().catch(() => 'unknown');
+        if (pageTitle.includes('Render Server - Error')) {
+            console.log('      ⚠️ Detectado "Render Server - Error" no parser. Recarregando...');
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await page.waitForTimeout(5000);
+        }
+
         // Garante que o H1 ou algum seletor de preço apareça
         try {
-            await page.waitForSelector('h1, .vtex-product-price-1-x-sellingPriceValue', { timeout: 15000 });
+            await page.waitForSelector('h1, .vtex-product-price-1-x-sellingPriceValue, .vtex-product-identifier', { timeout: 15000 });
         } catch (e) {
-            console.log(`      ⚠️ Timeout esperando elementos básicos de ${url}`);
+            console.log(`      ⚠️ Timeout esperando elementos básicos de ${url} [Title: ${await page.title().catch(() => 'unknown')}]`);
         }
 
 
