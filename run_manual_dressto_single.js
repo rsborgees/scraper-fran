@@ -6,7 +6,7 @@ const { findFileByProductId } = require('./driveManager');
 const { buildDressMessage } = require('./messageBuilder');
 
 // Config
-const WEBHOOK_URL = "https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/skraper-v2";
+const WEBHOOK_URL = "https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa";
 const TARGET_ID = '01342814';
 const TARGET_URL = 'https://www.dressto.com.br/vestido-cropped-estampa-mares-01342814-2384/p';
 
