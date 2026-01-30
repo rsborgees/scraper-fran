@@ -27,8 +27,8 @@ async function testDressToEasypanel() {
                 { id: '01332543', fileName: 'test2.jpg' }
             ];
 
-            const { browser } = await initBrowser();
-            const results = await scrapeSpecificIdsGeneric(browser, testIds, 'dressto', 2);
+            const { browser, context } = await initBrowser();
+            const results = await scrapeSpecificIdsGeneric(context, testIds, 'dressto', 2);
             await browser.close();
 
             console.log('\n📊 Resultados do Teste:');
@@ -46,8 +46,8 @@ async function testDressToEasypanel() {
         // 2. Testa com os primeiros 3 IDs
         const testItems = driveItems.slice(0, 3);
 
-        const { browser } = await initBrowser();
-        const results = await scrapeSpecificIdsGeneric(browser, testItems, 'dressto', 3);
+        const { browser, context } = await initBrowser();
+        const results = await scrapeSpecificIdsGeneric(context, testItems, 'dressto', 3);
         await browser.close();
 
         // 3. Mostra resultados
