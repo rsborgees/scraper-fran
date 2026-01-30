@@ -1,0 +1,78 @@
+require('dotenv').config();
+const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
+const { findFilesByStore } = require('./driveManager');
+const { initBrowser } = require('./browser_setup');
+
+/**
+ * Script de teste para DressTo no Easypanel
+ * Testa os IDs do Drive com todas as correções implementadas
+ */
+
+async function testDressToEasypanel() {
+    console.log('🧪 Teste DressTo no Easypanel - Iniciando...\n');
+
+    try {
+        // 1. Busca IDs do Drive
+        console.log('📂 Buscando IDs do Drive para DressTo...');
+        const driveItems = await findFilesByStore('dressto');
+
+        if (!driveItems || driveItems.length === 0) {
+            console.log('⚠️  Nenhum item encontrado no Drive para DressTo.');
+            console.log('   Testando com IDs fixos...');
+
+            // IDs de teste fixos
+            const testIds = [
+                { id: '02083385', fileName: 'test1.jpg' },
+                { id: '01332543', fileName: 'test2.jpg' }
+            ];
+
+            const { browser } = await initBrowser();
+            const results = await scrapeSpecificIdsGeneric(browser, testIds, 'dressto', 2);
+            await browser.close();
+
+            console.log('\n📊 Resultados do Teste:');
+            console.log(`   ✅ Sucesso: ${results.success}`);
+            console.log(`   ❌ Erros: ${results.errors}`);
+            console.log(`   ⏭️  Duplicados: ${results.duplicates}`);
+            console.log(`   🔍 Não encontrados: ${results.notFound}`);
+
+            return;
+        }
+
+        console.log(`✅ Encontrados ${driveItems.length} itens no Drive`);
+        console.log(`   Testando os primeiros 3 itens...\n`);
+
+        // 2. Testa com os primeiros 3 IDs
+        const testItems = driveItems.slice(0, 3);
+
+        const { browser } = await initBrowser();
+        const results = await scrapeSpecificIdsGeneric(browser, testItems, 'dressto', 3);
+        await browser.close();
+
+        // 3. Mostra resultados
+        console.log('\n📊 Resultados do Teste:');
+        console.log(`   ✅ Sucesso: ${results.success}`);
+        console.log(`   ❌ Erros: ${results.errors}`);
+        console.log(`   ⏭️  Duplicados: ${results.duplicates}`);
+        console.log(`   🔍 Não encontrados: ${results.notFound}`);
+
+        if (results.success > 0) {
+            console.log('\n🎉 TESTE PASSOU! O scraper DressTo está funcionando no Easypanel!');
+        } else {
+            console.log('\n⚠️  Nenhum produto foi coletado com sucesso. Verifique os logs acima.');
+        }
+
+    } catch (error) {
+        console.error('❌ Erro durante o teste:', error.message);
+        console.error(error.stack);
+    }
+}
+
+// Executa o teste
+testDressToEasypanel().then(() => {
+    console.log('\n✅ Teste concluído.');
+    process.exit(0);
+}).catch(err => {
+    console.error('❌ Erro fatal:', err);
+    process.exit(1);
+});
