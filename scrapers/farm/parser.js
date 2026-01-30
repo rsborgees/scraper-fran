@@ -15,7 +15,7 @@ async function parseProduct(page, url) {
     }
 
     // FILTRO ANTI-INFANTIL (Fábula / Bento / Teen / Mini / Kids)
-    if (/fabula|bento|teen|mini|kids|infantil|brincando/i.test(url)) {
+    if (/fabula|bento|teen|kids|infantil|brincando/i.test(url)) {
         console.log(`👶 [Skip] Produto Infantil detectado por URL: ${url}`);
         return null;
     }
@@ -328,6 +328,7 @@ async function parseProduct(page, url) {
             else if (strictText.includes('/blusa') || strictText.includes('/camisa') || strictText.includes('/t-shirt') || strictText.includes('blusa') || strictText.includes('camisa') || strictText.includes('t-shirt')) category = 'blusa';
             else if (strictText.includes('/casaco') || strictText.includes('/jaqueta') || strictText.includes('/moletom') || strictText.includes('casaco') || strictText.includes('jaqueta') || strictText.includes('moletom')) category = 'casaco';
             else if (strictText.includes('/body') || strictText.includes('/kimono') || strictText.includes('/top') || strictText.includes('body') || strictText.includes('kimono') || strictText.includes('top')) category = 'top/body';
+            else if (strictText.includes('/biquini') || strictText.includes('/maio') || strictText.includes('biquíni') || strictText.includes('maiô') || strictText.includes('biquini') || strictText.includes('maio')) category = 'banho';
 
             // BLOQUEIO EXPLÍCITO DE CATEGORIAS PROIBIDAS (Usando STRICT TEXT para evitar menu/footer)
             const isForbidden = (function () {
@@ -338,7 +339,7 @@ async function parseProduct(page, url) {
                 if (/\/brinco-/i.test(strictText) || /\/bolsa(-|\/|\?)/i.test(strictText) || /\bbolsa\b/i.test(strictText) || /\/colar-/i.test(strictText) || /\/cinto-/i.test(strictText) || (/\/acessorio-/i.test(strictText) && !strictText.includes('acessorio-feminino')) || /\bbrinco\b/i.test(strictText) || /\bcolar\b/i.test(strictText) || /\bacessório\b/i.test(strictText) || /\bnecessaire\b/i.test(strictText) || /\bóculos\b/i.test(strictText) || /\bscrunchie\b/i.test(strictText) || /\btiara\b/i.test(strictText) || /\blenço\b/i.test(strictText) || /\bpochete\b/i.test(strictText) || /\bcarteira\b/i.test(strictText) || /\bchaveiro\b/i.test(strictText) || /\bmeia\b/i.test(strictText) || /\bluva\b/i.test(strictText) || /\bcachecol\b/i.test(strictText) || /\btouca\b/i.test(strictText) || /\bboné\b/i.test(strictText) || /\bchapéu\b/i.test(strictText)) return 'acessório';
 
                 // Roupas de Banho
-                if (/\/biquini-/i.test(strictText) || /\/maio-/i.test(strictText) || /\/tanga-/i.test(strictText) || /\/sunga-/i.test(strictText) || /\bbiquíni\b/i.test(strictText) || /\bmaiô\b/i.test(strictText) || /\bbiquini\b/i.test(strictText) || /\bmaio\b/i.test(strictText) || /\btanga\b/i.test(strictText) || /\bsunga\b/i.test(strictText) || /saída de praia/i.test(strictText)) return 'banho';
+                // REMOVIDO: Deixando passar banho (biquinis/maiôs) conforme pedido do usuário
 
                 // Garrafas / Copos / Casa
                 if (/\/garrafa-/i.test(strictText) || /\/copo-/i.test(strictText) || /\/squeeze-/i.test(strictText) || /\/marmita-/i.test(strictText) || /\/caneca-/i.test(strictText) || /\bgarrafa\b/i.test(strictText) || /\bcopo\b/i.test(strictText) || /\bsqueeze\b/i.test(strictText) || /\bmarmita\b/i.test(strictText) || /\bcaneca\b/i.test(strictText) || /\bkit\b/i.test(strictText) || /\bvela\b/i.test(strictText) || /\bcaderno\b/i.test(strictText) || /\badesivo\b/i.test(strictText) || /\bestojo\b/i.test(strictText) || /\bbeauty\b/i.test(strictText)) return 'utilitário/casa';
