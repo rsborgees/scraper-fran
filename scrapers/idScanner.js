@@ -21,7 +21,7 @@ const STORE_CONFIG = {
         searchUrl: (id) => `https://www.dressto.com.br/${id}?_q=${id}&map=ft&sc=1`,
         searchInputSelector: 'input[type="search"], input[placeholder*="Buscar"], .vtex-store-components-3-x-searchBarIcon',
         // Updated selector to match research
-        productLinkSelector: '.dresstoshop-commercegrowth-custom-0-x-skuselector__item, a.vtex-product-summary-2-x-clearLink, a[href$="/p"]',
+        productLinkSelector: 'a.vtex-product-summary-2-x-clearLink, a[href$="/p"], .vtex-product-summary-2-x-image',
         parser: 'dressto',
         utmParam: null
     },
@@ -102,7 +102,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
         // Anti-redirection cookie for DressTo (Force BR)
         if (storeName === 'dressto') {
             await contextOrBrowser.addCookies([
-                { name: 'vtex_segment', value: 'eydjdXJyZW5jeUNvZGUnOiAnQlJMJywgY291bnRyeUNvZGUnOiAnQlJBJywgJ2xvY2FsZUNvZGUnOiAncHQtQlInIH0=', domain: '.dressto.com.br', path: '/' }
+                { name: 'vtex_segment', value: 'eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9', domain: '.dressto.com.br', path: '/' }
             ]).catch(() => { });
         }
 

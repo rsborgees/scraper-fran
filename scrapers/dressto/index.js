@@ -99,12 +99,34 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
                 });
 
                 if (productUrls.length === 0) {
-                    console.log('      ⚠️ Nenhum produto encontrado nesta página.');
+                    console.log('      ⚠️ Nenhum produto encontrado nesta página via DOM. Tentando API...');
 
-                    // Extra debug for 0 items
-                    const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 500));
-                    console.log(`      📄 Body Snippet: ${bodySnippet.replace(/\n/g, ' ')}...`);
+                    try {
+                        const apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search?sc=1&_from=${(pageNum - 1) * 20}&_to=${pageNum * 20 - 1}`;
+                        console.log(`      🔄 Buscando via API VTEX: ${apiUrl}`);
+                        const resp = await page.context().request.get(apiUrl, {
+                            headers: {
+                                'Cookie': 'vtex_segment=eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9'
+                            }
+                        });
 
+                        if (resp.ok()) {
+                            const json = await resp.json();
+                            if (json && json.length > 0) {
+                                console.log(`      ✅ API retornou ${json.length} produtos.`);
+                                productUrls.push(...json.map(p => {
+                                    const link = p.link || '';
+                                    return link.startsWith('http') ? link : `https://www.dressto.com.br${link.startsWith('/') ? '' : '/'}${link}`;
+                                }));
+                            }
+                        }
+                    } catch (apiErr) {
+                        console.log(`      ❌ Erro ao buscar via API: ${apiErr.message}`);
+                    }
+                }
+
+                if (productUrls.length === 0) {
+                    console.log('      ⚠️ Realmente nenhum produto encontrado nesta página.');
                     consecEmptyPages++;
                     if (consecEmptyPages >= 3) break;
                 } else {

@@ -14,8 +14,9 @@ async function testDressToEasypanel() {
     try {
         // 1. Busca IDs do Drive
         console.log('📂 Buscando IDs do Drive para DressTo...');
-        const allDriveItems = await getExistingIdsFromDrive();
-        const driveItems = allDriveItems.filter(item => item.fileName.toLowerCase().includes('dress'));
+        const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+        const allDriveItems = await getExistingIdsFromDrive(folderId);
+        const driveItems = allDriveItems.filter(item => item.name.toLowerCase().includes('dress') || item.store === 'dressto');
 
         if (!driveItems || driveItems.length === 0) {
             console.log('⚠️  Nenhum item encontrado no Drive para DressTo.');
@@ -23,8 +24,8 @@ async function testDressToEasypanel() {
 
             // IDs de teste fixos
             const testIds = [
-                { id: '02083385', fileName: 'test1.jpg' },
-                { id: '01332543', fileName: 'test2.jpg' }
+                { id: '07010946', fileName: 'test1.jpg' },
+                { id: '15010560', fileName: 'test2.jpg' }
             ];
 
             const { browser, context } = await initBrowser();
@@ -32,10 +33,10 @@ async function testDressToEasypanel() {
             await browser.close();
 
             console.log('\n📊 Resultados do Teste:');
-            console.log(`   ✅ Sucesso: ${results.success}`);
-            console.log(`   ❌ Erros: ${results.errors}`);
-            console.log(`   ⏭️  Duplicados: ${results.duplicates}`);
-            console.log(`   🔍 Não encontrados: ${results.notFound}`);
+            console.log(`   ✅ Sucesso: ${results.stats.found}`);
+            console.log(`   ❌ Erros: ${results.stats.errors}`);
+            console.log(`   ⏭️  Duplicados: ${results.stats.duplicates}`);
+            console.log(`   🔍 Não encontrados: ${results.stats.notFound}`);
 
             return;
         }
@@ -52,12 +53,12 @@ async function testDressToEasypanel() {
 
         // 3. Mostra resultados
         console.log('\n📊 Resultados do Teste:');
-        console.log(`   ✅ Sucesso: ${results.success}`);
-        console.log(`   ❌ Erros: ${results.errors}`);
-        console.log(`   ⏭️  Duplicados: ${results.duplicates}`);
-        console.log(`   🔍 Não encontrados: ${results.notFound}`);
+        console.log(`   ✅ Sucesso: ${results.stats.found}`);
+        console.log(`   ❌ Erros: ${results.stats.errors}`);
+        console.log(`   ⏭️  Duplicados: ${results.stats.duplicates}`);
+        console.log(`   🔍 Não encontrados: ${results.stats.notFound}`);
 
-        if (results.success > 0) {
+        if (results.stats.found > 0) {
             console.log('\n🎉 TESTE PASSOU! O scraper DressTo está funcionando no Easypanel!');
         } else {
             console.log('\n⚠️  Nenhum produto foi coletado com sucesso. Verifique os logs acima.');

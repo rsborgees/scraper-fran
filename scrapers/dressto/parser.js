@@ -3,21 +3,47 @@
  */
 
 // 🆘 PLANO D: Server-Side API Fallback (quando o browser falha completamente)
-async function fetchViaVtexAPI(productSlug) {
+async function fetchViaVtexAPI(searchKey) {
     try {
-        // VTEX API funciona melhor com o slug completo do produto
-        const apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search/${productSlug}?sc=1`;
-        console.log(`      🔄 [SERVER-SIDE] Tentando API VTEX: ${apiUrl}`);
+        // VTEX API: Try slug first, then ft (text search) fallback
+        let apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search/${searchKey}?sc=1`;
+        console.log(`      🔄 [SERVER-SIDE] Tentando API VTEX (Slug): ${apiUrl}`);
 
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-            console.log(`      ❌ API retornou status ${response.status}`);
-            return null;
+        // Common headers for VTEX APIs on international IPs
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Cookie': 'vtex_segment=eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9'
+        };
+
+        let response = await fetch(apiUrl, { headers });
+        let json = [];
+
+        if (response.ok) {
+            json = await response.json();
         }
 
-        const json = await response.json();
+        // Fallback: Text search (ft) if slug failed or returned nothing
         if (!json || json.length === 0) {
-            console.log(`      ❌ API não retornou produtos para ID ${productId}`);
+            const cleanId = searchKey.replace(/\D/g, '');
+            // Try clean ID first
+            apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search?ft=${cleanId || searchKey}&sc=1`;
+            console.log(`      🔄 [SERVER-SIDE] Fallback API VTEX (ft): ${apiUrl}`);
+            response = await fetch(apiUrl, { headers });
+            if (response.ok) json = await response.json();
+
+            // Try with dots if it's an 8-digit ID (DressTo standard: XX.XX.XXXX)
+            if ((!json || json.length === 0) && cleanId.length === 8) {
+                const dottedId = `${cleanId.substring(0, 2)}.${cleanId.substring(2, 4)}.${cleanId.substring(4, 8)}`;
+                apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search?ft=${dottedId}&sc=1`;
+                console.log(`      🔄 [SERVER-SIDE] Fallback API VTEX (dots): ${apiUrl}`);
+                response = await fetch(apiUrl, { headers });
+                if (response.ok) json = await response.json();
+            }
+        }
+
+        if (!json || json.length === 0) {
+            console.log(`      ❌ API não retornou produtos para "${searchKey}"`);
             return null;
         }
 
@@ -51,7 +77,7 @@ async function fetchViaVtexAPI(productSlug) {
         if (tamanhos.length === 0) return null;
 
         const result = {
-            id: pApi.productReference || productId,
+            id: pApi.productReference || searchKey,
             nome: pApi.productName,
             precoAtual: comm.Price,
             precoOriginal: comm.ListPrice || comm.Price,
