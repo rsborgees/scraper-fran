@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
-const { findFilesByStore } = require('./driveManager');
+const { getExistingIdsFromDrive } = require('./driveManager');
 const { initBrowser } = require('./browser_setup');
 
 /**
@@ -14,7 +14,8 @@ async function testDressToEasypanel() {
     try {
         // 1. Busca IDs do Drive
         console.log('📂 Buscando IDs do Drive para DressTo...');
-        const driveItems = await findFilesByStore('dressto');
+        const allDriveItems = await getExistingIdsFromDrive();
+        const driveItems = allDriveItems.filter(item => item.fileName.toLowerCase().includes('dress'));
 
         if (!driveItems || driveItems.length === 0) {
             console.log('⚠️  Nenhum item encontrado no Drive para DressTo.');
