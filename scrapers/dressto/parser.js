@@ -69,8 +69,15 @@ async function fetchViaVtexAPI(searchKey) {
         // Tamanhos disponíveis
         const tamanhos = [];
         pApi.items.forEach(itm => {
-            if (itm.sellers[0].commertialOffer.AvailableQuantity > 0) {
-                tamanhos.push(itm.name.toUpperCase());
+            if (itm.sellers && itm.sellers[0] && itm.sellers[0].commertialOffer.AvailableQuantity > 0) {
+                // Tenta extrair apenas o tamanho do nome (ex: "AZUL / P" -> "P")
+                let size = itm.name;
+                if (size.includes('/')) {
+                    size = size.split('/').pop().trim();
+                }
+                if (size && size.length <= 4) {
+                    tamanhos.push(size.toUpperCase());
+                }
             }
         });
 
@@ -203,11 +210,14 @@ async function parseProductDressTo(page, url) {
             if (!precoOriginal) precoOriginal = precoAtual;
             if (precoOriginal < precoAtual) precoOriginal = precoAtual;
 
-            // 2. Tamanhos
-            const sizeElements = Array.from(document.querySelectorAll('li[class*="skuselector__item"]'));
+            // 2. Tamanhos (DOM)
+            const sizeElements = Array.from(document.querySelectorAll('.vtex-sku-selector-2-x-skuselector__item--tamanho, li[class*="skuselector__item"]'));
             const tamanhos = [];
 
             sizeElements.forEach(li => {
+                // Pular se for seletor de cor (muitas vezes compartilham a mesma classe base)
+                if (li.innerText.length > 5 && !li.innerText.includes('\n')) return;
+
                 let sizeText = '';
                 for (let node of li.childNodes) {
                     if (node.nodeType === Node.TEXT_NODE) {
@@ -221,24 +231,29 @@ async function parseProductDressTo(page, url) {
                     li.className.includes('disabled') ||
                     li.getAttribute('aria-disabled') === 'true';
 
-                const isValidSize = sizeText && sizeText.length <= 4 && !sizeText.includes('disponível');
+                // Validação rigorosa: Tamanhos costumam ser P, M, G, GG, 36, 38 etc.
+                const isValidSize = sizeText && sizeText.length <= 4 && !sizeText.includes('disponível') && !/^[A-Z]{5,}$/.test(sizeText);
+
                 if (isValidSize && !isUnavailable) {
                     tamanhos.push(sizeText.toUpperCase());
                 }
             });
 
-            // Fallback Tamanhos via __STATE__
+            // Fallback Tamanhos via __STATE__ (Mais confiável para evitar cores)
             if (tamanhos.length === 0 && stateProduct && stateProduct.items) {
                 stateProduct.items.forEach(item => {
-                    const sku = state[`Item:${item.id}`];
-                    // Verifica se tem estoque no SKU ou via Seller
+                    // Verifica disponibilidade
                     const isAvailable = item.sellers && item.sellers.some(s => {
                         const comm = state[s.id];
                         return comm && comm.commertialOffer && comm.commertialOffer.AvailableQuantity > 0;
                     });
 
                     if (isAvailable && item.name) {
-                        tamanhos.push(item.name.toUpperCase());
+                        // Limpa nome: "COR / TAMANHO" -> "TAMANHO"
+                        let sName = item.name.includes('/') ? item.name.split('/').pop().trim() : item.name;
+                        if (sName.length <= 4) {
+                            tamanhos.push(sName.toUpperCase());
+                        }
                     }
                 });
             }
@@ -331,8 +346,11 @@ async function parseProductDressTo(page, url) {
 
                                 // Tamanhos disponíveis
                                 pApi.items.forEach(itm => {
-                                    if (itm.sellers[0].commertialOffer.AvailableQuantity > 0) {
-                                        tamanhos.push(itm.name.toUpperCase());
+                                    if (itm.sellers && itm.sellers[0] && itm.sellers[0].commertialOffer.AvailableQuantity > 0) {
+                                        let sName = itm.name.includes('/') ? itm.name.split('/').pop().trim() : itm.name;
+                                        if (sName.length <= 4) {
+                                            tamanhos.push(sName.toUpperCase());
+                                        }
                                     }
                                 });
 
