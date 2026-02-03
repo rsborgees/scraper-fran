@@ -47,11 +47,19 @@ ${LINKTREE}
  */
 function buildDressMessage(produto) {
     const sizes = produto.tamanhos ? produto.tamanhos.join(' ') : 'P M G';
+    const isPromotional = produto.precoOriginal && (produto.precoOriginal > produto.precoAtual);
+
+    let priceLine;
+    if (isPromotional) {
+        priceLine = `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`;
+    } else {
+        priceLine = `Por *${formatPrice(produto.precoAtual)}* 🔥`;
+    }
 
     return `
 ${produto.nome}
 ${sizes}
-Por *${formatPrice(produto.precoAtual)}*
+${priceLine}
 
 + código de vendedora: 5KP4
 

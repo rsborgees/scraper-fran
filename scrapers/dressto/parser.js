@@ -28,7 +28,11 @@ async function fetchViaVtexAPI(searchKey) {
 
         // Fallback: Text search (ft) if slug failed or returned nothing
         if (!json || json.length === 0) {
-            const cleanId = searchKey.replace(/\D/g, '');
+            // Tenta extrair o ID de 8 dígitos do searchKey (slug)
+            // Ex: vestido-01342814-2384 -> 01342814
+            const idMatch = searchKey.match(/(\d{2})[.-]?(\d{2})[.-]?(\d{4})/);
+            const cleanId = idMatch ? `${idMatch[1]}${idMatch[2]}${idMatch[3]}` : searchKey.replace(/\D/g, '');
+
             // Try clean ID first
             apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search?ft=${cleanId || searchKey}&sc=1`;
             console.log(`      🔄 [SERVER-SIDE] Fallback API VTEX (ft): ${apiUrl}`);
@@ -123,7 +127,7 @@ async function fetchViaVtexAPI(searchKey) {
             precoOriginal: comm.ListPrice || comm.Price,
             tamanhos: [...new Set(tamanhos)],
             categoria,
-            url: `https://www.dressto.com.br${pApi.link}`,
+            url: pApi.link.startsWith('http') ? pApi.link : `https://www.dressto.com.br${pApi.link.startsWith('/') ? '' : '/'}${pApi.link}`,
             imageUrl: (item.images && item.images.length) ? item.images[0].imageUrl : null
         };
 

@@ -113,6 +113,13 @@ async function scrapeSpecificIdsDressTo(browser, driveItems, quota = 999) {
                     product.loja = 'dressto';
 
                     // Ajustes específicos Dress To
+
+                    // 🏷️ LOGICA DE DESCONTO AUTOMATICO: 10% em itens sem desconto
+                    if (product.precoOriginal === product.precoAtual) {
+                        product.precoAtual = Math.round(product.precoOriginal * 0.9);
+                        console.log(`      🏷️ Aplicado 10% de desconto automático (Drive): R$${product.precoOriginal} -> R$${product.precoAtual}`);
+                    }
+
                     product.desconto = 0; // Dress To geralmente é full price no scraper atual ou outlet? Scraper diz "nossas-novidades", assumindo full price na busca especifica tb, mas parser decide.
 
                     const normId = normalizeId(product.id);
