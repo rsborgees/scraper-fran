@@ -17,10 +17,13 @@ async function fetchViaVtexAPI(searchKey) {
         };
 
         let response = await fetch(apiUrl, { headers });
+        console.log(`      🔄 [SERVER-SIDE] Status API VTEX: ${response.status} ${response.statusText}`);
+
         let json = [];
 
         if (response.ok) {
             json = await response.json();
+            console.log(`      ✅ [SERVER-SIDE] API retornou ${json.length} itens (Slug).`);
         }
 
         // Fallback: Text search (ft) if slug failed or returned nothing
@@ -30,7 +33,11 @@ async function fetchViaVtexAPI(searchKey) {
             apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search?ft=${cleanId || searchKey}&sc=1`;
             console.log(`      🔄 [SERVER-SIDE] Fallback API VTEX (ft): ${apiUrl}`);
             response = await fetch(apiUrl, { headers });
-            if (response.ok) json = await response.json();
+            console.log(`      🔄 [SERVER-SIDE] Status Fallback (ft): ${response.status}`);
+            if (response.ok) {
+                json = await response.json();
+                console.log(`      ✅ [SERVER-SIDE] API retornou ${json.length} itens (ft).`);
+            }
 
             // Try with dots if it's an 8-digit ID (DressTo standard: XX.XX.XXXX)
             if ((!json || json.length === 0) && cleanId.length === 8) {
@@ -38,12 +45,16 @@ async function fetchViaVtexAPI(searchKey) {
                 apiUrl = `https://www.dressto.com.br/api/catalog_system/pub/products/search?ft=${dottedId}&sc=1`;
                 console.log(`      🔄 [SERVER-SIDE] Fallback API VTEX (dots): ${apiUrl}`);
                 response = await fetch(apiUrl, { headers });
-                if (response.ok) json = await response.json();
+                console.log(`      🔄 [SERVER-SIDE] Status Fallback (dots): ${response.status}`);
+                if (response.ok) {
+                    json = await response.json();
+                    console.log(`      ✅ [SERVER-SIDE] API retornou ${json.length} itens (dots).`);
+                }
             }
         }
 
         if (!json || json.length === 0) {
-            console.log(`      ❌ API não retornou produtos para "${searchKey}"`);
+            console.log(`      ❌ [SERVER-SIDE] API realmente não retornou nada.`);
             return null;
         }
 
@@ -62,26 +73,48 @@ async function fetchViaVtexAPI(searchKey) {
 
         // Primeiro item disponível
         const item = pApi.items.find(i => i.sellers && i.sellers[0].commertialOffer.AvailableQuantity > 0) || pApi.items[0];
-        if (!item) return null;
+        if (!item) {
+            console.log(`      ❌ [SERVER-SIDE] Nenhum item (SKU) encontrado.`);
+            return null;
+        }
 
         const comm = item.sellers[0].commertialOffer;
 
         // Tamanhos disponíveis
         const tamanhos = [];
         pApi.items.forEach(itm => {
-            if (itm.sellers && itm.sellers[0] && itm.sellers[0].commertialOffer.AvailableQuantity > 0) {
-                // Tenta extrair apenas o tamanho do nome (ex: "AZUL / P" -> "P")
+            const hasStock = itm.sellers && itm.sellers[0] && itm.sellers[0].commertialOffer.AvailableQuantity > 0;
+            if (hasStock) {
+                // Tenta extrair apenas o tamanho do nome (ex: "AZUL / P" -> "P" ou "COR - P" -> "P")
                 let size = itm.name;
-                if (size.includes('/')) {
-                    size = size.split('/').pop().trim();
+
+                // Prioridade 1: Campo tamanho explícito se existir
+                if (itm.tamanho && itm.tamanho.length > 0) {
+                    size = itm.tamanho[0];
                 }
+                // Prioridade 2: Parsing de nome com múltiplos separadores
+                else {
+                    if (size.includes('/')) {
+                        size = size.split('/').pop().trim();
+                    } else if (size.includes(' - ')) {
+                        size = size.split(' - ').pop().trim();
+                    } else if (size.includes('-')) {
+                        // Cuidado com hífen sem espaços (ex: PP-AZUL), geralmente o último é o tamanho
+                        const parts = size.split('-');
+                        size = parts[parts.length - 1].trim();
+                    }
+                }
+
                 if (size && size.length <= 4) {
                     tamanhos.push(size.toUpperCase());
                 }
             }
         });
 
-        if (tamanhos.length === 0) return null;
+        if (tamanhos.length === 0) {
+            console.log(`      ❌ [SERVER-SIDE] Nenhum tamanho disponível encontrado.`);
+            return null;
+        }
 
         const result = {
             id: pApi.productReference || searchKey,
@@ -249,8 +282,14 @@ async function parseProductDressTo(page, url) {
                     });
 
                     if (isAvailable && item.name) {
-                        // Limpa nome: "COR / TAMANHO" -> "TAMANHO"
-                        let sName = item.name.includes('/') ? item.name.split('/').pop().trim() : item.name;
+                        // Limpa nome: "COR / TAMANHO" -> "TAMANHO" ou "COR - TAMANHO" -> "TAMANHO"
+                        let sName = item.name;
+                        if (sName.includes('/')) {
+                            sName = sName.split('/').pop().trim();
+                        } else if (sName.includes(' - ')) {
+                            sName = sName.split(' - ').pop().trim();
+                        }
+
                         if (sName.length <= 4) {
                             tamanhos.push(sName.toUpperCase());
                         }
@@ -347,7 +386,13 @@ async function parseProductDressTo(page, url) {
                                 // Tamanhos disponíveis
                                 pApi.items.forEach(itm => {
                                     if (itm.sellers && itm.sellers[0] && itm.sellers[0].commertialOffer.AvailableQuantity > 0) {
-                                        let sName = itm.name.includes('/') ? itm.name.split('/').pop().trim() : itm.name;
+                                        let sName = itm.name;
+                                        if (sName.includes('/')) {
+                                            sName = sName.split('/').pop().trim();
+                                        } else if (sName.includes(' - ')) {
+                                            sName = sName.split(' - ').pop().trim();
+                                        }
+
                                         if (sName.length <= 4) {
                                             tamanhos.push(sName.toUpperCase());
                                         }
