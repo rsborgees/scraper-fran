@@ -22,17 +22,44 @@ if (!existsSync(DOWNLOAD_DIR)) {
 /**
  * Downloads an image from a URL and saves it to the specified path.
  */
-async function downloadImage(url, filepath) {
+/**
+ * Downloads an image from a URL and saves it to the specified path.
+ * Supports HTTP redirects (e.g., Google Drive links).
+ */
+async function downloadImage(url, filepath, maxRedirects = 5) {
     return new Promise((resolve, reject) => {
-        const file = createWriteStream(filepath);
-        get(url, (response) => {
+        if (maxRedirects <= 0) {
+            reject(new Error('Too many redirects'));
+            return;
+        }
+
+        const request = get(url, (response) => {
+            // Handle redirects (status 301, 302, 303, 307, 308)
+            if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+                const redirectUrl = new URL(response.headers.location, url).toString();
+                console.log(`   ↪️ Redirecting to: ${redirectUrl}`);
+                downloadImage(redirectUrl, filepath, maxRedirects - 1).then(resolve).catch(reject);
+                return;
+            }
+
             if (response.statusCode !== 200) {
                 reject(new Error(`Failed to consume '${url}', status code: ${response.statusCode}`));
                 return;
             }
+
+            const file = createWriteStream(filepath);
             response.pipe(file);
-            file.on('finish', () => file.close(() => resolve(filepath)));
-        }).on('error', (err) => {
+            file.on('finish', () => {
+                file.close();
+                resolve(filepath);
+            });
+            file.on('error', (err) => {
+                unlink(filepath, () => { });
+                reject(err);
+            });
+        });
+
+        request.on('error', (err) => {
             unlink(filepath, () => { });
             reject(err);
         });

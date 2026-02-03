@@ -11,6 +11,7 @@ const { parseProductZZMall } = require('./zzmall');
 const { parseProductLive } = require('./live');
 
 const { scrapeLiveByName } = require('./live/nameScanner');
+const { processImageDirect } = require('../imageDownloader');
 
 // Configurações por loja
 const STORE_CONFIG = {
@@ -38,8 +39,8 @@ const STORE_CONFIG = {
     },
     zzmall: {
         baseUrl: 'https://www.zzmall.com.br',
-        directUrlBuilder: (id) => `https://www.zzmall.com.br/${id}?map=ft`,
-        searchUrl: (id) => `https://www.zzmall.com.br/${id}?map=ft`,
+        directUrlBuilder: (id) => `https://www.zzmall.com.br/search/${id}`,
+        searchUrl: (id) => `https://www.zzmall.com.br/search/${id}`,
         searchInputSelector: 'input[type="search"], .vtex-store-components-3-x-searchBarIcon',
         productLinkSelector: 'a[href*="/p/"], a.vtex-product-summary-2-x-clearLink',
         parser: 'zzmall',
@@ -189,7 +190,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     if (!navigationSuccess && config.directUrlBuilder) {
                         const directUrl = config.directUrlBuilder(item.id);
                         try {
-                            await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
+                            await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
                             navigationSuccess = true;
                             await new Promise(r => setTimeout(r, 1500));
                         } catch (e) {
@@ -321,8 +322,12 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     else if (config.parser === 'live') product = await parseProductLive(page, finalUrl);
 
                     if (product) {
-                        product.imageUrl = item.driveUrl;
-                        product.imagePath = item.driveUrl;
+                        // 🖼️ Handle Drive Image (User wants direct Drive Link)
+                        if (item.driveUrl) {
+                            product.imagePath = item.driveUrl;
+                            product.imageUrl = item.driveUrl;
+                        }
+
                         product.favorito = item.isFavorito || false;
                         product.loja = storeName;
                         product.id = product.id && product.id !== 'unknown' ? product.id : item.id;

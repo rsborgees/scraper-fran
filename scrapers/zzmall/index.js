@@ -200,6 +200,21 @@ async function parseProductZZMall(page, url) {
             const nome = getSafeText(h1);
             if (!nome) return null;
 
+            // CHECK OUT OF STOCK
+            if (
+                bodyText.includes('avise-me quando chegar') ||
+                bodyText.includes('produto indisponível') ||
+                bodyText.includes('não disponível') ||
+                document.querySelector('.vtex-store-components-3-x-availability-message-neutral') ||
+                document.querySelector('[class*="unavailable"]')
+            ) {
+                // Only return null if NO available sizes are found later? 
+                // Actually, usually these messages mean ALL sizes are gone.
+                // Let's check for specific "buy button" absence or "notify me" presence
+                const buyButton = document.querySelector('[data-testid="ta-product-buy-button"], .buy-button, button.vtex-add-to-cart-button-0-x-button');
+                if (!buyButton || bodyText.includes('avise-me')) return null;
+            }
+
             let precoOriginal = 0;
             let precoAtual = 0;
 
