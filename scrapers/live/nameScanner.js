@@ -12,6 +12,44 @@ async function scrapeLiveByName(browser, driveItems, quota) {
     driveItems.forEach(item => {
         if (!seenNames.has(item.name)) {
             seenNames.add(item.name);
+
+            // Basic composite detection using keywords
+            // e.g. "Top ... Shorts ..."
+            const keywords = ['Top', 'Shorts', 'Legging', 'Blusa', 'Regata', 'Saia', 'Vestido', 'Macacão', 'Body', 'Bermuda', 'Calça', 'T-Shirt', 'Jaqueta', 'Casaco'];
+            const lowerName = item.name.toLowerCase();
+            let splitIndices = [];
+
+            keywords.forEach(kw => {
+                const kwLow = kw.toLowerCase();
+                let idx = lowerName.indexOf(kwLow);
+                while (idx !== -1) {
+                    // Only count if it's the start of the string OR preceded by space/separator
+                    // And checking if we haven't already marked this index
+                    if ((idx === 0 || /[\s\-]/.test(lowerName[idx - 1])) && !splitIndices.includes(idx)) {
+                        splitIndices.push(idx);
+                    }
+                    idx = lowerName.indexOf(kwLow, idx + 1);
+                }
+            });
+
+            splitIndices.sort((a, b) => a - b);
+
+            // Dedupe close indices (in case of "Top Curve" vs "Top")
+            // Not needed if keywords are distinct enough, but "Top" is short.
+
+            let parts = [];
+            if (splitIndices.length > 1) {
+                for (let i = 0; i < splitIndices.length; i++) {
+                    let start = splitIndices[i];
+                    let end = splitIndices[i + 1] || item.name.length;
+                    parts.push(item.name.substring(start, end).trim());
+                }
+            } else {
+                parts.push(item.name);
+            }
+
+            // Store parts in item for processing
+            item.searchParts = parts;
             uniqueItems.push(item);
         }
     });
@@ -58,184 +96,226 @@ async function scrapeLiveByName(browser, driveItems, quota) {
             console.log(`\n🔍 Buscando por nome: "${item.name}"...`);
 
             try {
-                const searchInputSelector = 'input.bn-search__input, .search-input, input[type="search"]';
-                const cleanQuery = item.name.toLowerCase()
-                    .replace(/live!/g, '')
-                    .replace(/live/g, '')
-                    .replace(/icon/g, '')
-                    .replace(/favorito/g, '')
-                    .replace(/[!@#$%^&*(),.?":{}|<>]/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
+                // --- COMPOSITE SEARCH LOOP ---
+                const searchParts = item.searchParts || [item.name];
+                const compositeResults = [];
 
-                try {
-                    await page.waitForSelector(searchInputSelector, { state: 'visible', timeout: 8000 });
-                    const searchInput = page.locator(searchInputSelector).first();
-                    await searchInput.click();
-                    const waitTime = 1000;
-                    await page.waitForTimeout(waitTime);
+                for (const partName of searchParts) {
+                    console.log(`\n   🧩 Processando parte do conjunto: "${partName}"`);
 
-                    console.log(`      🔎 Digitando busca: "${cleanQuery}"`);
-                    await searchInput.fill('');
-                    await searchInput.type(cleanQuery, { delay: 50 });
-                    await page.waitForTimeout(1000);
-                    await page.keyboard.press('Enter');
-                } catch (e) {
-                    console.log(`      ⚠️ Busca via input falhou, tentando URL direta...`);
-                    const searchUrl = `https://www.liveoficial.com.br/busca?q=${encodeURIComponent(cleanQuery)}`;
-                    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-                }
+                    const searchInputSelector = 'input.bn-search__input, .search-input, input[type="search"]';
+                    // The user said the name in the Drive file is EXACTLY like in Live!
+                    // So we use it as is, but clean special chars for the search engine if needed.
+                    const cleanName = partName.toLowerCase()
+                        .replace(/icon/g, '')
+                        .replace(/favorito/g, '')
+                        .replace(/[!@#$%^&*(),.?":{}|<>]/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
 
-                await page.waitForTimeout(7000);
-                await closePopups();
+                    const queriesToTry = [cleanName];
+                    const words = cleanName.split(' ');
 
-                console.log(`      ⏳ Analisando candidatos...`);
-                const foundProductUrl = await page.evaluate((searchTerm) => {
-                    const links = Array.from(document.querySelectorAll('a[href]'));
-                    const searchTermLower = searchTerm.toLowerCase();
-                    const searchWords = searchTermLower.split(' ').filter(w => w.length > 2);
+                    // Progressive fallback just in case, but prioritize the full string
+                    if (words.length > 3) {
+                        queriesToTry.push(words.slice(0, words.length - 1).join(' '));
+                    }
 
-                    const candidates = links.map(a => {
-                        const url = a.getAttribute('href') || '';
-                        const text = (a.innerText || '').toLowerCase().trim();
-                        const title = (a.title || '').toLowerCase().trim();
-                        return { fullUrl: a.href, url: url, text: `${text} ${title}`.toLowerCase() };
-                    }).filter(c => {
-                        const isProd = c.url.match(/-[a-zA-Z0-9]{4,}\/p(\?|$)/) || c.url.includes('/p/');
-                        if (!isProd) return false;
-                        const productWords = c.text.split(/\s+/).filter(w => w.length > 3);
-                        return productWords.some(pw => searchTermLower.includes(pw));
-                    });
+                    let foundProductUrl = null;
+                    let bestMatchedId = null;
 
-                    if (candidates.length === 0) return null;
+                    for (const query of queriesToTry) {
+                        console.log(`      🔎 Tentando busca com: "${query}"`);
 
-                    candidates.forEach(c => {
-                        let score = 0;
-                        searchWords.forEach(w => {
-                            if (c.text.includes(w)) score += 10;
-                            if (c.fullUrl.toLowerCase().includes(w)) score += 5;
-                        });
-                        c.score = score;
-                    });
-                    candidates.sort((a, b) => b.score - a.score);
-                    return candidates[0].fullUrl;
-                }, item.name);
+                        try {
+                            const searchInput = page.locator(searchInputSelector).first();
+                            if (await searchInput.isVisible()) {
+                                await searchInput.click();
+                                await page.waitForTimeout(500);
+                                await searchInput.fill('');
+                                await searchInput.type(query, { delay: 30 });
+                                await page.waitForTimeout(500);
+                                await page.keyboard.press('Enter');
+                            } else {
+                                throw new Error("Search input hidden");
+                            }
+                        } catch (e) {
+                            const searchUrl = `https://www.liveoficial.com.br/busca?q=${encodeURIComponent(query)}`;
+                            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                        }
 
-                if (!foundProductUrl) {
-                    console.log(`      ⚠️ Nenhum produto encontrado para "${item.name}"`);
-                    continue;
-                }
+                        await page.waitForTimeout(5000);
+                        await closePopups();
 
-                console.log(`      🔗 Navegando para o produto: ${foundProductUrl}`);
-                await page.goto(foundProductUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-                await page.waitForTimeout(5000);
+                        const candidates = await page.evaluate((originalFullName) => {
+                            const colorMap = {
+                                'branco': 'white',
+                                'preto': 'black',
+                                'azul': 'blue',
+                                'verde': 'green',
+                                'amarelo': 'yellow',
+                                'cinza': 'gray',
+                                'grafite': 'graphite',
+                                'vermelho': 'red',
+                                'rosa': 'pink',
+                                'roxo': 'purple',
+                                'laranja': 'orange',
+                                'marrom': 'brown',
+                                'bege': 'beige',
+                                'marinho': 'navy'
+                            };
 
-                const getSizes = async () => {
-                    return await page.evaluate(() => {
-                        const productInfoSelector = '.vtex-flex-layout-0-x-flexRowContent--product-main, .vtex-product-details-1-x-container, .product-info, main';
-                        const container = document.querySelector(productInfoSelector) || document;
-                        const finalSizes = [];
-                        const validSizeNames = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'U', 'ÚNICA', 'UNICA', '34', '36', '38', '40', '42', '44', '46'];
+                            const links = Array.from(document.querySelectorAll('a[href]'));
+                            const productLinks = links.filter(a => {
+                                const href = a.href.toLowerCase();
+                                return (href.includes('/p') || href.includes('/p/')) &&
+                                    !['/carrinho', '/login', '/checkout', '/conta', '/atendimento'].some(s => href.includes(s));
+                            });
 
-                        validSizeNames.forEach(sizeName => {
-                            const elements = Array.from(container.querySelectorAll('li, div, label, span, button'))
-                                .filter(el => (el.innerText || '').trim().toUpperCase() === sizeName);
+                            if (productLinks.length === 0) return [];
 
-                            if (elements.length > 0) {
-                                const isSomeOutOfStock = elements.some(el => {
-                                    const style = window.getComputedStyle(el);
-                                    const parentStyle = el.parentElement ? window.getComputedStyle(el.parentElement) : { backgroundImage: '', opacity: '1', textDecoration: '' };
+                            const target = originalFullName.toLowerCase().replace(/!/g, '').trim();
+                            const targetWords = target.split(' ').filter(w => w.length > 2);
 
-                                    const hasSvg = style.backgroundImage.includes('svg') ||
-                                        style.backgroundImage.includes('data:image') ||
-                                        parentStyle.backgroundImage.includes('svg') ||
-                                        parentStyle.backgroundImage.includes('data:image') ||
-                                        Array.from(el.querySelectorAll('*')).some(child => {
-                                            const s = window.getComputedStyle(child);
-                                            return s.backgroundImage.includes('svg') || s.backgroundImage.includes('data:image');
-                                        });
+                            // Find requested colors in target
+                            const requestedColors = Object.keys(colorMap).filter(c => target.includes(c));
+                            const translatedColors = requestedColors.map(c => colorMap[c]);
 
-                                    const isDisabled = style.textDecoration.includes('line-through') ||
-                                        parentStyle.textDecoration.includes('line-through') ||
-                                        hasSvg ||
-                                        (style.opacity && Number(style.opacity) < 0.6) ||
-                                        (parentStyle.opacity && Number(parentStyle.opacity) < 0.6) ||
-                                        el.className.toLowerCase().includes('disable') ||
-                                        el.className.toLowerCase().includes('unavailable') ||
-                                        (el.parentElement && el.parentElement.className.toLowerCase().includes('unavailable')) ||
-                                        el.getAttribute('aria-disabled') === 'true';
+                            return productLinks.map(a => {
+                                // Find the parent card to look for images and better text
+                                let card = a.parentElement;
+                                while (card && card.tagName !== 'BODY' && !card.querySelector('img')) {
+                                    card = card.parentElement;
+                                }
 
-                                    return isDisabled;
+                                const img = card ? card.querySelector('img') : null;
+                                const altText = img ? (img.alt || '').toLowerCase() : '';
+                                const text = (a.innerText || '').toLowerCase().trim();
+                                const url = a.href.toLowerCase();
+                                let score = 0;
+
+                                // 1. EXACT MATCH BONUS (Text or Alt)
+                                if (text === target || altText === target) score += 100;
+                                else if (text.includes(target) || altText.includes(target)) score += 50;
+
+                                // 2. Word by word matching (Text + Alt + URL)
+                                let matchCount = 0;
+                                targetWords.forEach(w => {
+                                    let matched = false;
+                                    if (text.includes(w)) { score += 20; matched = true; }
+                                    if (altText.includes(w)) { score += 20; matched = true; }
+                                    if (url.includes(w)) { score += 5; matched = true; }
+
+                                    if (matched) matchCount++;
+
+                                    // Special handle for color translation in URL
+                                    if (colorMap[w] && url.includes(colorMap[w])) {
+                                        score += 25; // High bonus for translated color in URL
+                                    }
                                 });
 
-                                if (!isSomeOutOfStock) {
-                                    finalSizes.push(sizeName);
-                                }
-                            }
-                        });
-                        return finalSizes;
-                    });
-                };
+                                // 3. Penalty for EXTRA words in text (avoids "Sense Pro" if not in query)
+                                const candidateWords = text.split(/\s+/).filter(w => w.length > 2);
+                                candidateWords.forEach(w => {
+                                    if (!targetWords.includes(w)) {
+                                        score -= 20;
+                                    }
+                                });
 
-                const possibleColors = page.locator('img[src*="/color/"], .vtex-sku-selector-1-x-item img, [class*="sku"] img');
-                const locatorCount = await possibleColors.count();
-                let availableInfo = [];
+                                // 4. Penalty for words in URL that are NOT in target and are NOT color
+                                const urlParts = url.split(/[\-\/]/).filter(p => p.length > 3 && !['product', 'liveoficial', 'com', 'br'].includes(p));
+                                urlParts.forEach(p => {
+                                    if (!targetWords.includes(p) && !translatedColors.includes(p)) {
+                                        if (!p.match(/^[a-z]\d+|^\d+/)) {
+                                            score -= 5;
+                                        }
+                                    }
+                                });
 
-                if (locatorCount > 0 && locatorCount < 20) {
-                    console.log(`      🎨 Cores detectadas: ${locatorCount}`);
-                    for (let i = 0; i < locatorCount; i++) {
-                        const img = possibleColors.nth(i);
-                        if (!(await img.isVisible())) continue;
-                        await img.scrollIntoViewIfNeeded();
+                                // 5. Final tie breaker
+                                if (matchCount === targetWords.length) score += 30;
 
-                        const alt = await img.getAttribute('alt');
-                        const src = await img.getAttribute('src');
-                        let colorName = alt || `Cor ${i + 1}`;
+                                return { url: a.href, score, text: text || altText };
+                            }).sort((a, b) => b.score - a.score);
+                        }, cleanName);
 
-                        if (alt && /whatsapp|transparent|stamp|bojo|bolso|care|prote|compres/i.test(alt)) continue;
-                        if (src && /whatsapp|stamp/i.test(src)) continue;
-
-                        console.log(`      🖱️ Clicando na cor: ${colorName}`);
-                        await img.click({ force: true });
-                        await page.waitForTimeout(3500);
-
-                        const sizes = await getSizes();
-                        if (sizes.length > 0) {
-                            availableInfo.push(`${colorName}: ${sizes.join(' ')}`);
+                        if (candidates.length > 0 && candidates[0].score > 20) {
+                            foundProductUrl = candidates[0].url;
+                            console.log(`      ✅ Melhor match: "${candidates[0].text}" (Score: ${candidates[0].score})`);
+                            break;
                         }
                     }
-                } else {
-                    const sizes = await getSizes();
-                    if (sizes.length > 0) availableInfo.push(`Única: ${sizes.join(' ')}`);
+
+                    if (foundProductUrl) {
+                        console.log(`      Found: ${foundProductUrl}`);
+                        await page.goto(foundProductUrl, { waitUntil: 'domcontentloaded' });
+                        await page.waitForTimeout(3000);
+
+                        const partialData = await parseProductLive(page, foundProductUrl);
+
+                        if (partialData) {
+                            compositeResults.push({
+                                id: partialData.id,
+                                name: partialData.nome,
+                                price: partialData.preco,
+                                origPrice: partialData.preco_original,
+                                sizes: partialData.tamanhos,
+                                url: foundProductUrl
+                            });
+                        }
+                    } else {
+                        console.log(`      ❌ Falha ao encontrar parte: ${partName}`);
+                        compositeResults.push({
+                            id: 'unknown_' + Date.now(),
+                            name: partName + " (Não encontrado)",
+                            price: 0,
+                            sizes: [],
+                            url: ""
+                        });
+                    }
                 }
 
-                if (availableInfo.length === 0) {
-                    console.log(`      ⚠️ Produto sem estoque.`);
-                    continue;
-                }
-
-                const productData = await parseProductLive(page, page.url());
-                if (productData) {
+                // MERGE RESULTS
+                if (compositeResults.length > 0) {
+                    let mergedName = "";
                     const allSizes = new Set();
-                    availableInfo.forEach(s => {
-                        const parts = s.split(':')[1].trim().split(' ');
-                        parts.forEach(p => allSizes.add(p));
+                    const fmt = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                    compositeResults.forEach(r => {
+                        const priceStr = r.origPrice > r.price
+                            ? `${fmt(r.price)} (de ${fmt(r.origPrice)})`
+                            : `${fmt(r.price)}`;
+
+                        mergedName += `${r.name} ${priceStr}\n`;
+                        mergedName += `Tamanhos: ${r.sizes.length > 0 ? r.sizes.join(' ') : 'Indisponível'}\n`;
+                        mergedName += `${r.url}\n\n`;
+
+                        r.sizes.forEach(s => allSizes.add(s));
                     });
-                    productData.tamanhos = [...allSizes];
-                    productData.cor_tamanhos = availableInfo.join('\n');
-                    productData.imageUrl = item.driveUrl;
-                    productData.imagePath = item.driveUrl;
-                    productData.isFavorito = item.isFavorito;
-                    productData.loja = 'live';
-                    productData.precoAtual = productData.preco;
-                    productData.precoOriginal = productData.preco_original || productData.preco;
 
-                    collectedProducts.push(productData);
-                    console.log(`      ✅ Coletado: ${productData.nome} (${productData.cor_tamanhos})`);
+                    const mainProduct = {
+                        id: compositeResults.map(r => r.id).join('_'), // Use real IDs
+                        nome: mergedName.trim(),
+                        preco: compositeResults.reduce((sum, r) => sum + r.price, 0),
+                        preco_original: compositeResults.reduce((sum, r) => sum + (r.origPrice || r.price), 0),
+                        tamanhos: [...allSizes],
+                        cor_tamanhos: mergedName.trim(),
+                        url: compositeResults.filter(r => r.url).map(r => r.url)[0] || "",
+                        imageUrl: item.driveUrl,
+                        imagePath: item.driveUrl,
+                        loja: 'live'
+                    };
 
+                    collectedProducts.push(mainProduct);
                     const { markAsSent } = require('../../historyManager');
-                    markAsSent([productData.id]);
+                    markAsSent([mainProduct.id]);
+                    console.log(`      ✅ Conjunto Coletado com ${compositeResults.length} itens.`);
                 }
+
+                // End of loop item processing, skip original logic
+                continue;
+
+
 
                 await page.goto('https://www.liveoficial.com.br', { waitUntil: 'domcontentloaded' });
                 await closePopups();
