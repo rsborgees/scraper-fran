@@ -15,7 +15,7 @@ async function scrapeLiveByName(browser, driveItems, quota) {
 
             // Basic composite detection using keywords
             // e.g. "Top ... Shorts ..."
-            const keywords = ['Top', 'Shorts', 'Legging', 'Blusa', 'Regata', 'Saia', 'Vestido', 'Macacão', 'Body', 'Bermuda', 'Calça', 'T-Shirt', 'Jaqueta', 'Casaco'];
+            const keywords = ['Top', 'Shorts', 'Legging', 'Blusa', 'Regata', 'Saia', 'Vestido', 'Macacão', 'Body', 'Bermuda', 'Calça', 'T-Shirt', 'Jaqueta', 'Casaco', 'Macaquinho'];
             const lowerName = item.name.toLowerCase();
             let splitIndices = [];
 
@@ -264,10 +264,10 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                             });
                         }
                     } else {
-                        console.log(`      ❌ Falha ao encontrar parte: ${partName}`);
                         compositeResults.push({
                             id: 'unknown_' + Date.now(),
-                            name: partName + " (Não encontrado)",
+                            name: partName,
+                            notFound: true,
                             price: 0,
                             sizes: [],
                             url: ""
@@ -275,35 +275,36 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                     }
                 }
 
+                // Check if any part was not found
+                const hasMissingPart = compositeResults.some(r => r.notFound);
+                if (hasMissingPart) {
+                    console.log(`      ⚠️ Conjunto ignorado pois um dos itens não foi encontrado: ${item.name}`);
+                    continue; // Skip this whole set
+                }
+
                 // MERGE RESULTS
                 if (compositeResults.length > 0) {
-                    let mergedName = "";
                     const allSizes = new Set();
-                    const fmt = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-                    compositeResults.forEach(r => {
-                        const priceStr = r.origPrice > r.price
-                            ? `${fmt(r.price)} (de ${fmt(r.origPrice)})`
-                            : `${fmt(r.price)}`;
-
-                        mergedName += `${r.name} ${priceStr}\n`;
-                        mergedName += `Tamanhos: ${r.sizes.length > 0 ? r.sizes.join(' ') : 'Indisponível'}\n`;
-                        mergedName += `${r.url}\n\n`;
-
-                        r.sizes.forEach(s => allSizes.add(s));
-                    });
+                    compositeResults.forEach(r => r.sizes.forEach(s => allSizes.add(s)));
 
                     const mainProduct = {
-                        id: compositeResults.map(r => r.id).join('_'), // Use real IDs
-                        nome: mergedName.trim(),
+                        id: compositeResults.map(r => r.id).join('_'),
+                        nome: item.name, // Use the original name from Drive
+                        items: compositeResults.map(r => ({
+                            nome: r.name,
+                            preco: r.price,
+                            preco_original: r.origPrice || r.price,
+                            tamanhos: r.sizes,
+                            url: r.url
+                        })),
                         preco: compositeResults.reduce((sum, r) => sum + r.price, 0),
                         preco_original: compositeResults.reduce((sum, r) => sum + (r.origPrice || r.price), 0),
                         tamanhos: [...allSizes],
-                        cor_tamanhos: mergedName.trim(),
                         url: compositeResults.filter(r => r.url).map(r => r.url)[0] || "",
                         imageUrl: item.driveUrl,
                         imagePath: item.driveUrl,
-                        loja: 'live'
+                        loja: 'live',
+                        isSet: compositeResults.length > 1
                     };
 
                     collectedProducts.push(mainProduct);

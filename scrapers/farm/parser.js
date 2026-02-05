@@ -3,6 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
+// ⚠️ REGRA TEMPORÁRIA: Aplicar 20% sobre preço original (ignorar promoções Farm)
+// Para desativar: mude para false | Para remover: delete esta linha e restaure lógica original
+const FARM_TEMP_DISCOUNT_RULE = true;
+
 /**
  * Parser Otimizado com Filtros Inteligentes
  */
@@ -55,7 +59,7 @@ async function parseProduct(page, url) {
         console.log(`📸 ${screenshotPath}`);
 
         // EXTRAÇÃO (SELETORES ESPECÍFICOS)
-        const result = await page.evaluate(() => {
+        const result = await page.evaluate((useTempRule) => {
             const getSafeText = (el) => {
                 if (!el) return '';
                 const txt = el.innerText || el.textContent || '';
@@ -356,14 +360,22 @@ async function parseProduct(page, url) {
                 return { error: 'Categoria não identificada ou não permitida (Bloqueio Preventivo)' };
             }
 
-            // --- DESCONTO EXTRA DE 10% EM ROUPAS SEM PROMOÇÃO ---
-            const clothingCategories = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho'];
-            const isNoPromoClothing = clothingCategories.includes(category) && (precoOriginal === precoAtual);
+            // --- REGRA DE DESCONTO ---
+            if (useTempRule) {
+                // ⚠️ REGRA TEMPORÁRIA: 20% sobre preço original (ignora promoção)
+                const precoComDesconto20 = parseFloat((precoOriginal * 0.80).toFixed(2));
+                console.log(`🎯 [TEMP RULE] Aplicando 20% sobre original: De R$${precoOriginal} por R$${precoComDesconto20}`);
+                precoAtual = precoComDesconto20;
+            } else {
+                // REGRA PADRÃO: 10% extra em roupas sem promoção
+                const clothingCategories = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho'];
+                const isNoPromoClothing = clothingCategories.includes(category) && (precoOriginal === precoAtual);
 
-            if (precoAtual > 0 && isNoPromoClothing) {
-                const precoComDescontoExtra = parseFloat((precoAtual * 0.90).toFixed(2));
-                console.log(`🎉 [PROMO] Aplicando 10% off (Roupa sem promo): De R$${precoAtual} para R$${precoComDescontoExtra}`);
-                precoAtual = precoComDescontoExtra;
+                if (precoAtual > 0 && isNoPromoClothing) {
+                    const precoComDescontoExtra = parseFloat((precoAtual * 0.90).toFixed(2));
+                    console.log(`🎉 [PROMO] Aplicando 10% off (Roupa sem promo): De R$${precoAtual} para R$${precoComDescontoExtra}`);
+                    precoAtual = precoComDescontoExtra;
+                }
             }
             // -----------------------------------------------------
 
@@ -512,7 +524,7 @@ async function parseProduct(page, url) {
                 },
                 debugInfo: { ...debugInfo, sizeDebugs: window.sizeDebugs }
             };
-        });
+        }, FARM_TEMP_DISCOUNT_RULE);
 
         // DEBUG LOGS
         if (result.debugInfo) {

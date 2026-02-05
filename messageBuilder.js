@@ -10,6 +10,7 @@ function formatPrice(price) {
 
 // Helper para parcelamento (simulado fixo ou calculado)
 function getInstallments(price) {
+    if (!price || isNaN(price) || price === 0) return '';
     const val = (price / 10).toFixed(2).replace('.', ',');
     return `💳 10x R$ ${val}`;
 }
@@ -88,21 +89,19 @@ function buildLiveMessage(products) {
             priceLine = `Por *${formatPrice(p.precoAtual)}* 🔥`;
         }
 
-        const link = appendQueryParams(p.url, { utm_campaign: SELLER_CODE });
+        const sizes = p.tamanhos && p.tamanhos.length > 0 ? p.tamanhos.join(' ') : 'UN';
+        const installments = getInstallments(p.precoAtual);
 
-        msg += `
-${p.nome}
-${p.cor_tamanhos || (p.tamanhos ? p.tamanhos.join(' ') : 'UN')}
-${priceLine}
-${getInstallments(p.precoAtual)}
+        // Final link without UTM campaign as requested
+        const link = p.url;
 
-${link}
-`.trim() + '\n\n';
+        msg += `${p.nome}\n`;
+        msg += `${priceLine} ${sizes}\n`;
+        if (installments) msg += `${installments}\n`;
+        msg += `\n${link}\n\n`;
     });
 
-    msg += `🌈*Vaga pra entrar no grupo:*
-
-${LINKTREE}`;
+    msg += `🌈*Vaga pra entrar no grupo:*\n\n${LINKTREE}`;
 
     return msg.trim();
 }
