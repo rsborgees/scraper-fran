@@ -227,7 +227,7 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
 async function parseProductLive(page, url) {
     try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.waitForTimeout(4000);
+        await page.waitForTimeout(5000); // Increased wait time for content to load
 
         const data = await page.evaluate(() => {
             const getSafeText = (el) => {
@@ -235,18 +235,38 @@ async function parseProductLive(page, url) {
                 return el.innerText ? el.innerText.trim() : el.textContent ? el.textContent.trim() : '';
             };
 
-            const nomeEl = document.querySelector('h1, [class*="productName"], .vtex-store-components-3-x-productBrand, .productName');
-            const nome = getSafeText(nomeEl);
+            // 🔍 IMPROVED PRODUCT NAME EXTRACTION
+            let nome = '';
+            const nameSelectors = [
+                'h1.vtex-store-components-3-x-productBrand',
+                'h1[class*="productName"]',
+                'h1[class*="productBrand"]',
+                '.vtex-store-components-3-x-productNameContainer h1',
+                'h1',
+                '[class*="productName"]',
+                '.product-name'
+            ];
+
+            for (const selector of nameSelectors) {
+                const el = document.querySelector(selector);
+                if (el) {
+                    nome = getSafeText(el);
+                    if (nome && nome.length > 3) break;
+                }
+            }
 
             if (!nome) {
-                console.log('DEBUG: Nome não encontrado');
+                console.log('DEBUG: Nome não encontrado com nenhum seletor');
                 return null;
             }
 
-            // 1. Extração de Preço via JSON-LD (Mais confiável)
+            console.log('DEBUG: Nome encontrado:', nome);
+
+            // 💰 IMPROVED PRICE EXTRACTION with multiple fallbacks
             let preco = 0;
             let precoOriginal = 0;
 
+            // Strategy 1: JSON-LD (Most reliable)
             const jsonLdScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
             for (const script of jsonLdScripts) {
                 try {
@@ -260,83 +280,212 @@ async function parseProductLive(page, url) {
                         if (validOffers.length > 0) {
                             preco = parseFloat(validOffers[0].price);
                             precoOriginal = validOffers[0].listPrice ? parseFloat(validOffers[0].listPrice) : (validOffers[0].highPrice ? parseFloat(validOffers[0].highPrice) : preco);
+                            console.log('DEBUG: Preço extraído via JSON-LD:', preco);
                             break;
                         }
                     }
                 } catch (e) { }
             }
 
-            // Fallback para UI
+            // Strategy 2: Meta tags
             if (preco === 0) {
-                const mainContainer = document.querySelector('.vtex-flex-layout-0-x-flexRowContent--product-main, .vtex-product-details-1-x-container') || document;
-                const sellingPriceEl = mainContainer.querySelector('[class*="sellingPriceValue"], .sc-79aad9d-3');
-                const listPriceEl = mainContainer.querySelector('[class*="listPrice"], [class*="ListPrice"], .sc-d49848f0-16');
-
-                if (sellingPriceEl) {
-                    preco = parseFloat(getSafeText(sellingPriceEl).replace(/[^\d,]/g, '').replace(',', '.'));
-                }
-                if (listPriceEl) {
-                    precoOriginal = parseFloat(getSafeText(listPriceEl).replace(/[^\d,]/g, '').replace(',', '.'));
-                } else {
-                    precoOriginal = preco;
+                const metaPrice = document.querySelector('meta[property="product:price:amount"]');
+                if (metaPrice && metaPrice.content) {
+                    preco = parseFloat(metaPrice.content);
+                    console.log('DEBUG: Preço extraído via meta tag:', preco);
                 }
             }
 
-            // Tamanhos
-            const sizeEls = Array.from(document.querySelectorAll('[class*="sku-selector"], [class*="size"], [class*="tamanho"], button, li, label'));
-            const tamanhos = [];
+            // Strategy 3: DOM selectors with expanded search
+            if (preco === 0) {
+                const priceSelectors = [
+                    '.vtex-product-price-1-x-sellingPrice .vtex-product-price-1-x-sellingPriceValue',
+                    '[class*="sellingPriceValue"]',
+                    '.sc-79aad9d-3',
+                    '.vtex-flex-layout-0-x-flexRowContent--product-main [class*="price"]',
+                    '[class*="productPrice"]',
+                    '.price',
+                    'span[class*="bestPrice"]'
+                ];
 
-            sizeEls.forEach(el => {
+                for (const selector of priceSelectors) {
+                    const el = document.querySelector(selector);
+                    if (el) {
+                        const text = getSafeText(el);
+                        const parsed = parseFloat(text.replace(/[^\d,]/g, '').replace(',', '.'));
+                        if (!isNaN(parsed) && parsed > 0) {
+                            preco = parsed;
+                            console.log('DEBUG: Preço extraído via seletor DOM:', selector, preco);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Strategy 4: Search all elements containing "R$"
+            if (preco === 0) {
+                const allElements = Array.from(document.querySelectorAll('span, div, b, strong, p'));
+                const priceElements = allElements.filter(el => {
+                    const text = getSafeText(el);
+                    return text.includes('R$') && /\d/.test(text) && text.length < 30;
+                });
+
+                for (const el of priceElements) {
+                    const text = getSafeText(el);
+                    // Avoid installment prices
+                    if (!/\d\s*x|x\s*de|parcela/i.test(text)) {
+                        const parsed = parseFloat(text.replace(/[^\d,]/g, '').replace(',', '.'));
+                        if (!isNaN(parsed) && parsed > 20) {
+                            preco = parsed;
+                            console.log('DEBUG: Preço extraído via busca genérica:', preco);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Extract original price (list price)
+            if (precoOriginal === 0) {
+                const listPriceSelectors = [
+                    '[class*="listPrice"]',
+                    '[class*="ListPrice"]',
+                    '.sc-d49848f0-16',
+                    '[class*="oldPrice"]',
+                    'span[style*="line-through"]'
+                ];
+
+                for (const selector of listPriceSelectors) {
+                    const el = document.querySelector(selector);
+                    if (el) {
+                        const parsed = parseFloat(getSafeText(el).replace(/[^\d,]/g, '').replace(',', '.'));
+                        if (!isNaN(parsed) && parsed > 0) {
+                            precoOriginal = parsed;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (precoOriginal === 0 || precoOriginal < preco) {
+                precoOriginal = preco;
+            }
+
+            console.log('DEBUG: Preços finais - Atual:', preco, 'Original:', precoOriginal);
+
+            // 📏 IMPROVED SIZE EXTRACTION
+            const tamanhos = [];
+            const sizeSelectors = [
+                '.vtex-store-components-3-x-skuSelectorItem',
+                '[class*="sku-selector"] button',
+                '[class*="sku-selector"] label',
+                '[class*="size"] button',
+                '[class*="tamanho"] button',
+                'button[class*="sku"]',
+                '.sku-selector-container button',
+                '.sku-selector-container label'
+            ];
+
+            const sizeElements = new Set();
+            sizeSelectors.forEach(selector => {
+                document.querySelectorAll(selector).forEach(el => sizeElements.add(el));
+            });
+
+            // Also check generic buttons and labels
+            document.querySelectorAll('button, label, li').forEach(el => {
+                const text = getSafeText(el).toUpperCase();
+                if (/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/.test(text.replace(/TAMANHO|TAM|[:\n]/g, '').trim())) {
+                    sizeElements.add(el);
+                }
+            });
+
+            sizeElements.forEach(el => {
                 let txt = getSafeText(el).toUpperCase();
-                txt = txt.replace(/TAMANHO|TAM|[:\n]/g, '').trim();
+                txt = txt.replace(/TAMANHO|TAM|SIZE|[:\n]/g, '').trim();
 
                 const match = txt.match(/^(PP|P|M|G|GG|UN|ÚNICO|3[4-9]|4[0-6])$/i);
                 if (match) {
                     const normalizedSize = match[0].toUpperCase();
                     const style = window.getComputedStyle(el);
 
-                    const isCrossedOut = style.textDecoration.includes('line-through') ||
+                    // Improved disabled detection
+                    const isDisabled =
+                        el.disabled ||
+                        el.getAttribute('disabled') === 'true' ||
+                        el.getAttribute('aria-disabled') === 'true' ||
+                        el.classList.contains('disabled') ||
+                        el.classList.contains('unavailable') ||
+                        el.classList.contains('sku-notavailable') ||
+                        style.textDecoration.includes('line-through') ||
                         style.backgroundImage.includes('svg') ||
                         style.backgroundImage.includes('data:image') ||
-                        (style.opacity && Number(style.opacity) < 0.6) ||
+                        (style.opacity && Number(style.opacity) < 0.5) ||
+                        style.cursor === 'not-allowed' ||
                         el.className.toLowerCase().includes('disable') ||
-                        el.className.toLowerCase().includes('unavailable') ||
-                        el.getAttribute('aria-disabled') === 'true';
+                        el.className.toLowerCase().includes('unavailable');
 
-                    if (!isCrossedOut && el.offsetWidth > 0) {
+                    if (!isDisabled && el.offsetWidth > 0 && el.offsetHeight > 0) {
                         tamanhos.push(normalizedSize);
                     }
                 }
             });
 
-            const refEl = document.querySelector('.vtex-product-identifier, .productReference, .sku');
-            let id = refEl ? getSafeText(refEl).replace(/\D/g, '') : 'unknown';
+            console.log('DEBUG: Tamanhos encontrados:', tamanhos);
 
-            if (id === 'unknown' || id === '') {
-                const urlMatch = window.location.href.match(/(\d+)(AZ|00|BC|[\-\/])/);
-                if (urlMatch) id = urlMatch[1];
-                else {
-                    const longNumMatch = window.location.href.match(/(\d{5,})/);
-                    if (longNumMatch) id = longNumMatch[1];
+            // 🆔 IMPROVED ID EXTRACTION
+            const refEl = document.querySelector('.vtex-product-identifier-0-x-product-identifier__value, .vtex-product-identifier, .productReference, .sku, [class*="productId"]');
+            let id = refEl ? getSafeText(refEl).replace(/\D/g, '') : '';
+
+            if (!id || id === 'unknown') {
+                // Try URL patterns
+                const urlMatch = window.location.href.match(/\/([A-Z]\d+[A-Z]*\d*)(\/|$|\?)/);
+                if (urlMatch) {
+                    id = urlMatch[1];
+                } else {
+                    const numMatch = window.location.href.match(/(\d{5,})/);
+                    if (numMatch) id = numMatch[1];
                 }
+            }
+
+            if (!id) id = 'LIVE_' + Date.now();
+
+            console.log('DEBUG: ID extraído:', id);
+
+            // 🖼️ IMAGE EXTRACTION
+            let imageUrl = null;
+            const ogImg = document.querySelector('meta[property="og:image"]');
+            if (ogImg && ogImg.content) {
+                imageUrl = ogImg.content;
+            } else {
+                const imgs = Array.from(document.querySelectorAll('img'));
+                const productImg = imgs.find(img =>
+                    img.src &&
+                    (img.src.includes('/arquivos/') || img.src.includes('/product/')) &&
+                    img.width > 200
+                );
+                if (productImg) imageUrl = productImg.src;
             }
 
             return {
                 id,
                 nome,
                 preco,
-                preco_original: precoOriginal || preco,
+                preco_original: precoOriginal,
                 tamanhos: [...new Set(tamanhos)],
                 url: window.location.href,
-                imageUrl: (function () {
-                    const ogImg = document.querySelector('meta[property="og:image"]');
-                    if (ogImg && ogImg.content) return ogImg.content;
-                    const imgs = Array.from(document.querySelectorAll('img'));
-                    const productImg = imgs.find(img => img.src && img.src.includes('/product/') && img.width > 200);
-                    return productImg ? productImg.src : null;
-                })()
+                imageUrl
             };
         });
+
+        if (!data) {
+            console.log(`❌ Dados não extraídos de ${url}`);
+            return null;
+        }
+
+        // Validate extracted data
+        if (!data.nome || data.preco === 0) {
+            console.log(`⚠️ Dados incompletos: Nome="${data.nome}", Preço=${data.preco}`);
+            // Still return the data, but log the warning
+        }
 
         return data;
 

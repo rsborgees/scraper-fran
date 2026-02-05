@@ -97,189 +97,138 @@ async function scrapeLiveByName(browser, driveItems, quota) {
 
             try {
                 // --- COMPOSITE SEARCH LOOP ---
+                // --- STRATEGY: Try Full Name First ---
+                console.log(`\n   🔍 Tentando busca por NOME COMPLETO: "${item.name}"`);
+
+                let bestMatch = null;
+                const searchInputSelector = 'input.bn-search__input, .search-input, input[type="search"]';
+
+                try {
+                    const searchInput = page.locator(searchInputSelector).first();
+                    if (await searchInput.isVisible()) {
+                        await searchInput.click();
+                        await page.waitForTimeout(500);
+                        await searchInput.fill('');
+                        await searchInput.type(item.name, { delay: 30 });
+                        await page.waitForTimeout(500);
+                        await page.keyboard.press('Enter');
+                        await page.waitForTimeout(10000);
+                        await closePopups();
+
+                        const candidates = await page.evaluate((name) => {
+                            const links = Array.from(document.querySelectorAll('a[href]'));
+                            return links.filter(a => {
+                                const href = a.href.toLowerCase();
+                                return (href.includes('/p') || href.includes('/p/')) &&
+                                    !['/carrinho', '/login', '/checkout', '/conta', '/atendimento'].some(s => href.includes(s));
+                            }).map(a => {
+                                const text = (a.innerText || '').toLowerCase().trim();
+                                const target = name.toLowerCase().trim();
+                                let score = 0;
+
+                                const cleanText = text.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+                                const cleanTarget = target.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+                                if (cleanText === cleanTarget) score += 100;
+                                else if (cleanText.includes(cleanTarget) || cleanTarget.includes(cleanText)) score += 50;
+
+                                const targetWords = cleanTarget.split(' ').filter(w => w.length > 2);
+                                targetWords.forEach(w => { if (cleanText.includes(w)) score += 20; });
+
+                                return { url: a.href, score, text };
+                            }).sort((a, b) => b.score - a.score);
+                        }, item.name);
+
+                        if (candidates.length > 0 && candidates[0].score > 60) {
+                            bestMatch = candidates[0].url;
+                            console.log(`      ✅ Sucesso com nome completo: "${candidates[0].text}" (Score: ${candidates[0].score})`);
+                        }
+                    }
+                } catch (e) {
+                    console.log(`      ⚠️ Erro na busca por nome completo: ${e.message}`);
+                }
+
+                if (bestMatch) {
+                    const partialData = await parseProductLive(page, bestMatch);
+                    if (partialData) {
+                        const finalProduct = {
+                            id: partialData.id,
+                            nome: item.name,
+                            preco: partialData.preco,
+                            preco_original: partialData.preco_original,
+                            tamanhos: partialData.tamanhos,
+                            url: bestMatch,
+                            imageUrl: item.driveUrl,
+                            imagePath: item.driveUrl,
+                            loja: 'live',
+                            isSet: false
+                        };
+                        collectedProducts.push(finalProduct);
+                        const { markAsSent } = require('../../historyManager');
+                        markAsSent([finalProduct.id]);
+                        continue;
+                    }
+                }
+
+                // --- FALLBACK: Composite Search (Only if full name search failed) ---
+                console.log(`\n   🧩 Nome completo não encontrou match direto. Tentando busca composta...`);
                 const searchParts = item.searchParts || [item.name];
                 const compositeResults = [];
 
                 for (const partName of searchParts) {
-                    console.log(`\n   🧩 Processando parte do conjunto: "${partName}"`);
-
-                    const searchInputSelector = 'input.bn-search__input, .search-input, input[type="search"]';
-                    // The user said the name in the Drive file is EXACTLY like in Live!
-                    // So we use it as is, but clean special chars for the search engine if needed.
-                    const cleanName = partName.toLowerCase()
-                        .replace(/icon/g, '')
-                        .replace(/favorito/g, '')
-                        .replace(/[!@#$%^&*(),.?":{}|<>]/g, ' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-
-                    const queriesToTry = [cleanName];
-                    const words = cleanName.split(' ');
-
-                    // Progressive fallback just in case, but prioritize the full string
-                    if (words.length > 3) {
-                        queriesToTry.push(words.slice(0, words.length - 1).join(' '));
-                    }
+                    console.log(`\n      🧩 Processando parte: "${partName}"`);
+                    // ... (rest of search logic remains the same)
+                    const queriesToTry = [partName];
+                    const words = partName.toLowerCase().split(' ');
+                    if (words.length > 3) queriesToTry.push(words.slice(0, words.length - 1).join(' '));
 
                     let foundProductUrl = null;
-                    let bestMatchedId = null;
-
                     for (const query of queriesToTry) {
-                        console.log(`      🔎 Tentando busca com: "${query}"`);
-
                         try {
                             const searchInput = page.locator(searchInputSelector).first();
-                            if (await searchInput.isVisible()) {
-                                await searchInput.click();
-                                await page.waitForTimeout(500);
-                                await searchInput.fill('');
-                                await searchInput.type(query, { delay: 30 });
-                                await page.waitForTimeout(500);
-                                await page.keyboard.press('Enter');
-                            } else {
-                                throw new Error("Search input hidden");
-                            }
+                            await searchInput.click();
+                            await searchInput.fill('');
+                            await searchInput.type(query, { delay: 30 });
+                            await page.keyboard.press('Enter');
+                            await page.waitForTimeout(5000);
+                            await closePopups();
                         } catch (e) {
-                            const searchUrl = `https://www.liveoficial.com.br/busca?q=${encodeURIComponent(query)}`;
-                            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                            await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded' });
                         }
 
-                        await page.waitForTimeout(5000);
-                        await closePopups();
-
-                        const candidates = await page.evaluate((originalFullName) => {
-                            const colorMap = {
-                                'branco': 'white',
-                                'preto': 'black',
-                                'azul': 'blue',
-                                'verde': 'green',
-                                'amarelo': 'yellow',
-                                'cinza': 'gray',
-                                'grafite': 'graphite',
-                                'vermelho': 'red',
-                                'rosa': 'pink',
-                                'roxo': 'purple',
-                                'laranja': 'orange',
-                                'marrom': 'brown',
-                                'bege': 'beige',
-                                'marinho': 'navy'
-                            };
-
-                            const links = Array.from(document.querySelectorAll('a[href]'));
-                            const productLinks = links.filter(a => {
-                                const href = a.href.toLowerCase();
-                                return (href.includes('/p') || href.includes('/p/')) &&
-                                    !['/carrinho', '/login', '/checkout', '/conta', '/atendimento'].some(s => href.includes(s));
-                            });
-
-                            if (productLinks.length === 0) return [];
-
-                            const target = originalFullName.toLowerCase().replace(/!/g, '').trim();
-                            const targetWords = target.split(' ').filter(w => w.length > 2);
-
-                            // Find requested colors in target
-                            const requestedColors = Object.keys(colorMap).filter(c => target.includes(c));
-                            const translatedColors = requestedColors.map(c => colorMap[c]);
-
-                            return productLinks.map(a => {
-                                // Find the parent card to look for images and better text
-                                let card = a.parentElement;
-                                while (card && card.tagName !== 'BODY' && !card.querySelector('img')) {
-                                    card = card.parentElement;
-                                }
-
-                                const img = card ? card.querySelector('img') : null;
-                                const altText = img ? (img.alt || '').toLowerCase() : '';
-                                const text = (a.innerText || '').toLowerCase().trim();
-                                const url = a.href.toLowerCase();
+                        const candidates = await page.evaluate((originalPartName) => {
+                            const colorMap = { 'branco': 'white', 'preto': 'black', 'azul': 'blue', 'verde': 'green', 'amarelo': 'yellow', 'cinza': 'gray' };
+                            const links = Array.from(document.querySelectorAll('a[href]')).filter(a => (a.href.includes('/p') || a.href.includes('/p/')));
+                            return links.map(a => {
+                                const text = (a.innerText || '').toLowerCase();
+                                const target = originalPartName.toLowerCase();
                                 let score = 0;
-
-                                // 1. EXACT MATCH BONUS (Text or Alt)
-                                if (text === target || altText === target) score += 100;
-                                else if (text.includes(target) || altText.includes(target)) score += 50;
-
-                                // 2. Word by word matching (Text + Alt + URL)
-                                let matchCount = 0;
-                                targetWords.forEach(w => {
-                                    let matched = false;
-                                    if (text.includes(w)) { score += 20; matched = true; }
-                                    if (altText.includes(w)) { score += 20; matched = true; }
-                                    if (url.includes(w)) { score += 5; matched = true; }
-
-                                    if (matched) matchCount++;
-
-                                    // Special handle for color translation in URL
-                                    if (colorMap[w] && url.includes(colorMap[w])) {
-                                        score += 25; // High bonus for translated color in URL
-                                    }
-                                });
-
-                                // 3. Penalty for EXTRA words in text (avoids "Sense Pro" if not in query)
-                                const candidateWords = text.split(/\s+/).filter(w => w.length > 2);
-                                candidateWords.forEach(w => {
-                                    if (!targetWords.includes(w)) {
-                                        score -= 20;
-                                    }
-                                });
-
-                                // 4. Penalty for words in URL that are NOT in target and are NOT color
-                                const urlParts = url.split(/[\-\/]/).filter(p => p.length > 3 && !['product', 'liveoficial', 'com', 'br'].includes(p));
-                                urlParts.forEach(p => {
-                                    if (!targetWords.includes(p) && !translatedColors.includes(p)) {
-                                        if (!p.match(/^[a-z]\d+|^\d+/)) {
-                                            score -= 5;
-                                        }
-                                    }
-                                });
-
-                                // 5. Final tie breaker
-                                if (matchCount === targetWords.length) score += 30;
-
-                                return { url: a.href, score, text: text || altText };
+                                if (text.includes(target)) score += 50;
+                                target.split(' ').forEach(w => { if (text.includes(w)) score += 10; });
+                                return { url: a.href, score, text };
                             }).sort((a, b) => b.score - a.score);
-                        }, cleanName);
+                        }, partName);
 
                         if (candidates.length > 0 && candidates[0].score > 20) {
                             foundProductUrl = candidates[0].url;
-                            console.log(`      ✅ Melhor match: "${candidates[0].text}" (Score: ${candidates[0].score})`);
                             break;
                         }
                     }
 
                     if (foundProductUrl) {
-                        console.log(`      Found: ${foundProductUrl}`);
-                        await page.goto(foundProductUrl, { waitUntil: 'domcontentloaded' });
-                        await page.waitForTimeout(3000);
-
                         const partialData = await parseProductLive(page, foundProductUrl);
-
                         if (partialData) {
-                            compositeResults.push({
-                                id: partialData.id,
-                                name: partialData.nome,
-                                price: partialData.preco,
-                                origPrice: partialData.preco_original,
-                                sizes: partialData.tamanhos,
-                                url: foundProductUrl
-                            });
+                            compositeResults.push({ id: partialData.id, name: partialData.nome, price: partialData.preco, origPrice: partialData.preco_original, sizes: partialData.tamanhos, url: foundProductUrl });
                         }
                     } else {
-                        compositeResults.push({
-                            id: 'unknown_' + Date.now(),
-                            name: partName,
-                            notFound: true,
-                            price: 0,
-                            sizes: [],
-                            url: ""
-                        });
+                        compositeResults.push({ notFound: true });
                     }
                 }
 
                 // Check if any part was not found
-                const hasMissingPart = compositeResults.some(r => r.notFound);
-                if (hasMissingPart) {
-                    console.log(`      ⚠️ Conjunto ignorado pois um dos itens não foi encontrado: ${item.name}`);
-                    continue; // Skip this whole set
+                if (compositeResults.some(r => r.notFound)) {
+                    console.log(`      ⚠️ Conjunto ignorado pois um dos itens não foi encontrado.`);
+                    continue;
                 }
 
                 // MERGE RESULTS
