@@ -148,7 +148,7 @@ async function testLiveNameScanner() {
 
             // Fallback: URL direta
             console.log('\n   🔄 Tentando fallback com URL direta...');
-            await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(searchQuery)}`, {
+            await page.goto(`https://www.liveoficial.com.br/busca?pesquisa=${encodeURIComponent(searchQuery)}`, {
                 waitUntil: 'domcontentloaded',
                 timeout: 60000
             });
