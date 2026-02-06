@@ -36,8 +36,14 @@ async function testLiveNameScanner() {
         console.log(`TESTANDO: "${testItem.name}"`);
         console.log('='.repeat(60));
 
-        // TESTE 1: Navegação para home
-        console.log('\n📍 TESTE 1: Navegação para home');
+        // TESTE 1: Navegação para home e cookies VTEX
+        console.log('\n📍 TESTE 1: Navegação para home e teste de Cookies');
+
+        // Adiciona cookie VTEX para forçar Brasil (ajudou muito na DressTo)
+        await context.addCookies([
+            { name: 'vtex_segment', value: 'eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9', domain: '.liveoficial.com.br', path: '/' }
+        ]).catch(() => { });
+
         const response = await page.goto('https://www.liveoficial.com.br', {
             waitUntil: 'domcontentloaded',
             timeout: 60000
@@ -47,12 +53,20 @@ async function testLiveNameScanner() {
         const homeTitle = await page.title();
         const homeStatus = response?.status() || 'N/A';
 
-        console.log(`   ✅ Página carregada: ${page.url()}`);
-        console.log(`   📊 Status HTTP: ${homeStatus}`);
-        console.log(`   📝 Título: "${homeTitle}"`);
+        console.log(`   ✅ Home acessada: ${page.url()}`);
+        console.log(`   📊 Status HTTP Home: ${homeStatus}`);
+        console.log(`   📝 Título Home: "${homeTitle}"`);
+
+        // Testar Outlet também (URL principal do scraper)
+        console.log('\n📍 TESTE 1.1: Navegação para Outlet');
+        const outletResponse = await page.goto('https://www.liveoficial.com.br/outlet', {
+            waitUntil: 'domcontentloaded',
+            timeout: 45000
+        });
+        console.log(`   📊 Status HTTP Outlet: ${outletResponse?.status() || 'N/A'}`);
 
         if (homeStatus === 403 || homeTitle.includes('403') || homeTitle.includes('Forbidden')) {
-            console.log('   ❌ HOME BLOQUEADA (403)');
+            console.log('   ❌ BLOQUEIO PERSISTENTE (403)');
         }
 
         // TESTE 2: Fechamento de popups
