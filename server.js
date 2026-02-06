@@ -109,6 +109,83 @@ app.get("/history", (req, res) => {
     }
 });
 
+// Endpoint de teste para Live scraper (diagnóstico)
+app.post("/test-live", async (req, res) => {
+    const logs = [];
+    const log = (msg) => {
+        console.log(msg);
+        logs.push(msg);
+    };
+
+    try {
+        log('🧪 TESTE LIVE SCRAPER - INICIANDO...');
+        log(`Ambiente: ${process.platform}, HEADLESS: ${process.env.HEADLESS}`);
+
+        // 1. Verificar Drive
+        log('\n📂 Verificando itens Live no Drive...');
+        const { getExistingIdsFromDrive } = require('./driveManager');
+        const allItems = await getExistingIdsFromDrive(process.env.GOOGLE_DRIVE_FOLDER_ID);
+        const liveItems = allItems.filter(i => i.store === 'live');
+
+        log(`✅ Encontrados ${liveItems.length} itens Live no Drive`);
+        liveItems.forEach((item, i) => {
+            log(`   ${i + 1}. "${item.name}" (searchByName: ${item.searchByName})`);
+        });
+
+        if (liveItems.length === 0) {
+            return res.json({ ok: false, message: 'Nenhum item Live no Drive', logs });
+        }
+
+        // 2. Testar scraper
+        log('\n🔍 Testando scraper com 1 item...');
+        const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
+        const { initBrowser } = require('./browser_setup');
+
+        const { context, browser } = await initBrowser();
+
+        try {
+            const testItem = liveItems.slice(0, 1);
+            log(`Processando: "${testItem[0].name}"`);
+
+            const result = await scrapeSpecificIdsGeneric(context, testItem, 'live', 1);
+
+            log(`\n✅ Resultado:`);
+            log(`   Capturados: ${result.products.length}`);
+            log(`   Stats: ${JSON.stringify(result.stats)}`);
+
+            if (result.products.length > 0) {
+                const p = result.products[0];
+                log(`\n   Produto:`);
+                log(`      ID: ${p.id}`);
+                log(`      Nome: ${p.nome}`);
+                log(`      Preço: R$ ${p.preco}`);
+                log(`      Tamanhos: ${p.tamanhos?.join(', ')}`);
+                log(`      Imagem Drive: ${p.imagePath ? 'SIM' : 'NÃO'}`);
+            }
+
+            await browser.close();
+
+            res.json({
+                ok: true,
+                message: 'Teste concluído',
+                captured: result.products.length,
+                stats: result.stats,
+                logs
+            });
+
+        } catch (scraperError) {
+            await browser.close();
+            throw scraperError;
+        }
+
+    } catch (error) {
+        log(`\n❌ ERRO: ${error.message}`);
+        log(error.stack);
+        res.status(500).json({ ok: false, message: error.message, logs });
+    }
+});
+
+
 app.listen(PORT, () => {
     console.log(`Scraper Dashboard rodando em http://localhost:${PORT}`);
 
