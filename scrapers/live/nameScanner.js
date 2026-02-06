@@ -59,7 +59,7 @@ async function scrapeLiveByName(browser, driveItems, quota) {
 
     try {
         console.log(`      🚙 Navegando para a home da Live...`);
-        await page.goto('https://www.liveoficial.com.br', { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.goto('https://www.liveoficial.com.br', { waitUntil: 'domcontentloaded', timeout: 90000 });
 
         const closePopups = async () => {
             const popupSelectors = [
@@ -112,7 +112,19 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                         await searchInput.type(item.name, { delay: 30 });
                         await page.waitForTimeout(500);
                         await page.keyboard.press('Enter');
-                        await page.waitForTimeout(10000);
+
+                        // Aguardar mudança de URL ou resultados aparecerem
+                        try {
+                            await page.waitForFunction(() => {
+                                return window.location.href.includes('busca') ||
+                                    document.querySelectorAll('a[href*="/p"]').length > 0;
+                            }, { timeout: 20000 });
+                            console.log('      ✅ Busca executada com sucesso');
+                        } catch (e) {
+                            console.log('      ⚠️ Timeout aguardando resultados da busca');
+                        }
+
+                        await page.waitForTimeout(15000);
                         await closePopups();
 
                         const candidates = await page.evaluate((name) => {
@@ -142,6 +154,9 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                         if (candidates.length > 0 && candidates[0].score > 60) {
                             bestMatch = candidates[0].url;
                             console.log(`      ✅ Sucesso com nome completo: "${candidates[0].text}" (Score: ${candidates[0].score})`);
+                        } else {
+                            console.log(`      ⚠️ Nenhum match bom encontrado. Melhor score: ${candidates[0]?.score || 0}`);
+                            console.log(`      📊 Total de candidatos: ${candidates.length}`);
                         }
                     }
                 } catch (e) {
@@ -190,10 +205,12 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                             await searchInput.fill('');
                             await searchInput.type(query, { delay: 30 });
                             await page.keyboard.press('Enter');
-                            await page.waitForTimeout(5000);
+                            await page.waitForTimeout(10000);
                             await closePopups();
                         } catch (e) {
-                            await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded' });
+                            console.log(`         ⚠️ Erro ao usar campo de busca: ${e.message}. Usando URL direta...`);
+                            await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                            await page.waitForTimeout(8000);
                         }
 
                         const candidates = await page.evaluate((originalPartName) => {
