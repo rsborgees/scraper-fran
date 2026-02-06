@@ -102,36 +102,17 @@ async function scrapeLiveByName(browser, driveItems, quota) {
 
                 let bestMatch = null;
 
-                // Em servidor (Linux), usar sempre URL direta (mais confiável)
-                const useDirectUrl = process.platform === 'linux';
-
                 try {
-                    if (useDirectUrl) {
-                        console.log('      🔄 Servidor detectado: usando URL direta...');
-                        await page.goto(`https://www.liveoficial.com.br/busca?pesquisa=${encodeURIComponent(item.name)}`, {
-                            waitUntil: 'domcontentloaded',
-                            timeout: 90000
-                        });
-                        await page.waitForTimeout(15000);
-                        await closePopups();
-                    } else {
-                        // Local: tentar campo de busca
-                        const searchInputSelector = 'input.bn-search__input, .search-input, input[type="search"]';
-                        const searchInput = page.locator(searchInputSelector).first();
+                    // Usar sempre URL direta (mais confiável e rápido)
+                    console.log('      🔄 Navegando via URL de busca...');
+                    await page.goto(`https://www.liveoficial.com.br/busca?pesquisa=${encodeURIComponent(item.name)}`, {
+                        waitUntil: 'domcontentloaded',
+                        timeout: 90000
+                    });
 
-                        if (await searchInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-                            await searchInput.click();
-                            await page.waitForTimeout(500);
-                            await searchInput.fill('');
-                            await searchInput.type(item.name, { delay: 30 });
-                            await page.waitForTimeout(500);
-                            await page.keyboard.press('Enter');
-                            await page.waitForTimeout(15000);
-                            await closePopups();
-                        } else {
-                            throw new Error('Campo de busca não visível');
-                        }
-                    }
+                    // Pequena espera para renderização de JS
+                    await page.waitForTimeout(10000);
+                    await closePopups();
 
                     const candidates = await page.evaluate((name) => {
                         const links = Array.from(document.querySelectorAll('a[href]'));

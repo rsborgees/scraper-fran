@@ -130,42 +130,29 @@ async function testLiveNameScanner() {
             }
         }
 
-        // TESTE 4: Preenchimento e submissão
-        console.log('\n✍️ TESTE 4: Preenchimento e submissão da busca');
+        // TESTE 4: Busca via URL Direta
+        console.log('\n✍️ TESTE 4: Busca via URL Direta');
         const searchQuery = testItem.name;
         console.log(`   Query: "${searchQuery}"`);
 
-        try {
-            const searchInput = page.locator(searchInputSelector).first();
-            await searchInput.click({ timeout: 5000 });
-            await page.waitForTimeout(500);
-            await searchInput.fill('');
-            await searchInput.type(searchQuery, { delay: 30 });
-            await page.waitForTimeout(500);
+        console.log('   🔄 Navegando via URL direta...');
+        const searchResponse = await page.goto(`https://www.liveoficial.com.br/busca?pesquisa=${encodeURIComponent(searchQuery)}`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60000
+        });
 
-            const inputValue = await searchInput.inputValue();
-            console.log(`   ✅ Valor preenchido: "${inputValue}"`);
+        const searchStatus = searchResponse?.status() || 'N/A';
+        const searchTitle = await page.title();
 
-            await page.keyboard.press('Enter');
-            console.log('   ✅ Enter pressionado');
+        console.log(`   ✅ Navegou via URL direta: ${page.url()}`);
+        console.log(`   📊 Status HTTP Busca: ${searchStatus}`);
+        console.log(`   📝 Título Busca: "${searchTitle}"`);
 
-            await page.waitForTimeout(10000); // Esperar resultados
-            console.log(`   ✅ Aguardou 10s para resultados`);
-            console.log(`   URL atual: ${page.url()}`);
-
-        } catch (fillError) {
-            console.log(`   ❌ Erro ao preencher campo: ${fillError.message}`);
-
-            // Fallback: URL direta
-            console.log('\n   🔄 Tentando fallback com URL direta...');
-            const searchResponse = await page.goto(`https://www.liveoficial.com.br/busca?pesquisa=${encodeURIComponent(searchQuery)}`, {
-                waitUntil: 'domcontentloaded',
-                timeout: 60000
-            });
-            await page.waitForTimeout(8000);
-            console.log(`   ✅ Navegou via URL direta: ${page.url()}`);
-            console.log(`   📊 Status HTTP Busca: ${searchResponse?.status() || 'N/A'}`);
+        if (searchStatus === 403 || searchTitle.includes('403') || searchTitle.includes('Forbidden')) {
+            console.log('   ❌ BUSCA BLOQUEADA (403)');
         }
+
+        await page.waitForTimeout(8000);
 
         // TESTE 5: Extração de resultados
         console.log('\n📊 TESTE 5: Extração de resultados');
