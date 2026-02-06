@@ -38,12 +38,22 @@ async function testLiveNameScanner() {
 
         // TESTE 1: Navegação para home
         console.log('\n📍 TESTE 1: Navegação para home');
-        await page.goto('https://www.liveoficial.com.br', {
+        const response = await page.goto('https://www.liveoficial.com.br', {
             waitUntil: 'domcontentloaded',
             timeout: 60000
         });
         await page.waitForTimeout(3000);
+
+        const homeTitle = await page.title();
+        const homeStatus = response?.status() || 'N/A';
+
         console.log(`   ✅ Página carregada: ${page.url()}`);
+        console.log(`   📊 Status HTTP: ${homeStatus}`);
+        console.log(`   📝 Título: "${homeTitle}"`);
+
+        if (homeStatus === 403 || homeTitle.includes('403') || homeTitle.includes('Forbidden')) {
+            console.log('   ❌ HOME BLOQUEADA (403)');
+        }
 
         // TESTE 2: Fechamento de popups
         console.log('\n🛡️ TESTE 2: Fechamento de popups');
