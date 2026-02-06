@@ -159,6 +159,27 @@ async function testLiveNameScanner() {
         // TESTE 5: Extração de resultados
         console.log('\n📊 TESTE 5: Extração de resultados');
 
+        const pageInfo = await page.evaluate(() => {
+            return {
+                title: document.title,
+                url: window.location.href,
+                bodyLength: document.body.innerText.length,
+                htmlSnippet: document.body.innerHTML.substring(0, 1000).replace(/\s+/g, ' '),
+                hasH1: !!document.querySelector('h1'),
+                h1Text: document.querySelector('h1')?.innerText || 'N/A'
+            };
+        });
+
+        console.log(`   Título da página: "${pageInfo.title}"`);
+        console.log(`   URL final: ${pageInfo.url}`);
+        console.log(`   Tamanho do texto: ${pageInfo.bodyLength} caracteres`);
+        console.log(`   H1: "${pageInfo.h1Text}"`);
+        console.log(`   Snippet HTML: ${pageInfo.htmlSnippet.substring(0, 300)}...`);
+
+        if (pageInfo.title.includes('Access Denied') || pageInfo.title.includes('Attention Required') || pageInfo.title.includes('Cloudflare')) {
+            console.log('\n❌ BLOQUEIO DETECTADO: O servidor está sendo bloqueado pelo site da Live.');
+        }
+
         // Scroll para carregar produtos
         await page.evaluate(async () => {
             for (let i = 0; i < 3; i++) {
