@@ -36,10 +36,27 @@ async function testLiveNameScanner() {
         console.log(`TESTANDO: "${testItem.name}"`);
         console.log('='.repeat(60));
 
-        // TESTE 1: Navegação para home e cookies VTEX
-        console.log('\n📍 TESTE 1: Navegação para home e teste de Cookies');
+        // TESTE 1: Navegação para home (Tentativa de Bypass Googlebot)
+        console.log('\n📍 TESTE 1: Navegação para home (Bypass Googlebot)');
 
-        // Adiciona cookie VTEX para forçar Brasil (ajudou muito na DressTo)
+        // Estratégia: User-Agent do Google
+        const googleBotUA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+        console.log(`   🤖 Tentando User-Agent: "${googleBotUA}"`);
+
+        try {
+            await context.close();
+        } catch (e) { }
+
+        context = await browser.newContext({
+            userAgent: googleBotUA,
+            viewport: { width: 1920, height: 1080 },
+            javaScriptEnabled: true,
+            bypassCSP: true,
+            ignoreHTTPSErrors: true
+        });
+        page = await context.newPage();
+
+        // Adiciona cookie VTEX para forçar Brasil
         await context.addCookies([
             { name: 'vtex_segment', value: 'eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9', domain: '.liveoficial.com.br', path: '/' }
         ]).catch(() => { });
@@ -57,13 +74,21 @@ async function testLiveNameScanner() {
         console.log(`   📊 Status HTTP Home: ${homeStatus}`);
         console.log(`   📝 Título Home: "${homeTitle}"`);
 
-        // Testar Outlet também (URL principal do scraper)
-        console.log('\n📍 TESTE 1.1: Navegação para Outlet');
+        // TESTE 1.1: Navegação para Outlet e Sitemap (Portas dos Fundos)
+        console.log('\n📍 TESTE 1.1: Checando rotas alternativas');
+
         const outletResponse = await page.goto('https://www.liveoficial.com.br/outlet', {
             waitUntil: 'domcontentloaded',
             timeout: 45000
         });
         console.log(`   📊 Status HTTP Outlet: ${outletResponse?.status() || 'N/A'}`);
+
+        console.log('   🗺️ Checando sitemap.xml...');
+        const sitemapResponse = await page.goto('https://www.liveoficial.com.br/sitemap.xml', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+        });
+        console.log(`   📊 Status HTTP Sitemap: ${sitemapResponse?.status() || 'N/A'}`);
 
         if (homeStatus === 403 || homeTitle.includes('403') || homeTitle.includes('Forbidden')) {
             console.log('   ❌ BLOQUEIO PERSISTENTE (403)');
