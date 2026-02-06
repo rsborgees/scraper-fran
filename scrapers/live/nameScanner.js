@@ -108,7 +108,7 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                 try {
                     if (useDirectUrl) {
                         console.log('      🔄 Servidor detectado: usando URL direta...');
-                        await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(item.name)}`, {
+                        await page.goto(`https://www.liveoficial.com.br/busca?pesquisa=${encodeURIComponent(item.name)}`, {
                             waitUntil: 'domcontentloaded',
                             timeout: 90000
                         });
@@ -207,7 +207,7 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                     for (const query of queriesToTry) {
                         // Sempre usar URL direta em servidor
                         console.log(`         🔍 Buscando: "${query}"`);
-                        await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(query)}`, {
+                        await page.goto(`https://www.liveoficial.com.br/busca?pesquisa=${encodeURIComponent(query)}`, {
                             waitUntil: 'domcontentloaded',
                             timeout: 90000
                         });
