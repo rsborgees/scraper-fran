@@ -124,6 +124,12 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
                 }
 
                 finalProduct.favorito = item.isFavorito || false;
+                finalProduct.isFavorito = item.isFavorito || false;
+                finalProduct.novidade = item.novidade || false;
+                finalProduct.isNovidade = item.novidade || (finalProduct.isNovidade || false);
+                finalProduct.bazar = item.bazar || false;
+                finalProduct.bazarFavorito = item.bazarFavorito || false;
+
                 finalProduct.url = appendQueryParams(finalProduct.url, { utm_campaign: "7B1313" });
                 finalProduct.loja = 'farm';
 

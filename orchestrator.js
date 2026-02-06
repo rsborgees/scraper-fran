@@ -22,6 +22,33 @@ const {
     buildZzMallMessage
 } = require('./messageBuilder');
 
+/**
+ * Calcula o score de prioridade de um item
+ * 1- Novidades (High: 1000+)
+ * 2- Favoritos (Medium-High: 500+)
+ * 3- Recentes < 7 dias (Medium: 100+)
+ * 4- Outros (Low)
+ */
+function getPriorityScore(item) {
+    let score = 0;
+
+    // Novidades do Drive ou identificadas no site
+    if (item.novidade || item.isNovidade) score += 1000;
+
+    // Favoritos do Drive
+    if (item.isFavorito || item.favorito) score += 500;
+
+    // Tempo de adição ao Drive
+    if (item.createdTime) {
+        const createdDate = new Date(item.createdTime);
+        const now = new Date();
+        const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
+        if (diffDays < 7) score += 100;
+    }
+
+    return score;
+}
+
 async function runAllScrapers(overrideQuotas = null) {
     const allProducts = [];
     const quotas = overrideQuotas || {
@@ -86,12 +113,11 @@ async function runAllScrapers(overrideQuotas = null) {
                 });
 
                 if (farmDriveItems.length > 0) {
-                    // Ordenar por Favorito primeiro e passar TODOS os itens disponíveis
-                    // O scraper vai processar até atingir a quota total (não só a quota inicial)
+                    // Ordenar pela nova regra de prioridade
                     const sortedFarmDriveItems = farmDriveItems
-                        .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0));
+                        .sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
 
-                    console.log(`📊 [FARM] ${sortedFarmDriveItems.length} itens disponíveis no Drive (${farmDriveItems.filter(i => i.isFavorito).length} favoritos)`);
+                    console.log(`📊 [FARM] ${sortedFarmDriveItems.length} itens disponíveis no Drive (${farmDriveItems.filter(i => i.novidade).length} novidades, ${farmDriveItems.filter(i => i.isFavorito).length} favoritos)`);
 
                     // O scraper interno vai respeitar a quota da FARM
                     const farmQuota = quotas.farm;
@@ -126,7 +152,7 @@ async function runAllScrapers(overrideQuotas = null) {
 
                     if (items.length > 0) {
                         const limitedItems = items
-                            .sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0))
+                            .sort((a, b) => getPriorityScore(b) - getPriorityScore(a))
                             .slice(0, 50);
 
                         console.log(`🔍 [${store.toUpperCase()}] Iniciando Drive-First (${items.length} itens)...`);
@@ -138,6 +164,14 @@ async function runAllScrapers(overrideQuotas = null) {
                             else if (store === 'kju') p.message = buildKjuMessage(p);
                             else if (store === 'live') p.message = buildLiveMessage([p]); // Live expects array
                             else if (store === 'zzmall') p.message = buildZzMallMessage(p);
+
+                            // Ensure flags are present in final payload
+                            p.novidade = p.novidade || p.isNovidade || false;
+                            p.isNovidade = p.novidade;
+                            p.favorito = p.favorito || p.isFavorito || false;
+                            p.isFavorito = p.favorito;
+                            p.bazar = p.bazar || false;
+                            p.bazarFavorito = p.bazarFavorito || (p.bazar && p.favorito) || false;
                         });
 
                         allProducts.push(...scrapedItems);
@@ -297,8 +331,8 @@ async function runAllScrapers(overrideQuotas = null) {
                 console.log(`\n🚙 Prioridade Redistribuição: Usando ${unusedFarmDriveItems.length} itens do Drive restantes...`);
 
                 try {
-                    // Passa TODOS os candidatos restantes, mas ordenados por PRIORIDADE (Favorito primeiro)
-                    const driveFillCandidates = unusedFarmDriveItems.sort((a, b) => (b.isFavorito ? 1 : 0) - (a.isFavorito ? 1 : 0));
+                    // Passa TODOS os candidatos restantes, mas ordenados por PRIORIDADE
+                    const driveFillCandidates = unusedFarmDriveItems.sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
 
                     console.log(`   🔎 Tentando recuperar de ${driveFillCandidates.length} IDs disponíveis no Drive...`);
 
@@ -364,6 +398,18 @@ async function runAllScrapers(overrideQuotas = null) {
 
         console.log('\n==================================================');
         console.log(`RESULTADO FINAL: ${allProducts.length}/${totalTarget} produtos coletados`);
+        console.log('Aplicando ordenação de prioridade final...');
+
+        allProducts.sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
+
+        // Final payload normalization for webhook
+        allProducts.forEach(p => {
+            p.novidade = p.novidade || p.isNovidade || false;
+            p.favorito = p.favorito || p.isFavorito || false;
+            p.bazar = p.bazar || false;
+            p.bazarFavorito = p.bazarFavorito || (p.bazar && p.favorito) || false;
+        });
+
         console.log('Todas as mensagens foram geradas com sucesso.');
         console.log('==================================================');
 

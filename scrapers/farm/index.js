@@ -14,6 +14,7 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
     console.log(`\n🌸 INICIANDO SCRAPER FARM (Quota: ${quota}, DryRun: ${dryRun})`);
 
     const CATEGORIES = [
+        { name: 'Novidades', url: 'https://www.farmrio.com.br/novidades' },
         { name: 'Vestidos', url: 'https://www.farmrio.com.br/vestido' },
         { name: 'Macacões', url: 'https://www.farmrio.com.br/macacao' },
         { name: 'Conjuntos', url: 'https://www.farmrio.com.br/conjunto' },
@@ -165,6 +166,11 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
                                 product.loja = 'farm';
                                 product.imagePath = imagePath || 'error.jpg';
                                 product.timerData = timerData;
+
+                                // NEW: Flag as Novidade for prioritization
+                                if (cat.name === 'Novidades') {
+                                    product.isNovidade = true;
+                                }
 
                                 confirmedPromotions.push(product);
                                 itemsFoundInCategory++;

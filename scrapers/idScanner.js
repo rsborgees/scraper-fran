@@ -329,6 +329,12 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         }
 
                         product.favorito = item.isFavorito || false;
+                        product.isFavorito = item.isFavorito || false;
+                        product.novidade = item.novidade || false;
+                        product.isNovidade = item.novidade || (product.isNovidade || false);
+                        product.bazar = item.bazar || false;
+                        product.bazarFavorito = item.bazarFavorito || false;
+
                         product.loja = storeName;
                         product.id = product.id && product.id !== 'unknown' ? product.id : item.id;
 

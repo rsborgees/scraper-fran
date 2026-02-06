@@ -75,7 +75,7 @@ async function getExistingIdsFromDrive(folderId) {
         do {
             const res = await drive.files.list({
                 q: `'${folderId}' in parents and trashed = false`,
-                fields: 'nextPageToken, files(id, name)',
+                fields: 'nextPageToken, files(id, name, createdTime)',
                 spaces: 'drive',
                 pageToken: pageToken,
                 pageSize: 1000
@@ -88,6 +88,7 @@ async function getExistingIdsFromDrive(folderId) {
                 files.forEach(file => {
                     fileCount++;
                     const nameLower = file.name.toLowerCase();
+                    const createdTime = file.createdTime;
 
                     // Regra: "o nome do arquivo é o codigo da roupa e o nome da loja"
                     // Conjunto: IDs separados por ESPAÇO. Ex: "351693 350740"
@@ -116,6 +117,9 @@ async function getExistingIdsFromDrive(folderId) {
                     if (ids.length > 0) {
                         const mainId = ids[0];
                         const isFavorito = nameLower.includes('favorito');
+                        const isNovidade = nameLower.includes('novidade');
+                        const isBazar = nameLower.includes('bazar');
+                        const isBazarFavorito = isBazar && isFavorito;
 
                         // 🏪 DETECÇÃO DE LOJA pelo nome do arquivo
                         let store = null;
@@ -140,12 +144,19 @@ async function getExistingIdsFromDrive(folderId) {
                                 name: file.name,
                                 driveUrl: `https://drive.google.com/uc?export=download&id=${file.id}`,
                                 isFavorito: isFavorito,
-                                store: store
+                                novidade: isNovidade,
+                                bazar: isBazar,
+                                bazarFavorito: isBazarFavorito,
+                                store: store,
+                                createdTime: createdTime
                             });
                         }
                     } else if (nameLower.includes('live')) {
                         // 🆕 FEATURE: Live Items by Name (No ID in filename)
                         const isFavorito = nameLower.includes('favorito');
+                        const isNovidade = nameLower.includes('novidade');
+                        const isBazar = nameLower.includes('bazar');
+                        const isBazarFavorito = isBazar && isFavorito;
 
                         // Clean name for search
                         let cleanName = file.name.toLowerCase()
@@ -170,8 +181,12 @@ async function getExistingIdsFromDrive(folderId) {
                                 originalName: file.name,
                                 driveUrl: `https://drive.google.com/uc?export=download&id=${file.id}`,
                                 isFavorito: isFavorito,
+                                novidade: isNovidade,
+                                bazar: isBazar,
+                                bazarFavorito: isBazarFavorito,
                                 store: 'live',
-                                searchByName: true // Flag to trigger name search
+                                searchByName: true, // Flag to trigger name search
+                                createdTime: createdTime
                             });
                             console.log(`   ✨ [Drive] Item Live detectado por nome: "${cleanName}"`);
                         }
