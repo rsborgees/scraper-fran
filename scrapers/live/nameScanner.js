@@ -101,67 +101,73 @@ async function scrapeLiveByName(browser, driveItems, quota) {
                 console.log(`\n   🔍 Tentando busca por NOME COMPLETO: "${item.name}"`);
 
                 let bestMatch = null;
-                const searchInputSelector = 'input.bn-search__input, .search-input, input[type="search"]';
+
+                // Em servidor (Linux), usar sempre URL direta (mais confiável)
+                const useDirectUrl = process.platform === 'linux';
 
                 try {
-                    const searchInput = page.locator(searchInputSelector).first();
-                    if (await searchInput.isVisible()) {
-                        await searchInput.click();
-                        await page.waitForTimeout(500);
-                        await searchInput.fill('');
-                        await searchInput.type(item.name, { delay: 30 });
-                        await page.waitForTimeout(500);
-                        await page.keyboard.press('Enter');
-
-                        // Aguardar mudança de URL ou resultados aparecerem
-                        try {
-                            await page.waitForFunction(() => {
-                                return window.location.href.includes('busca') ||
-                                    document.querySelectorAll('a[href*="/p"]').length > 0;
-                            }, { timeout: 20000 });
-                            console.log('      ✅ Busca executada com sucesso');
-                        } catch (e) {
-                            console.log('      ⚠️ Timeout aguardando resultados da busca');
-                        }
-
+                    if (useDirectUrl) {
+                        console.log('      🔄 Servidor detectado: usando URL direta...');
+                        await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(item.name)}`, {
+                            waitUntil: 'domcontentloaded',
+                            timeout: 90000
+                        });
                         await page.waitForTimeout(15000);
                         await closePopups();
+                    } else {
+                        // Local: tentar campo de busca
+                        const searchInputSelector = 'input.bn-search__input, .search-input, input[type="search"]';
+                        const searchInput = page.locator(searchInputSelector).first();
 
-                        const candidates = await page.evaluate((name) => {
-                            const links = Array.from(document.querySelectorAll('a[href]'));
-                            return links.filter(a => {
-                                const href = a.href.toLowerCase();
-                                return (href.includes('/p') || href.includes('/p/')) &&
-                                    !['/carrinho', '/login', '/checkout', '/conta', '/atendimento'].some(s => href.includes(s));
-                            }).map(a => {
-                                const text = (a.innerText || '').toLowerCase().trim();
-                                const target = name.toLowerCase().trim();
-                                let score = 0;
-
-                                const cleanText = text.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-                                const cleanTarget = target.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-
-                                if (cleanText === cleanTarget) score += 100;
-                                else if (cleanText.includes(cleanTarget) || cleanTarget.includes(cleanText)) score += 50;
-
-                                const targetWords = cleanTarget.split(' ').filter(w => w.length > 2);
-                                targetWords.forEach(w => { if (cleanText.includes(w)) score += 20; });
-
-                                return { url: a.href, score, text };
-                            }).sort((a, b) => b.score - a.score);
-                        }, item.name);
-
-                        if (candidates.length > 0 && candidates[0].score > 60) {
-                            bestMatch = candidates[0].url;
-                            console.log(`      ✅ Sucesso com nome completo: "${candidates[0].text}" (Score: ${candidates[0].score})`);
+                        if (await searchInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+                            await searchInput.click();
+                            await page.waitForTimeout(500);
+                            await searchInput.fill('');
+                            await searchInput.type(item.name, { delay: 30 });
+                            await page.waitForTimeout(500);
+                            await page.keyboard.press('Enter');
+                            await page.waitForTimeout(15000);
+                            await closePopups();
                         } else {
-                            console.log(`      ⚠️ Nenhum match bom encontrado. Melhor score: ${candidates[0]?.score || 0}`);
-                            console.log(`      📊 Total de candidatos: ${candidates.length}`);
+                            throw new Error('Campo de busca não visível');
                         }
+                    }
+
+                    const candidates = await page.evaluate((name) => {
+                        const links = Array.from(document.querySelectorAll('a[href]'));
+                        return links.filter(a => {
+                            const href = a.href.toLowerCase();
+                            return (href.includes('/p') || href.includes('/p/')) &&
+                                !['/carrinho', '/login', '/checkout', '/conta', '/atendimento'].some(s => href.includes(s));
+                        }).map(a => {
+                            const text = (a.innerText || '').toLowerCase().trim();
+                            const target = name.toLowerCase().trim();
+                            let score = 0;
+
+                            const cleanText = text.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+                            const cleanTarget = target.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+                            if (cleanText === cleanTarget) score += 100;
+                            else if (cleanText.includes(cleanTarget) || cleanTarget.includes(cleanText)) score += 50;
+
+                            const targetWords = cleanTarget.split(' ').filter(w => w.length > 2);
+                            targetWords.forEach(w => { if (cleanText.includes(w)) score += 20; });
+
+                            return { url: a.href, score, text };
+                        }).sort((a, b) => b.score - a.score);
+                    }, item.name);
+
+                    if (candidates.length > 0 && candidates[0].score > 60) {
+                        bestMatch = candidates[0].url;
+                        console.log(`      ✅ Sucesso com nome completo: "${candidates[0].text}" (Score: ${candidates[0].score})`);
+                    } else {
+                        console.log(`      ⚠️ Nenhum match bom encontrado. Melhor score: ${candidates[0]?.score || 0}`);
+                        console.log(`      📊 Total de candidatos: ${candidates.length}`);
                     }
                 } catch (e) {
                     console.log(`      ⚠️ Erro na busca por nome completo: ${e.message}`);
                 }
+
 
                 if (bestMatch) {
                     const partialData = await parseProductLive(page, bestMatch);
@@ -199,19 +205,14 @@ async function scrapeLiveByName(browser, driveItems, quota) {
 
                     let foundProductUrl = null;
                     for (const query of queriesToTry) {
-                        try {
-                            const searchInput = page.locator(searchInputSelector).first();
-                            await searchInput.click();
-                            await searchInput.fill('');
-                            await searchInput.type(query, { delay: 30 });
-                            await page.keyboard.press('Enter');
-                            await page.waitForTimeout(10000);
-                            await closePopups();
-                        } catch (e) {
-                            console.log(`         ⚠️ Erro ao usar campo de busca: ${e.message}. Usando URL direta...`);
-                            await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-                            await page.waitForTimeout(8000);
-                        }
+                        // Sempre usar URL direta em servidor
+                        console.log(`         🔍 Buscando: "${query}"`);
+                        await page.goto(`https://www.liveoficial.com.br/busca?q=${encodeURIComponent(query)}`, {
+                            waitUntil: 'domcontentloaded',
+                            timeout: 90000
+                        });
+                        await page.waitForTimeout(12000);
+                        await closePopups();
 
                         const candidates = await page.evaluate((originalPartName) => {
                             const colorMap = { 'branco': 'white', 'preto': 'black', 'azul': 'blue', 'verde': 'green', 'amarelo': 'yellow', 'cinza': 'gray' };
