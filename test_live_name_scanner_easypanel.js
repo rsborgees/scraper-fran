@@ -243,6 +243,20 @@ async function testLiveNameScanner() {
             const path = require('path');
             fs.writeFileSync(path.join(__dirname, 'debug', 'live_name_search_no_results.html'), html);
             console.log('   📄 HTML salvo: debug/live_name_search_no_results.html');
+
+            // Publicar para acesso externo
+            const publicDir = path.join(__dirname, 'public');
+            if (fs.existsSync(publicDir)) {
+                fs.copyFileSync(path.join(__dirname, 'debug', 'live_name_search_no_results.png'), path.join(publicDir, 'debug_live.png'));
+                fs.copyFileSync(path.join(__dirname, 'debug', 'live_name_search_no_results.html'), path.join(publicDir, 'debug_live.html'));
+
+                // Tenta pegar o host do env ou usa o padrão
+                const host = process.env.PUBLIC_URL || 'https://scraper-scraperv2.ncmzbc.easypanel.host';
+
+                console.log('\n   🌐 ACESSO PÚBLICO (Copie e cole no navegador):');
+                console.log(`   🖼️  Imagem: ${host}/debug_live.png`);
+                console.log(`   📄 HTML:   ${host}/debug_live.html`);
+            }
         } else if (results[0].score < 60) {
             console.log(`\n   ⚠️ AVISO: Melhor match tem score baixo (${results[0].score})`);
             console.log('   Pode não ser o produto correto.');
