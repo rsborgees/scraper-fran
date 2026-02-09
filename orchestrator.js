@@ -198,7 +198,10 @@ async function runAllScrapers(overrideQuotas = null) {
 
         // 1. Scrapes (Passando o objeto browser)
         // IMPORTANTE: Só faz scraping regular se NÃO houver mais itens no Drive
-        if (remainingQuotaFarm > 0 && unusedFarmDriveItems.length === 0) {
+        // UPDATE: Para FARM e DressTo, NUNCA faz scraping regular (Forbidden)
+        const DRIVE_ONLY_STORES = ['farm', 'dressto'];
+
+        if (!DRIVE_ONLY_STORES.includes('farm') && remainingQuotaFarm > 0 && unusedFarmDriveItems.length === 0) {
             console.log(`🌐 [FARM] Drive esgotado. Iniciando scraping regular...`);
             try {
                 let products = await scrapeFarm(remainingQuotaFarm, false, context);
@@ -213,7 +216,7 @@ async function runAllScrapers(overrideQuotas = null) {
         const driveCountDressTo = driveProducts.filter(p => p.loja === 'dressto').length;
         const remainingQuotaDressTo = Math.max(0, quotas.dressto - driveCountDressTo);
 
-        if (remainingQuotaDressTo > 0) {
+        if (!DRIVE_ONLY_STORES.includes('dressto') && remainingQuotaDressTo > 0) {
             try {
                 const { scrapeDressTo } = require('./scrapers/dressto');
                 let products = await scrapeDressTo(remainingQuotaDressTo, context);
@@ -364,30 +367,37 @@ async function runAllScrapers(overrideQuotas = null) {
 
             // STRATEGY 2: GENERIC SCRAPE (FALLBACK DO FALLBACK)
             // Só faz scraping genérico se o Drive estiver COMPLETAMENTE ESGOTADO
+            // E se não for de uma das lojas de Drive-Only (Farm, DressTo)
             if (gap > 0 && unusedFarmDriveItems.length === 0) {
                 console.log(`\n🔄 Preenchendo lacuna restante (${gap}) com FARM (Genérico)...`);
-                console.log(`   ⚠️ Drive completamente esgotado. Usando scraping regular como último recurso.`);
+                console.log(`   ⚠️ CUIDADO: Verificando se Farm é Drive-Only...`);
 
-                let attempts = 0;
-                const maxAttempts = 2;
+                if (DRIVE_ONLY_STORES.includes('farm')) {
+                    console.log(`   🚫 [FARM] Abortando: Farm é restrita ao Drive. Não haverá preenchimento genérico.`);
+                } else {
+                    console.log(`   ⚠️ Drive completamente esgotado. Usando scraping regular como último recurso.`);
 
-                while (gap > 0 && attempts < maxAttempts) {
-                    attempts++;
-                    try {
-                        const { scrapeFarm } = require('./scrapers/farm');
-                        let extraProducts = await scrapeFarm(gap + 1, false, browser);
+                    let attempts = 0;
+                    const maxAttempts = 2;
 
-                        const alreadyPickedIds = new Set(allProducts.map(p => p.id));
-                        const filteredExtra = extraProducts.filter(p => !alreadyPickedIds.has(p.id)).slice(0, gap);
+                    while (gap > 0 && attempts < maxAttempts) {
+                        attempts++;
+                        try {
+                            const { scrapeFarm } = require('./scrapers/farm');
+                            let extraProducts = await scrapeFarm(gap + 1, false, browser);
 
-                        filteredExtra.forEach(p => p.message = buildFarmMessage(p, p.timerData));
-                        allProducts.push(...filteredExtra);
+                            const alreadyPickedIds = new Set(allProducts.map(p => p.id));
+                            const filteredExtra = extraProducts.filter(p => !alreadyPickedIds.has(p.id)).slice(0, gap);
 
-                        gap = totalTarget - allProducts.length;
-                        console.log(`♻️ Redistribuição (Genérica): +${filteredExtra.length} produtos`);
-                    } catch (e) {
-                        console.error(`❌ Falha na redistribuição genérica (tentativa ${attempts}): ${e.message}`);
-                        break;
+                            filteredExtra.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+                            allProducts.push(...filteredExtra);
+
+                            gap = totalTarget - allProducts.length;
+                            console.log(`♻️ Redistribuição (Genérica): +${filteredExtra.length} produtos`);
+                        } catch (e) {
+                            console.error(`❌ Falha na redistribuição genérica (tentativa ${attempts}): ${e.message}`);
+                            break;
+                        }
                     }
                 }
             } else if (gap > 0 && unusedFarmDriveItems.length > 0) {
