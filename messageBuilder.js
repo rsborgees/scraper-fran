@@ -1,7 +1,7 @@
 const SELLER_CODE = "7B1313";
 const LINKTREE = "https://bio.site/FRANCALHEIRA";
 const WHATSAPP_LINK = "https://chat.whatsapp.com/B5NunogKsnMIoyJSxMAtcN";
-const { appendQueryParams } = require('./urlUtils');
+const { appendQueryParams, normalizeFarmUrl } = require('./urlUtils');
 
 function formatPrice(price) {
     if (!price || isNaN(price)) return 'R$ 0,00';
@@ -145,7 +145,7 @@ function buildFarmMessage(produto, timerData = null) {
             }
 
             // Adiciona parâmetros de vendedora na URL individual
-            const itemUrl = appendQueryParams(item.url, { utm_campaign: SELLER_CODE });
+            const itemUrl = normalizeFarmUrl(appendQueryParams(item.url, { utm_campaign: SELLER_CODE }));
 
             itemsMsg += `*${item.nome}* ${sizes} ${priceLine}\n${itemUrl}\n\n`;
         });
@@ -165,7 +165,7 @@ function buildFarmMessage(produto, timerData = null) {
     // 3. Lógica para Produto Único (Legado/Padrão)
     const sizes = produto.tamanhos ? produto.tamanhos.join(' ') : 'P M G';
     const isPromotional = produto.precoOriginal && produto.precoOriginal > produto.precoAtual;
-    const finalUrl = appendQueryParams(produto.url, { utm_campaign: SELLER_CODE });
+    const finalUrl = normalizeFarmUrl(appendQueryParams(produto.url, { utm_campaign: SELLER_CODE }));
 
     let priceLine;
     if (isPromotional) {

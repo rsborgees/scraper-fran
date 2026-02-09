@@ -5,6 +5,7 @@
  */
 
 const { runAllScrapers } = require('./orchestrator');
+const { sendToWebhook } = require('./cronScheduler');
 
 (async () => {
     console.log('═══════════════════════════════════════════════════');
@@ -19,7 +20,8 @@ const { runAllScrapers } = require('./orchestrator');
     console.log(`\nTotal de produtos capturados: ${allProducts.length}/12\n`);
 
     if (allProducts.length > 0) {
-        console.log(`Enviando ${allProducts.length} produtos...`);
+        console.log(`Enviando ${allProducts.length} produtos para o webhook...`);
+        await sendToWebhook(allProducts);
     } else {
         console.log('Nenhum produto capturado.');
     }

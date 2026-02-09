@@ -31,4 +31,12 @@ function appendQueryParams(url, params) {
     }
 }
 
-module.exports = { appendQueryParams };
+/**
+ * Remove o prefixo "secure." das URLs da Farm.
+ */
+function normalizeFarmUrl(url) {
+    if (!url) return url;
+    return url.replace('secure.farmrio.com.br', 'www.farmrio.com.br');
+}
+
+module.exports = { appendQueryParams, normalizeFarmUrl };
