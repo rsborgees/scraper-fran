@@ -13,7 +13,7 @@ const { initBrowser } = require('./browser_setup'); // Necessário para passar b
 const { scrapeFarm } = require('./scrapers/farm');
 const { scrapeSpecificIds } = require('./scrapers/farm/idScanner'); // NOVO
 const { getExistingIdsFromDrive } = require('./driveManager');
-const { isDuplicate, normalizeId } = require('./historyManager'); // IMPORTADO PARA FILTRO PREVIO
+const { isDuplicate, normalizeId, loadHistory } = require('./historyManager'); // IMPORTADO PARA FILTRO PREVIO
 const {
     buildKjuMessage,
     buildDressMessage,
@@ -24,27 +24,39 @@ const {
 
 /**
  * Calcula o score de prioridade de um item
- * 1- Novidades (High: 1000+)
- * 2- Favoritos (Medium-High: 500+)
- * 3- Recentes < 7 dias (Medium: 100+)
- * 4- Outros (Low)
+ * 1- Cobertura Semanal (não enviado há 7 dias): +5000
+ * 2- Modificações Recentes (< 7 dias): +2000
+ * 3- Novidades (High: 1000+)
+ * 4- Favoritos (Medium-High: 500+)
+ * 5- Outros (Low)
  */
-function getPriorityScore(item) {
+function getPriorityScore(item, history = {}) {
     let score = 0;
+    const now = Date.now();
+    const normId = normalizeId(item.id);
 
-    // Novidades do Drive ou identificadas no site
-    if (item.novidade || item.isNovidade) score += 1000;
+    // 1. Weekly Coverage (Absolute Priority: everything in Drive must be sent during the week)
+    if (history[normId]) {
+        const lastSentMs = history[normId].timestamp;
+        const daysSinceLastSent = (now - lastSentMs) / (1000 * 60 * 60 * 24);
+        if (daysSinceLastSent >= 7) score += 5000;
+    } else {
+        // Se nunca foi enviado, também é prioridade de cobertura semanal
+        score += 5000;
+    }
 
-    // Favoritos do Drive
-    if (item.isFavorito || item.favorito) score += 500;
-
-    // Tempo de adição ao Drive
+    // 2. Recent Modifications (Priority: most recent modifications in the last 7 days)
     if (item.createdTime) {
         const createdDate = new Date(item.createdTime);
-        const now = new Date();
         const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
-        if (diffDays < 7) score += 100;
+        if (diffDays < 7) score += 2000;
     }
+
+    // 3. Novidades do Drive ou identificadas no site
+    if (item.novidade || item.isNovidade) score += 1000;
+
+    // 4. Favoritos do Drive
+    if (item.isFavorito || item.favorito) score += 500;
 
     return score;
 }
@@ -70,9 +82,10 @@ async function runAllScrapers(overrideQuotas = null) {
         // =================================================================
         // PHASE 1: GOOGLE DRIVE PRIORITY
         // =================================================================
+        const history = loadHistory();
         const driveProducts = [];
         let driveItemsByStore = { farm: [], dressto: [], kju: [], zzmall: [], live: [] };
-        let unusedFarmDriveItems = [];
+        let allUnusedDriveItems = [];
 
         try {
             if (process.env.GOOGLE_DRIVE_FOLDER_ID) {
@@ -115,7 +128,7 @@ async function runAllScrapers(overrideQuotas = null) {
                 if (farmDriveItems.length > 0) {
                     // Ordenar pela nova regra de prioridade
                     const sortedFarmDriveItems = farmDriveItems
-                        .sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
+                        .sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
 
                     console.log(`📊 [FARM] ${sortedFarmDriveItems.length} itens disponíveis no Drive (${farmDriveItems.filter(i => i.novidade).length} novidades, ${farmDriveItems.filter(i => i.isFavorito).length} favoritos)`);
 
@@ -131,11 +144,10 @@ async function runAllScrapers(overrideQuotas = null) {
                     allProducts.push(...scrapedDriveItems);
                     driveProducts.push(...scrapedDriveItems);
 
-                    // SALVAR O RESTO: Remove todos que já foram TENTADOS (sucesso ou falha)
-                    const attemptedSet = new Set(attemptedIds.map(id => normalizeId(id)));
-
-                    // Guarda o que sobrou da lista `farmDriveItems` original que NÃO foi tentado
-                    unusedFarmDriveItems = farmDriveItems.filter(item => !attemptedSet.has(normalizeId(item.id)));
+                    // TRACK UNUSED
+                    const pickedIds = new Set(scrapedDriveItems.map(p => normalizeId(p.id)));
+                    const storeUnused = farmDriveItems.filter(item => !pickedIds.has(normalizeId(item.id)));
+                    allUnusedDriveItems.push(...storeUnused);
 
                     console.log(`📊 [FARM] Stats Drive: ${stats.found} capturados, ${stats.notFound} não encontrados, ${stats.duplicates} duplicados, ${stats.errors} erros.`);
                 }
@@ -152,7 +164,7 @@ async function runAllScrapers(overrideQuotas = null) {
 
                     if (items.length > 0) {
                         const limitedItems = items
-                            .sort((a, b) => getPriorityScore(b) - getPriorityScore(a))
+                            .sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history))
                             .slice(0, 50);
 
                         console.log(`🔍 [${store.toUpperCase()}] Iniciando Drive-First (${items.length} itens)...`);
@@ -177,6 +189,11 @@ async function runAllScrapers(overrideQuotas = null) {
                         allProducts.push(...scrapedItems);
                         driveProducts.push(...scrapedItems);
 
+                        // TRACK UNUSED FOR OTHER STORES
+                        const pickedIds = new Set(scrapedItems.map(p => normalizeId(p.id)));
+                        const storeUnused = items.filter(item => !pickedIds.has(normalizeId(item.id)));
+                        allUnusedDriveItems.push(...storeUnused);
+
                         console.log(`📊 [${store.toUpperCase()}] Stats Drive: ${stats.found} capturados, ${stats.notFound} não disponiveis, ${stats.duplicates} duplicados.`);
                     }
                 }
@@ -190,7 +207,7 @@ async function runAllScrapers(overrideQuotas = null) {
         const remainingQuotaFarm = Math.max(0, quotas.farm - driveCountFarm);
 
         console.log(`📊 Pós-Drive: ${driveCountFarm} itens Farm capturados. Restam ${remainingQuotaFarm} para scraping regular.`);
-        console.log(`📊 Itens Farm não utilizados do Drive: ${unusedFarmDriveItems.length}`);
+        console.log(`📊 Itens não utilizados do Drive (Total): ${allUnusedDriveItems.length}`);
 
         // =================================================================
         // PHASE 2: REGULAR SCRAPING
@@ -201,7 +218,7 @@ async function runAllScrapers(overrideQuotas = null) {
         // UPDATE: Para FARM e DressTo, NUNCA faz scraping regular (Forbidden)
         const DRIVE_ONLY_STORES = ['farm', 'dressto'];
 
-        if (!DRIVE_ONLY_STORES.includes('farm') && remainingQuotaFarm > 0 && unusedFarmDriveItems.length === 0) {
+        if (!DRIVE_ONLY_STORES.includes('farm') && remainingQuotaFarm > 0 && !allUnusedDriveItems.some(i => i.store === 'farm')) {
             console.log(`🌐 [FARM] Drive esgotado. Iniciando scraping regular...`);
             try {
                 let products = await scrapeFarm(remainingQuotaFarm, false, context);
@@ -209,8 +226,8 @@ async function runAllScrapers(overrideQuotas = null) {
                 allProducts.push(...products);
                 console.log(`✅ FARM (Regular): ${products.length} msgs geradas`);
             } catch (e) { console.error(`❌ FARM Error: ${e.message}`); }
-        } else if (remainingQuotaFarm > 0 && unusedFarmDriveItems.length > 0) {
-            console.log(`⏭️ [FARM] Pulando scraping regular. Ainda há ${unusedFarmDriveItems.length} itens no Drive para redistribuição.`);
+        } else if (remainingQuotaFarm > 0 && allUnusedDriveItems.some(i => i.store === 'farm')) {
+            console.log(`⏭️ [FARM] Pulando scraping regular. Ainda há itens no Drive para redistribuição.`);
         }
 
         const driveCountDressTo = driveProducts.filter(p => p.loja === 'dressto').length;
@@ -330,45 +347,84 @@ async function runAllScrapers(overrideQuotas = null) {
             console.log(`\n⚖️ Cota não atingida (${allProducts.length}/${totalTarget}). Lacuna de ${gap} produtos.`);
 
             // STRATEGY 1: CHECK REMAINING DRIVE ITEMS
-            if (unusedFarmDriveItems.length > 0) {
-                console.log(`\n🚙 Prioridade Redistribuição: Usando ${unusedFarmDriveItems.length} itens do Drive restantes...`);
+            if (allUnusedDriveItems.length > 0) {
+                console.log(`\n⚖️ Prioridade Redistribuição: Analisando ${allUnusedDriveItems.length} itens do Drive restantes (Todas as lojas)...`);
 
                 try {
-                    // Passa TODOS os candidatos restantes, mas ordenados por PRIORIDADE
-                    const driveFillCandidates = unusedFarmDriveItems.sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
+                    // Ordenar por prioridade
+                    const driveFillCandidates = allUnusedDriveItems.sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
 
-                    console.log(`   🔎 Tentando recuperar de ${driveFillCandidates.length} IDs disponíveis no Drive...`);
+                    console.log(`   🔎 Tentando recuperar itens do Drive harmoniosamente...`);
 
-                    const { products: driveFilledProducts, stats: redistStats } = await scrapeSpecificIds(browser, driveFillCandidates, gap);
-                    console.log(`   ✅ Retornados do Drive-Scraper: ${driveFilledProducts.length} itens. (Check: ${redistStats.checked}, Not Found: ${redistStats.notFound})`);
+                    // Marcamos esses candidatos com a flag driveExhausted
+                    const exhaustedWithFlags = driveFillCandidates.map(item => ({ ...item, driveExhausted: true }));
 
-                    driveFilledProducts.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+                    // Agrupar candidatos por loja para processar o gap harmoniosamente
+                    const candidatesByStore = {};
+                    exhaustedWithFlags.forEach(item => {
+                        if (!candidatesByStore[item.store]) candidatesByStore[item.store] = [];
+                        candidatesByStore[item.store].push(item);
+                    });
 
-                    // Add unique only
-                    const alreadyPickedIds = new Set(allProducts.map(p => p.id));
-                    const newDriveItems = driveFilledProducts.filter(p => !alreadyPickedIds.has(p.id));
-
-                    if (newDriveItems.length === 0 && driveFilledProducts.length > 0) {
-                        console.log(`   ⚠️ Todos os itens recuperados já estavam na lista principal.`);
+                    // Round-robin entre as lojas que têm itens
+                    const finalSelection = [];
+                    const storeKeys = Object.keys(candidatesByStore);
+                    let idx = 0;
+                    while (finalSelection.length < gap && storeKeys.length > 0) {
+                        const store = storeKeys[idx % storeKeys.length];
+                        const list = candidatesByStore[store];
+                        if (list && list.length > 0) {
+                            finalSelection.push(list.shift());
+                        } else {
+                            storeKeys.splice(idx % storeKeys.length, 1);
+                            continue;
+                        }
+                        idx++;
                     }
 
-                    allProducts.push(...newDriveItems);
-                    gap = totalTarget - allProducts.length;
+                    console.log(`   📦 Selecionados ${finalSelection.length} itens para preenchimento de gap.`);
 
-                    console.log(`♻️ Redistribuição (Drive): +${newDriveItems.length} itens.`);
+                    // Processar cada loja separadamente
+                    for (const store of [...new Set(finalSelection.map(i => i.store))]) {
+                        const storeItems = finalSelection.filter(i => i.store === store);
+                        const storeGap = storeItems.length;
+
+                        console.log(`   🔄 Recuperando ${storeGap} itens extras de ${store.toUpperCase()}...`);
+
+                        let results;
+                        if (store === 'farm') {
+                            results = await scrapeSpecificIds(context, storeItems, storeGap);
+                        } else {
+                            results = await scrapeSpecificIdsGeneric(context, storeItems, store, storeGap);
+                        }
+
+                        const products = results.products || [];
+                        products.forEach(p => {
+                            if (store === 'farm') p.message = buildFarmMessage(p, p.timerData);
+                            else if (store === 'dressto') p.message = buildDressMessage(p);
+                            else if (store === 'kju') p.message = buildKjuMessage(p);
+                            else if (store === 'live') p.message = buildLiveMessage([p]);
+                            else if (store === 'zzmall') p.message = buildZzMallMessage(p);
+
+                            p.novidade = !!(p.novidade || p.isNovidade);
+                            p.favorito = !!(p.favorito || p.isFavorito);
+                        });
+
+                        const pickedIds = new Set(allProducts.map(p => p.id));
+                        const uniqueFound = products.filter(p => !pickedIds.has(p.id));
+                        allProducts.push(...uniqueFound);
+                    }
+
+                    gap = totalTarget - allProducts.length;
                 } catch (driveRedistErr) {
                     console.error(`❌ Erro Redistribuição Drive: ${driveRedistErr.message}`);
                 }
             } else {
-                console.log(`\n⚠️ Sem itens 'unusedFarmDriveItems' disponíveis para redistribuição.`);
+                console.log(`\n⚠️ Sem itens 'allUnusedDriveItems' disponíveis para redistribuição.`);
             }
 
-
-
             // STRATEGY 2: GENERIC SCRAPE (FALLBACK DO FALLBACK)
-            // Só faz scraping genérico se o Drive estiver COMPLETAMENTE ESGOTADO
-            // E se não for de uma das lojas de Drive-Only (Farm, DressTo)
-            if (gap > 0 && unusedFarmDriveItems.length === 0) {
+            if (gap > 0 && allUnusedDriveItems.length === 0) {
                 console.log(`\n🔄 Preenchendo lacuna restante (${gap}) com FARM (Genérico)...`);
                 console.log(`   ⚠️ CUIDADO: Verificando se Farm é Drive-Only...`);
 
@@ -410,7 +466,7 @@ async function runAllScrapers(overrideQuotas = null) {
         console.log(`RESULTADO FINAL: ${allProducts.length}/${totalTarget} produtos coletados`);
         console.log('Aplicando ordenação de prioridade final...');
 
-        allProducts.sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
+        allProducts.sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
 
         // Final payload normalization for webhook
         allProducts.forEach(p => {

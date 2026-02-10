@@ -121,7 +121,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
                 // Check Duplicates internally (but after logging attempt so user sees progress)
                 const normIdCheck = normalizeId(item.id);
-                if (!item.isFavorito && isDuplicate(normIdCheck)) {
+                if (!item.isFavorito && isDuplicate(normIdCheck, { maxAgeHours: 48 })) {
                     console.log(`   ⏭️  Pulando: Já enviado recentemente.`);
                     stats.duplicates++;
                     continue;
