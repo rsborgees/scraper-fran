@@ -13,7 +13,11 @@ const DEBUG_DIR = path.join(__dirname, '../../debug');
  * Quota: 18 produtos (80% vestidos, 20% macacões)
  */
 async function scrapeDressTo(quota = 18, parentBrowser = null) {
-    console.log('\n👗 INICIANDO SCRAPER DRESS TO (Quota: ' + quota + ')');
+    // 🛑 DRESS TO DRIVE-ONLY RULE (User Request: 2026-02-10)
+    // Dress To should only be scraped via Drive-First (scrapeSpecificIdsGeneric).
+    // This regular scraper function is kept for legacy/testing but should not be used in production orchestration.
+    console.log('\n👗 [DRESSTO] AVISO: Esta loja está configurada para DRIVE-ONLY no orchestrator.');
+    console.log('👗 INICIANDO SCRAPER REGULAR DRESS TO (Quota: ' + quota + ')');
 
     const products = [];
     const seenInRun = new Set();

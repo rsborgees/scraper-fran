@@ -414,10 +414,15 @@ async function runAllScrapers(overrideQuotas = null) {
 
         // Final payload normalization for webhook
         allProducts.forEach(p => {
-            p.novidade = p.novidade || p.isNovidade || false;
-            p.favorito = p.favorito || p.isFavorito || false;
-            p.bazar = p.bazar || false;
-            p.bazarFavorito = p.bazarFavorito || (p.bazar && p.favorito) || false;
+            // Ensure boolean values for flags
+            p.novidade = !!(p.novidade || p.isNovidade);
+            p.isNovidade = p.novidade;
+
+            p.favorito = !!(p.favorito || p.isFavorito);
+            p.isFavorito = p.favorito;
+
+            p.bazar = !!p.bazar;
+            p.bazarFavorito = !!(p.bazarFavorito || (p.bazar && p.favorito));
         });
 
         console.log('Todas as mensagens foram geradas com sucesso.');
