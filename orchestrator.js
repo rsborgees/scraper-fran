@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { initBrowser } = require('./browser_setup'); // Necessário para passar browser instancia
+const { distributeLinks } = require('./distributionEngine');
 
 // Imports
 const { scrapeFarm } = require('./scrapers/farm');
@@ -64,11 +65,11 @@ function getPriorityScore(item, history = {}) {
 async function runAllScrapers(overrideQuotas = null) {
     const allProducts = [];
     const quotas = overrideQuotas || {
-        farm: 5,
-        dressto: 2,
-        kju: 1,
-        live: 1,
-        zzmall: 1
+        farm: 84,   // 70% of 120
+        dressto: 18, // 15% of 120
+        kju: 6,      // 5% of 120
+        live: 10,    // 8% of 120
+        zzmall: 2    // 2% of 120
     };
 
     // 🚀 SINGLE BROWSER INSTANCE SHARING
@@ -155,7 +156,7 @@ async function runAllScrapers(overrideQuotas = null) {
                 // =================================================================
                 // 🚗 DRIVE-FIRST FOR OTHER STORES (Dressto, KJU, ZZMall, Live)
                 // =================================================================
-                const otherStores = ['dressto', 'kju', 'zzmall', 'live'];
+                const otherStores = ['kju', 'zzmall', 'live'];
                 const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
 
                 for (const store of otherStores) {
@@ -197,6 +198,56 @@ async function runAllScrapers(overrideQuotas = null) {
                         console.log(`📊 [${store.toUpperCase()}] Stats Drive: ${stats.found} capturados, ${stats.notFound} não disponiveis, ${stats.duplicates} duplicados.`);
                     }
                 }
+
+                // ------------------------------------------------------------------------
+                // 👗 [DRESS TO] DRIVE-FIRST (With 2-Pass Repetition Rule)
+                // ------------------------------------------------------------------------
+                const dressItems = driveItemsByStore['dressto'];
+                if (dressItems && dressItems.length > 0) {
+                    console.log(`🔍 [DRESSTO] Iniciando Drive-First (${dressItems.length} itens)...`);
+
+                    // Passo 1: Sem repetição recente (72h default, 24h para favoritos)
+                    let candidates = dressItems.filter(item => {
+                        return !isDuplicate(item.id, { force: !!item.isFavorito, maxAgeHours: 72 });
+                    });
+
+                    // Passo 2: Fallback se pool for pequeno (Aceita repetição de 24h para qualquer um)
+                    // Consideramos "pool pequeno" se tivermos menos candidatos que a cota da Dress To
+                    if (candidates.length < quotas.dressto) {
+                        console.log(`   ⚠️ [DRESSTO] Poucos itens novos no Drive. Aplicando fallback de repetição (24h)...`);
+                        const fallbackCandidates = dressItems.filter(item => {
+                            const normId = normalizeId(item.id);
+                            if (candidates.some(c => normalizeId(c.id) === normId)) return false;
+                            return !isDuplicate(item.id, { force: true, maxAgeHours: 24 });
+                        });
+                        candidates = [...candidates, ...fallbackCandidates];
+                    }
+
+                    const limitedItems = candidates
+                        .sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history))
+                        .slice(0, 50);
+
+                    const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, 'dressto', quotas.dressto - 2, { maxAgeHours: 24 }); // Permite fallback de 24h
+
+                    scrapedItems.forEach(p => {
+                        p.message = buildDressMessage(p);
+                        p.novidade = !!(p.novidade || p.isNovidade);
+                        p.isNovidade = p.novidade;
+                        p.favorito = !!(p.favorito || p.isFavorito);
+                        p.isFavorito = p.favorito;
+                        p.bazar = !!p.bazar;
+                        p.bazarFavorito = !!(p.bazarFavorito || (p.bazar && p.favorito));
+                    });
+
+                    allProducts.push(...scrapedItems);
+                    driveProducts.push(...scrapedItems);
+
+                    const pickedIds = new Set(scrapedItems.map(p => normalizeId(p.id)));
+                    const storeUnused = dressItems.filter(item => !pickedIds.has(normalizeId(item.id)));
+                    allUnusedDriveItems.push(...storeUnused);
+
+                    console.log(`📊 [DRESSTO] Stats Drive: ${stats.found} capturados, ${stats.notFound} não disponiveis, ${stats.duplicates} duplicados.`);
+                }
             }
         } catch (driveErr) {
             console.error('❌ Erro Phase 1 (Drive):', driveErr.message);
@@ -230,19 +281,27 @@ async function runAllScrapers(overrideQuotas = null) {
             console.log(`⏭️ [FARM] Pulando scraping regular. Ainda há itens no Drive para redistribuição.`);
         }
 
-        const driveCountDressTo = driveProducts.filter(p => p.loja === 'dressto').length;
-        const remainingQuotaDressTo = Math.max(0, quotas.dressto - driveCountDressTo);
+        const remainingQuotaDressTo = Math.max(0, quotas.dressto - allProducts.filter(p => p.loja === 'dressto').length);
 
-        if (!DRIVE_ONLY_STORES.includes('dressto') && remainingQuotaDressTo > 0) {
-            try {
-                const { scrapeDressTo } = require('./scrapers/dressto');
-                let products = await scrapeDressTo(remainingQuotaDressTo, context);
-                products.forEach(p => p.message = buildDressMessage(p));
-                allProducts.push(...products);
-                console.log(`✅ DressTo: ${products.length} msgs geradas`);
-            } catch (e) { console.error(`❌ DressTo Error: ${e.message}`); }
+        // Aba de Novidades do Site (Sempre tenta pegar os 10%)
+        const dressSiteQuota = Math.round(quotas.dressto * 0.10) || 2;
+        console.log(`🌐 [DRESSTO] Buscando Novidades do Site (Meta: ${dressSiteQuota})...`);
+        try {
+            const { scrapeDressTo } = require('./scrapers/dressto');
+            let products = await scrapeDressTo(dressSiteQuota, context);
+            products.forEach(p => {
+                p.message = buildDressMessage(p);
+                p.isSiteNovidade = true; // Necessário para o motor de distribuição
+            });
+            allProducts.push(...products);
+            console.log(`✅ [DRESSTO] Novidades Site: ${products.length} msgs geradas`);
+        } catch (e) { console.error(`❌ [DRESSTO] Novidades Site Error: ${e.message}`); }
+
+        if (remainingQuotaDressTo > 0 && !DRIVE_ONLY_STORES.includes('dressto')) {
+            // Este bloco agora é legado, pois Dress To é Drive-First + Site Novidades
+            console.log(`⏭️ [DRESSTO] Skipping regular scraping fallback.`);
         } else if (quotas.dressto > 0) {
-            console.log(`✅ DressTo: Cota preenchida pelo Drive (${driveCountDressTo}/${quotas.dressto})`);
+            console.log(`✅ [DRESSTO] Processamento concluído.`);
         }
 
         const driveCountKju = driveProducts.filter(p => p.loja === 'kju').length;
@@ -466,25 +525,13 @@ async function runAllScrapers(overrideQuotas = null) {
         console.log(`RESULTADO FINAL: ${allProducts.length}/${totalTarget} produtos coletados`);
         console.log('Aplicando ordenação de prioridade final...');
 
-        allProducts.sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
+        console.log('Aplicando motor de distribuição final...');
+        const distributedProducts = distributeLinks(allProducts);
 
-        // Final payload normalization for webhook
-        allProducts.forEach(p => {
-            // Ensure boolean values for flags
-            p.novidade = !!(p.novidade || p.isNovidade);
-            p.isNovidade = p.novidade;
-
-            p.favorito = !!(p.favorito || p.isFavorito);
-            p.isFavorito = p.favorito;
-
-            p.bazar = !!p.bazar;
-            p.bazarFavorito = !!(p.bazarFavorito || (p.bazar && p.favorito));
-        });
-
-        console.log('Todas as mensagens foram geradas com sucesso.');
+        console.log(`Mensagens finais selecionadas: ${distributedProducts.length}`);
         console.log('==================================================');
 
-        return allProducts;
+        return distributedProducts;
 
     } catch (error) {
         console.error(`❌ Erro no Orchestrator: ${error.message}`);

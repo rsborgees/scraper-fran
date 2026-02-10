@@ -74,6 +74,7 @@ async function fetchViaVtexAPI(searchKey) {
         else if (catRaw.includes('blus') || catRaw.includes('top')) categoria = 'blusa';
         else if (catRaw.includes('brinc') || catRaw.includes('colar') || catRaw.includes('bolsa')) categoria = 'acessório';
         else if (catRaw.includes('calc')) categoria = 'calça';
+        else if (catRaw.includes('casaco') || catRaw.includes('jaqueta') || catRaw.includes('blazer')) categoria = 'casaco';
 
         // Primeiro item disponível
         const item = pApi.items.find(i => i.sellers && i.sellers[0].commertialOffer.AvailableQuantity > 0) || pApi.items[0];
@@ -317,6 +318,7 @@ async function parseProductDressTo(page, url) {
             else if (fullText.includes('blusa') || fullText.includes('top') || fullText.includes('camisa') || fullText.includes('regata')) categoria = 'blusa';
             else if (fullText.includes('brinco') || fullText.includes('bolsa') || fullText.includes('colar') || fullText.includes('cinto') || fullText.includes('acessório')) categoria = 'acessório';
             else if (fullText.includes('calça')) categoria = 'calça';
+            else if (fullText.includes('casaco') || fullText.includes('jaqueta') || fullText.includes('blazer')) categoria = 'casaco';
 
             // ID
             let id = 'unknown';

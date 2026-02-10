@@ -62,6 +62,15 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
                 // Pequena pausa para garantir carregamento dinâmico (VTEX)
                 await page.waitForTimeout(5000);
 
+                // 📁 CACHE DRIVE ITEMS (LOAD ONCE PER PAGE OR START)
+                const { getExistingIdsFromDrive } = require('../../driveManager');
+                const driveFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+                let driveItems = [];
+                if (driveFolderId) {
+                    driveItems = await getExistingIdsFromDrive(driveFolderId, 'dressto');
+                    console.log(`   📁 [DRESSTO] Cache de Drive carregado: ${driveItems.length} itens.`);
+                }
+
                 // Explicit wait for any product link to ensure page is actually ready
                 try {
                     // Check for VTEX error before waiting for selectors
@@ -184,18 +193,16 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
                             console.log(`      🖼️  Baixando imagem ${product.id}...`);
                             let imagePath = null;
                             try {
-                                // 1. Tenta buscar no Google Drive primeiro
-                                const { findFileByProductId } = require('../../driveManager'); // Lazy import/ensure import
-                                const driveFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID; // Usando a variável correta do .env
+                                // 1. Tenta buscar no cache do Drive carregado no início da página
+                                const normId = normalizeId(product.id);
+                                const driveMatch = driveItems.find(d => {
+                                    // Match exato ou match normalizado
+                                    return d.id === product.id || d.id === normId || (d.ids && d.ids.includes(normId));
+                                });
 
-                                let driveItem = null;
-                                if (driveFolderId) {
-                                    driveItem = await findFileByProductId(driveFolderId, product.id);
-                                }
-
-                                if (driveItem && driveItem.driveUrl) {
-                                    console.log(`      📁 Imagem encontrada no Drive: ${driveItem.name}`);
-                                    const imgResult = await processImageDirect(driveItem.driveUrl, 'DRESSTO', product.id);
+                                if (driveMatch && driveMatch.driveUrl) {
+                                    console.log(`      📁 Imagem encontrada no Drive: ${driveMatch.name}`);
+                                    const imgResult = await processImageDirect(driveMatch.driveUrl, 'DRESSTO', product.id);
                                     if (imgResult?.status === 'success' && imgResult.cloudinary_urls?.length) {
                                         imagePath = imgResult.cloudinary_urls[0];
                                     }
@@ -211,12 +218,12 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
                                         imagePath = imgResult.cloudinary_urls[0];
                                     }
                                 }
-
                             } catch (err) {
                                 console.error(`      ❌ Erro ao processar imagem: ${err.message}`);
                             }
 
                             product.loja = 'dressto';
+                            product.isSiteNovidade = true;
 
                             // 🏷️ LOGICA DE DESCONTO AUTOMATICO: 10% em itens sem desconto
                             if (product.precoOriginal === product.precoAtual) {

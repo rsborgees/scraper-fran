@@ -7,9 +7,28 @@ const TOTAL_LINKS = 120;
 const QUOTAS = {
     FARM: { percent: 0.70, count: Math.round(TOTAL_LINKS * 0.70) }, // 84
     KJU: { percent: 0.05, count: Math.round(TOTAL_LINKS * 0.05) },  // 6
-    DRESS: { percent: 0.15, count: Math.round(TOTAL_LINKS * 0.15) },// 18
+    DRESS: {
+        percent: 0.15,
+        count: Math.round(TOTAL_LINKS * 0.15), // 18
+        segments: {
+            BAZAR: 0.10,    // 10% of Dress To Quota (Bazar Drive)
+            NOVIDADE: 0.10, // 10% of Dress To Quota (Site Novidades)
+            REGULAR: 0.80   // 80% remaining
+        }
+    },
     LIVE: { percent: 0.08, count: Math.round(TOTAL_LINKS * 0.08) }, // 10
     ZZMALL: { percent: 0.02, count: Math.round(TOTAL_LINKS * 0.02) }// 2
+};
+
+// Sub-cotas Dress To
+const DRESS_SUBQUOTAS = {
+    'vestido': 0.60,
+    'macacão': 0.25,
+    'blusa': 0.03, // Equidistributed 15% / 5
+    'saia': 0.03,
+    'short': 0.03,
+    'calça': 0.03,
+    'casaco': 0.03
 };
 
 // Sub-cotas FARM
@@ -70,10 +89,37 @@ function distributeLinks(allProducts) {
         finalSelection.push(...catProducts.slice(0, count));
     }
 
+    // Processamento Dress To (Com sub-cotas e segmentos)
+    const dressQuota = QUOTAS.DRESS.count;
+    const dressPool = eligible.filter(p => p.brand === 'DRESS' || p.loja === 'dressto');
+
+    // 1. Bazar (Drive) - 10%
+    const bazarQuota = Math.round(dressQuota * QUOTAS.DRESS.segments.BAZAR);
+    const bazarItems = dressPool.filter(p => p.bazar);
+    finalSelection.push(...bazarItems.slice(0, bazarQuota));
+
+    // 2. Novidades (Site) - 10%
+    const novidadeQuota = Math.round(dressQuota * QUOTAS.DRESS.segments.NOVIDADE);
+    const novidadeItems = dressPool.filter(p => p.isSiteNovidade && !p.bazar); // Prioriza bazar se estiver em ambos (?)
+    finalSelection.push(...novidadeItems.slice(0, novidadeQuota));
+
+    // 3. Distribuição por Categoria (Restante)
+    const currentDressIds = new Set(finalSelection.filter(p => p.brand === 'DRESS' || p.loja === 'dressto').map(p => p.id));
+    const remainingDressPool = dressPool.filter(p => !currentDressIds.has(p.id));
+    const remainingDressQuota = dressQuota - finalSelection.filter(p => p.brand === 'DRESS' || p.loja === 'dressto').length;
+
+    for (const [cat, percent] of Object.entries(DRESS_SUBQUOTAS)) {
+        const count = Math.round(dressQuota * percent);
+        const catProducts = remainingDressPool.filter(p => p.categoria === cat);
+        // Evita ultrapassar a quota total de Dress To se houver muitos macacões/vestidos
+        const take = Math.min(count, dressQuota - finalSelection.filter(p => p.brand === 'DRESS' || p.loja === 'dressto').length);
+        if (take > 0) finalSelection.push(...catProducts.slice(0, take));
+    }
+
     // Processamento Demais Marcas
-    ['KJU', 'DRESS', 'LIVE', 'ZZMALL'].forEach(brand => {
+    ['KJU', 'LIVE', 'ZZMALL'].forEach(brand => {
         const quota = QUOTAS[brand].count;
-        const brandProducts = eligible.filter(p => p.brand === brand);
+        const brandProducts = eligible.filter(p => (p.brand || '').toUpperCase() === brand || (p.loja || '').toUpperCase() === brand);
         finalSelection.push(...brandProducts.slice(0, quota));
     });
 
@@ -87,4 +133,4 @@ function distributeLinks(allProducts) {
     return shuffle(finalSelection);
 }
 
-module.exports = { distributeLinks, QUOTAS };
+module.exports = { distributeLinks, QUOTAS, FARM_SUBQUOTAS, DRESS_SUBQUOTAS };

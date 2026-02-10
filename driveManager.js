@@ -56,7 +56,7 @@ function loadAuth() {
  * @param {string} folderId 
  * @returns {Promise<Array<{id: string, fileId: string, name: string, driveUrl: string, isFavorito: boolean}>>}
  */
-async function getExistingIdsFromDrive(folderId) {
+async function getExistingIdsFromDrive(folderId, defaultStore = null) {
     if (!folderId) {
         console.log('⚠️ [Drive] ID da pasta não fornecido. Pulando verificação do Drive.');
         return [];
@@ -95,21 +95,13 @@ async function getExistingIdsFromDrive(folderId) {
                     // NÃO é conjunto se houver underline: "351693_350740" -> Ignora underline
 
                     let ids = [];
-                    // Busca todos os IDs de 6+ dígitos
-                    const allIds = file.name.match(/\d{6,}/g) || [];
+                    // Busca IDs removendo separadores comuns (., -, _)
+                    const cleanName = file.name.replace(/[.\-_]/g, '');
+                    const allIds = cleanName.match(/\d{6,}/g) || [];
 
                     if (allIds.length > 1) {
-                        // Verifica se a separação entre os dois primeiros IDs tem underline
-                        // Se tiver, tratamos como ID único (pega só o primeiro) e não é conjunto
-                        const id1 = allIds[0];
-                        const id2 = allIds[1];
-                        const between = file.name.substring(file.name.indexOf(id1) + id1.length, file.name.indexOf(id2));
-
-                        if (between.includes('_')) {
-                            ids = [id1]; // Não é conjunto
-                        } else {
-                            ids = allIds; // É conjunto
-                        }
+                        // Se houver múltiplos IDs, mantemos a lógica de conjunto
+                        ids = allIds;
                     } else {
                         ids = allIds;
                     }
@@ -133,6 +125,10 @@ async function getExistingIdsFromDrive(folderId) {
                             store = 'zzmall';
                         } else if (nameLower.includes('live')) {
                             store = 'live';
+                        }
+
+                        if (!store && defaultStore) {
+                            store = defaultStore;
                         }
 
                         if (store) {
@@ -221,10 +217,13 @@ async function findFileByProductId(folderId, productId) {
         const auth = loadAuth();
         const drive = google.drive({ version: 'v3', auth });
 
-        // Busca exata ou parcial pelo ID no nome
+        // Tenta buscar pelo ID exato e também pela versão normalizada
+        const normId = productId.toString().replace(/\D/g, '');
+        const query = `'${folderId}' in parents and (name contains '${productId}' or name contains '${normId}') and trashed = false`;
+
         const start = Date.now();
         const res = await drive.files.list({
-            q: `'${folderId}' in parents and name contains '${productId}' and trashed = false`,
+            q: query,
             fields: 'files(id, name, webContentLink)',
             spaces: 'drive'
         });

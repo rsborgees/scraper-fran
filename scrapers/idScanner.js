@@ -65,7 +65,8 @@ const STORE_CONFIG = {
  * @param {number} quota Meta máxima de itens para esta loja
  * @returns {Promise<{products: Array, attemptedIds: Array, stats: object}>}
  */
-async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName, quota = 999) {
+async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName, quota = 999, options = {}) {
+    const maxAgeHours = options.maxAgeHours || 48;
     const config = STORE_CONFIG[storeName];
     if (!config) {
         console.log(`❌ [ID Scanner] Loja não configurada: ${storeName}`);
@@ -121,7 +122,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
                 // Check Duplicates internally (but after logging attempt so user sees progress)
                 const normIdCheck = normalizeId(item.id);
-                if (!item.isFavorito && isDuplicate(normIdCheck, { maxAgeHours: 48 })) {
+                if (!item.isFavorito && isDuplicate(normIdCheck, { maxAgeHours })) {
                     console.log(`   ⏭️  Pulando: Já enviado recentemente.`);
                     stats.duplicates++;
                     continue;
@@ -175,8 +176,16 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 navigationSuccess = true;
                             } else {
                                 // Está na listagem, precisa clicar no produto
-                                const productLink = config.productLinkSelector;
-                                await page.waitForSelector(productLink, { timeout: 15000 });
+                                // 4. Fallback se necessário: URL Direta de Busca
+                                if (!navigationSuccess) {
+                                    console.log(`      🔍 Tentando busca direta por ID: ${item.id}...`);
+                                    const directSearchUrl = `https://www.dressto.com.br/${item.id}?_q=${item.id}&map=ft`;
+                                    await page.goto(directSearchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                    await page.waitForTimeout(3000);
+                                    if (page.url().includes('/p')) {
+                                        navigationSuccess = true;
+                                    }
+                                }
                                 navigationSuccess = true;
                             }
 
@@ -326,6 +335,12 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         if (item.driveUrl) {
                             product.imagePath = item.driveUrl;
                             product.imageUrl = item.driveUrl;
+                        } else if (storeName === 'dressto') {
+                            // 🛑 DRESS TO STRICT RULE: Only Site Novidades (scraped via index.js) use site images.
+                            // items processed here are from Drive, so they MUST have a driveUrl or they get no image.
+                            console.log(`   🛑 [DRESSTO] Bloqueando imagem do site para item do Drive sem link direto.`);
+                            product.imagePath = null;
+                            product.imageUrl = null;
                         }
 
                         product.favorito = item.isFavorito || false;
