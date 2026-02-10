@@ -8,8 +8,8 @@ const QUOTAS = {
     FARM: { percent: 0.70, count: Math.round(TOTAL_LINKS * 0.70) }, // 84
     KJU: { percent: 0.05, count: Math.round(TOTAL_LINKS * 0.05) },  // 6
     DRESS: { percent: 0.15, count: Math.round(TOTAL_LINKS * 0.15) },// 18
-    LIVE: { percent: 0.05, count: Math.round(TOTAL_LINKS * 0.05) }, // 6
-    ZZMALL: { percent: 0.05, count: Math.round(TOTAL_LINKS * 0.05) }// 6
+    LIVE: { percent: 0.08, count: Math.round(TOTAL_LINKS * 0.08) }, // 10
+    ZZMALL: { percent: 0.02, count: Math.round(TOTAL_LINKS * 0.02) }// 2
 };
 
 // Sub-cotas FARM
@@ -87,4 +87,4 @@ function distributeLinks(allProducts) {
     return shuffle(finalSelection);
 }
 
-module.exports = { distributeLinks };
+module.exports = { distributeLinks, QUOTAS };
