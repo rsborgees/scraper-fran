@@ -2,22 +2,22 @@
  * Engine de Distribuição de Links
  */
 
-// Cotas Diárias (Base 120 links)
-const TOTAL_LINKS = 120;
+// Cotas Diárias (Base 10 links por execução)
+const TOTAL_LINKS = 10;
 const QUOTAS = {
-    FARM: { percent: 0.70, count: Math.round(TOTAL_LINKS * 0.70) }, // 84
-    KJU: { percent: 0.05, count: Math.round(TOTAL_LINKS * 0.05) },  // 6
+    FARM: { percent: 0.50, count: 5 }, // 5
+    KJU: { percent: 0.10, count: 1 },  // 1
     DRESS: {
-        percent: 0.15,
-        count: Math.round(TOTAL_LINKS * 0.15), // 18
+        percent: 0.20,
+        count: 2, // 2
         segments: {
             BAZAR: 0.10,    // 10% of Dress To Quota (Bazar Drive)
             NOVIDADE: 0.10, // 10% of Dress To Quota (Site Novidades)
             REGULAR: 0.80   // 80% remaining
         }
     },
-    LIVE: { percent: 0.08, count: Math.round(TOTAL_LINKS * 0.08) }, // 10
-    ZZMALL: { percent: 0.02, count: Math.round(TOTAL_LINKS * 0.02) }// 2
+    LIVE: { percent: 0.10, count: 1 }, // 1
+    ZZMALL: { percent: 0.10, count: 1 }// 1
 };
 
 // Sub-cotas Dress To

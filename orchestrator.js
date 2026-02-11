@@ -65,11 +65,11 @@ function getPriorityScore(item, history = {}) {
 async function runAllScrapers(overrideQuotas = null) {
     const allProducts = [];
     const quotas = overrideQuotas || {
-        farm: 84,   // 70% of 120
-        dressto: 18, // 15% of 120
-        kju: 6,      // 5% of 120
-        live: 10,    // 8% of 120
-        zzmall: 2    // 2% of 120
+        farm: 5,     // 50%
+        dressto: 2,  // 20%
+        kju: 1,      // 10%
+        live: 1,     // 10%
+        zzmall: 1    // 10%
     };
 
     // 🚀 SINGLE BROWSER INSTANCE SHARING
