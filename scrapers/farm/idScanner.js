@@ -313,7 +313,7 @@ function fastParseFromApi(productData) {
 
     return {
         data: {
-            id: productData.productId,
+            id: productData.productReference || productData.productId,
             nome: name,
             precoOriginal: precoOriginal,
             precoAtual: precoAtual,
