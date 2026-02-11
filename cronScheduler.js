@@ -280,6 +280,7 @@ function setupDailySchedule() {
     }, { timezone });
 
     // 3. Reloginho Check: De 1h em 1h, 24/7
+    const reloginhoCron = '0 * * * *';
     cron.schedule(reloginhoCron, async () => {
         await checkFarmTimer();
     }, { timezone });
