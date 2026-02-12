@@ -422,6 +422,22 @@ async function parseProduct(page, url) {
                 }
             }
 
+            // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou GG (sem P, M, G)
+            const clothingCategoriesList = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho', 'conjunto', 'casaco', 'top/body', 'banho'];
+            if (clothingCategoriesList.includes(category)) {
+                const standardSizes = ['P', 'M', 'G'];
+                const numericSizePattern = /^(3[4-9]|4[0-6])$/;
+
+                const hasStandardSize = uniqueSizes.some(size => {
+                    const normalized = size.toUpperCase().trim();
+                    return standardSizes.includes(normalized) || numericSizePattern.test(normalized);
+                });
+
+                if (!hasStandardSize) {
+                    return { error: `Apenas tamanhos extremos disponíveis (${uniqueSizes.join(', ')}) - necessário P, M ou G` };
+                }
+            }
+
             // CHECK FINAL: Validação Rigorosa de Tamanho (Adulto vs Infantil)
             const isAdultSize = (sizes) => {
                 const adultMarkers = ['PP', 'P', 'M', 'G', 'GG', 'XG', 'UN', 'ÚNICO', '34', '36', '38', '40', '42', '44', '46', '48', '50'];

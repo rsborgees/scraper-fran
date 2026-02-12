@@ -431,6 +431,21 @@ async function parseProductLive(page, url) {
 
             console.log('DEBUG: Tamanhos encontrados:', tamanhos);
 
+            // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou GG (sem P, M, G)
+            if (tamanhos.length > 0) {
+                const standardSizes = ['P', 'M', 'G'];
+                const numericSizePattern = /^(3[4-9]|4[0-6])$/;
+
+                const hasStandardSize = tamanhos.some(size => {
+                    const normalized = size.toUpperCase().trim();
+                    return standardSizes.includes(normalized) || numericSizePattern.test(normalized);
+                });
+
+                if (!hasStandardSize) {
+                    return null; // Reject items with only PP/GG
+                }
+            }
+
             // 🆔 IMPROVED ID EXTRACTION
             const refEl = document.querySelector('.vtex-product-identifier-0-x-product-identifier__value, .vtex-product-identifier, .productReference, .sku, [class*="productId"]');
             let id = refEl ? getSafeText(refEl).replace(/\D/g, '') : '';

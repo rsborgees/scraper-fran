@@ -305,6 +305,23 @@ async function parseProductZZMall(page, url) {
             });
             const uniqueTamanhos = [...new Set(tamanhos)];
 
+            // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou GG (sem P, M, G)
+            if (uniqueTamanhos.length > 0) {
+                const standardSizes = ['P', 'M', 'G'];
+                const numericSizePattern = /^(3[4-9]|4[0-6])$/;
+
+                const hasStandardSize = uniqueTamanhos.some(size => {
+                    const normalized = size.toUpperCase().trim();
+                    return standardSizes.includes(normalized) || numericSizePattern.test(normalized);
+                });
+
+                // Only reject if it's clearly clothing (not shoes/bags)
+                const isClothing = uniqueTamanhos.some(s => ['PP', 'P', 'M', 'G', 'GG'].includes(s.toUpperCase()));
+                if (isClothing && !hasStandardSize) {
+                    return null; // Reject clothing items with only PP/GG
+                }
+            }
+
             // Categoria (Improved detection via dataLayer or Breadcrumbs)
             let categoria = 'outros';
 
