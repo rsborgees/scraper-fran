@@ -11,7 +11,7 @@ const { getPromoSummary } = require('./scrapers/farm/promoScanner');
 // Webhook Configuration
 const WEBHOOK_URL = 'https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa';
 const DAILY_WEBHOOK_URL = "https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/922595b8-a675-4e9e-8493-f3e734f236af";
-const DRIVE_SYNC_WEBHOOK_URL = "https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook-test/fav-fran";
+const DRIVE_SYNC_WEBHOOK_URL = "https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/fav-fran";
 
 /**
  * Envia o resumo diário de promoções (Job das 09h)
