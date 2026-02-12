@@ -351,7 +351,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         product.bazarFavorito = item.bazarFavorito || false;
 
                         product.loja = storeName;
-                        product.id = product.id && product.id !== 'unknown' ? product.id : item.id;
+                        product.id = item.driveId || (product.id && product.id !== 'unknown' ? product.id : item.id);
 
                         if (config.utmParam) {
                             product.url = finalUrl.includes('?') ? `${finalUrl}&${config.utmParam}` : `${finalUrl}?${config.utmParam}`;

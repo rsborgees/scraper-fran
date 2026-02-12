@@ -109,6 +109,7 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                     ids = ids.map(id => id.replace(/-/g, '_'));
 
                     if (ids.length > 0) {
+                        const verbatimId = ids.join(' ');
                         const mainId = ids[0];
                         const isFavorito = nameLower.includes('favorito');
                         const isNovidade = nameLower.includes('novidade');
@@ -136,6 +137,7 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                         if (store) {
                             items.push({
                                 id: mainId,
+                                driveId: verbatimId, // Preserve verbatim ID string
                                 ids: ids, // Novo campo com todos os IDs
                                 isSet: ids.length > 1,
                                 fileId: file.id,
@@ -172,6 +174,7 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                         if (cleanName.length > 3) {
                             items.push({
                                 id: `LIVE_${file.id.substring(0, 6)}`, // Temporary ID
+                                driveId: cleanName, // For Live by name, cleanName is the reference
                                 ids: [],
                                 isSet: false,
                                 fileId: file.id,
