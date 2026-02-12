@@ -94,17 +94,19 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                     // Conjunto: IDs separados por ESPAÇO. Ex: "351693 350740"
                     // NÃO é conjunto se houver underline: "351693_350740" -> Ignora underline
 
-                    let ids = [];
-                    // Busca IDs removendo separadores comuns (., -, _)
-                    const cleanName = file.name.replace(/[.\-_]/g, '');
-                    const allIds = cleanName.match(/\d{6,}/g) || [];
+                    // Busca IDs preservando padrões de conjunto ou cor
+                    // 1. Tenta capturar padrões compostos primeiro (XXXXXX_YYYY ou XXXXXX-YYYY)
+                    const compositeMatches = file.name.match(/\d{6,}[_-]\d+/g) || [];
 
-                    if (allIds.length > 1) {
-                        // Se houver múltiplos IDs, mantemos a lógica de conjunto
-                        ids = allIds;
-                    } else {
-                        ids = allIds;
-                    }
+                    // 2. Tenta capturar IDs simples (mínimo 6 dígitos)
+                    // Filtra para não pegar partes de IDs compostos já capturados
+                    const simpleMatches = (file.name.match(/\d{6,}/g) || []).filter(sid => {
+                        return !compositeMatches.some(cid => cid.includes(sid));
+                    });
+
+                    let ids = [...compositeMatches, ...simpleMatches];
+                    // Normaliza hífens para underscores em todos os IDs capturados
+                    ids = ids.map(id => id.replace(/-/g, '_'));
 
                     if (ids.length > 0) {
                         const mainId = ids[0];

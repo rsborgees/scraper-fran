@@ -121,9 +121,9 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
                             if (confirmedPromotions.length >= quota) break;
                             if (itemsFoundInCategory >= targetForCategory) break;
 
-                            // Check ID na URL
-                            const idMatch = url.match(/(\d{6,})/);
-                            let earlyId = idMatch ? idMatch[1].substring(0, 6) : null;
+                            // Check ID na URL - Captura código completo incluindo cor
+                            const idMatch = url.match(/(\d{6,}[_-]\d+|\d{6,})/);
+                            let earlyId = idMatch ? idMatch[1] : null;
                             // Se não tiver ID numérico na URL, tenta extrair do slug (menos confiável, mas ok para skip)
 
                             const normEarlyId = earlyId ? normalizeId(earlyId) : null;

@@ -97,6 +97,12 @@ function normalizeId(id) {
         return sid.toUpperCase();
     }
 
+    // Preserva padrão NUMERO_NUMERO ou NUMERO-NUMERO (códigos com variação de cor)
+    // Exemplo: 357793_51202 ou 357793-51202
+    if (/^\d+[_-]\d+$/.test(sid)) {
+        return sid.replace(/-/g, '_'); // Normaliza hífen para underscore
+    }
+
     // Remove tudo que não é dígito e depois remove zeros à esquerda
     return sid.replace(/\D/g, '').replace(/^0+/, '');
 }

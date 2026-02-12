@@ -470,27 +470,43 @@ async function parseProduct(page, url) {
             let id = 'unknown';
             const refEl = document.querySelector('.vtex-product-identifier, .productReference, .vtex-product-identifier--product-reference');
             if (refEl) {
-                const rawId = getSafeText(refEl).replace(/\D/g, '');
-                if (rawId.length >= 6) id = rawId.substring(0, 6);
-                else if (rawId.length > 0) id = rawId;
+                const rawId = getSafeText(refEl);
+                // Tenta extrair padrão com cor primeiro (XXXXXX_YYYY ou XXXXXX-YYYY)
+                const compositeMatch = rawId.match(/(\d{6,}[_-]\d+)/);
+                if (compositeMatch) {
+                    id = compositeMatch[1].replace(/-/g, '_'); // Normaliza hífen para underscore
+                } else {
+                    // Fallback: apenas números
+                    const numericId = rawId.replace(/\D/g, '');
+                    if (numericId.length >= 6) id = numericId;
+                    else if (numericId.length > 0) id = numericId;
+                }
             }
 
+
             if (id === 'unknown') {
-                // Fallback URL: tenta pegar os primeiros 6 dígitos do SKU
-                const urlMatch = window.location.href.match(/(\d{6,})/);
-                if (urlMatch) {
-                    id = urlMatch[1].substring(0, 6);
+                // Fallback URL: tenta pegar código completo incluindo cor
+                // Padrão Farm: /produto-nome-CODIGO1-CODIGO2/p
+                const urlPattern = window.location.href.match(/(\d{6,})-(\d+)\/p/);
+                if (urlPattern) {
+                    id = `${urlPattern[1]}_${urlPattern[2]}`; // Ex: 357793_51202
                 } else {
-                    // Fallback Final: Hash da URL (pathname)
-                    // Garante unicidade para produtos sem ID explícito no DOM/URL
-                    let hash = 0;
-                    const str = window.location.pathname;
-                    for (let i = 0; i < str.length; i++) {
-                        const char = str.charCodeAt(i);
-                        hash = ((hash << 5) - hash) + char;
-                        hash |= 0; // Convert to 32bit integer
+                    // Fallback simples: primeiros 6+ dígitos
+                    const urlMatch = window.location.href.match(/(\d{6,}[_-]\d+|\d{6,})/);
+                    if (urlMatch) {
+                        id = urlMatch[1].replace(/-/g, '_');
+                    } else {
+                        // Fallback Final: Hash da URL (pathname)
+                        // Garante unicidade para produtos sem ID explícito no DOM/URL
+                        let hash = 0;
+                        const str = window.location.pathname;
+                        for (let i = 0; i < str.length; i++) {
+                            const char = str.charCodeAt(i);
+                            hash = ((hash << 5) - hash) + char;
+                            hash |= 0; // Convert to 32bit integer
+                        }
+                        id = Math.abs(hash).toString();
                     }
-                    id = Math.abs(hash).toString();
                 }
             }
 
