@@ -327,11 +327,11 @@ async function parseProduct(page, url) {
             else if (strictText.includes('/macacao') || strictText.includes('/macaquinho') || strictText.includes('macacão') || strictText.includes('macaquinho')) category = 'macacão';
             else if (strictText.includes('/conjunto') || strictText.includes('conjunto')) category = 'conjunto';
             else if (strictText.includes('/saia') || strictText.includes('saia')) category = 'saia';
-            else if (strictText.includes('/short') || strictText.includes('short')) category = 'short';
-            else if (strictText.includes('/calca') || strictText.includes('calça')) category = 'calça';
+            else if (strictText.includes('/short') || strictText.includes('short') || strictText.includes('bermuda')) category = 'short';
+            else if (strictText.includes('/calca') || strictText.includes('calça') || strictText.includes('pantacourt')) category = 'calça';
             else if (strictText.includes('/blusa') || strictText.includes('/camisa') || strictText.includes('/t-shirt') || strictText.includes('blusa') || strictText.includes('camisa') || strictText.includes('t-shirt')) category = 'blusa';
             else if (strictText.includes('/casaco') || strictText.includes('/jaqueta') || strictText.includes('/moletom') || strictText.includes('casaco') || strictText.includes('jaqueta') || strictText.includes('moletom')) category = 'casaco';
-            else if (strictText.includes('/body') || strictText.includes('/kimono') || strictText.includes('/top') || strictText.includes('body') || strictText.includes('kimono') || strictText.includes('top')) category = 'top/body';
+            else if (strictText.includes('/body') || strictText.includes('/kimono') || strictText.includes('/top') || strictText.includes('/colete') || strictText.includes('body') || strictText.includes('kimono') || strictText.includes('top') || strictText.includes('colete')) category = 'top/body';
             else if (strictText.includes('/biquini') || strictText.includes('/maio') || strictText.includes('biquíni') || strictText.includes('maiô') || strictText.includes('biquini') || strictText.includes('maio')) category = 'banho';
 
             // BLOQUEIO EXPLÍCITO DE CATEGORIAS PROIBIDAS (Usando STRICT TEXT para evitar menu/footer)

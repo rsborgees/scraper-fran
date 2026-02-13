@@ -22,6 +22,8 @@ const {
     buildFarmMessage,
     buildZzMallMessage
 } = require('./messageBuilder');
+const { scrapeFarmSiteNovidades } = require('./scrapers/farm/siteNovidades');
+
 
 /**
  * Calcula o score de prioridade de um item
@@ -280,6 +282,18 @@ async function runAllScrapers(overrideQuotas = null) {
         } else if (remainingQuotaFarm > 0 && allUnusedDriveItems.some(i => i.store === 'farm')) {
             console.log(`⏭️ [FARM] Pulando scraping regular. Ainda há itens no Drive para redistribuição.`);
         }
+
+        // --- NOVIDADES DO SITE (10% Rule) ---
+        const farmSiteQuota = Math.round(quotas.farm * 0.10) || 1;
+        console.log(`🌐 [FARM] Buscando Novidades do Site (Meta: ${farmSiteQuota})...`);
+        try {
+            let products = await scrapeFarmSiteNovidades(farmSiteQuota);
+            products.forEach(p => {
+                p.message = buildFarmMessage(p, p.timerData);
+                p.isSiteNovidade = true;
+            });
+            allProducts.push(...products);
+        } catch (e) { console.error(`❌ [FARM] Novidades Site Error: ${e.message}`); }
 
         const remainingQuotaDressTo = Math.max(0, quotas.dressto - allProducts.filter(p => p.loja === 'dressto').length);
 

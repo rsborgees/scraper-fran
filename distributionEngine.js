@@ -5,7 +5,14 @@
 // Cotas Diárias (Base 10 links por execução)
 const TOTAL_LINKS = 10;
 const QUOTAS = {
-    FARM: { percent: 0.50, count: 5 }, // 5
+    FARM: {
+        percent: 0.50,
+        count: 5,
+        segments: {
+            SITE: 0.10,    // 10% of Farm Quota (Site Novidades)
+            REGULAR: 0.90  // 90% remaining (Drive)
+        }
+    },
     KJU: { percent: 0.10, count: 1 },  // 1
     DRESS: {
         percent: 0.20,
@@ -19,6 +26,7 @@ const QUOTAS = {
     LIVE: { percent: 0.10, count: 1 }, // 1
     ZZMALL: { percent: 0.10, count: 1 }// 1
 };
+
 
 // Sub-cotas Dress To
 const DRESS_SUBQUOTAS = {
@@ -77,17 +85,36 @@ function distributeLinks(allProducts) {
     const finalSelection = [];
 
     // Processamento FARM
-    const farmProducts = eligible.filter(p => p.brand === 'FARM');
+    const farmPool = eligible.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm');
     const farmQuota = QUOTAS.FARM.count;
 
-    // Distribuição por categoria na FARM
-    for (const [cat, percent] of Object.entries(FARM_SUBQUOTAS)) {
-        const count = Math.round(farmQuota * percent);
-        const catProducts = farmProducts.filter(p => p.categoria === cat);
-        // Pega os primeiros (supondo ordenação de prioridade/novidade)
-        // Se faltar, pegaria de 'Outros' (não implementado full fallback para simplificar)
-        finalSelection.push(...catProducts.slice(0, count));
+    // 1. Site Novidades (Pelo menos 10% da cota da Farm)
+    const farmSiteQuota = Math.round(farmQuota * QUOTAS.FARM.segments.SITE) || 1;
+    const farmSiteItems = farmPool.filter(p => p.isSiteNovidade);
+    finalSelection.push(...farmSiteItems.slice(0, farmSiteQuota));
+
+    // 2. Distribuição por Categoria (Drive/Regular)
+    const currentFarmIds = new Set(finalSelection.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm').map(p => p.id));
+    const remainingFarmPool = farmPool.filter(p => !currentFarmIds.has(p.id));
+    const remainingFarmQuota = farmQuota - finalSelection.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm').length;
+
+    if (remainingFarmQuota > 0) {
+        for (const [cat, percent] of Object.entries(FARM_SUBQUOTAS)) {
+            const count = Math.round(farmQuota * percent);
+            const catProducts = remainingFarmPool.filter(p => p.categoria === cat);
+            const take = Math.min(count, farmQuota - finalSelection.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm').length);
+            if (take > 0) finalSelection.push(...catProducts.slice(0, take));
+        }
+
+        // Preenchimento de segurança se as categorias não bastarem
+        const finalFarmCount = finalSelection.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm').length;
+        if (finalFarmCount < farmQuota) {
+            const gap = farmQuota - finalFarmCount;
+            const extra = remainingFarmPool.filter(p => !finalSelection.some(fs => fs.id === p.id));
+            finalSelection.push(...extra.slice(0, gap));
+        }
     }
+
 
     // Processamento Dress To (Com sub-cotas e segmentos)
     const dressQuota = QUOTAS.DRESS.count;

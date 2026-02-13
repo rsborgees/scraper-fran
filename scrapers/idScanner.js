@@ -248,7 +248,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
                             // Increased timeout for link detection in server environments
                             try {
-                                await page.waitForSelector(`${selector}, ${idSelector}`, { timeout: storeName === 'dressto' ? 45000 : 10000 });
+                                await page.waitForSelector(`${selector}, ${idSelector}`, { timeout: (storeName === 'dressto' || storeName === 'zzmall') ? 45000 : 10000 });
                             } catch (e) {
                                 const pageTitle = await page.title().catch(() => 'N/A');
                                 console.log(`      ⚠️ Timeout esperando link (${item.id}) [Title: ${pageTitle}]`);
@@ -267,7 +267,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             }, { sel: selector, idSel: idSelector });
 
                             // --- [FALLBACK HTML SEARCH] ---
-                            if (!href && storeName === 'dressto') {
+                            if (!href && (storeName === 'dressto' || storeName === 'zzmall')) {
                                 console.log(`      🔍 Link não encontrado por seletor. Tentando busca exaustiva no HTML para ID ${item.id}...`);
                                 href = await page.evaluate((id) => {
                                     const allLinks = Array.from(document.querySelectorAll('a'));
