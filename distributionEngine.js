@@ -150,13 +150,8 @@ function distributeLinks(allProducts) {
         finalSelection.push(...brandProducts.slice(0, quota));
     });
 
-    // Se faltou preencher (arredondamentos), completa com aleatórios
-    while (finalSelection.length < TOTAL_LINKS) {
-        // Fallback simples
-        finalSelection.push({ nome: 'Fallback Product', brand: 'GENERIC' });
-    }
-
     // Regra: Nunca repetir sequência (Shuffle final)
+    // Retorna apenas produtos reais, sem fallbacks genéricos
     return shuffle(finalSelection);
 }
 
