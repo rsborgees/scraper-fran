@@ -63,28 +63,45 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
 
                 for (const id of idsToSearch) {
                     try {
-                        const apiUrl = `https://www.farmrio.com.br/api/catalog_system/pub/products/search?ft=${id}`;
-                        const response = await page.goto(apiUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-                        let productsJson = [];
+                        // Tenta múltiplas APIs para encontrar o produto
+                        const apiQueries = [
+                            `ft=${id}`,
+                            `fq=alternativeId_RefId:${id}`,
+                            `fq=productId:${id}`
+                        ];
 
-                        try {
-                            productsJson = await response.json();
-                        } catch (e) {
-                            const text = await page.evaluate(() => document.body.innerText);
-                            try { productsJson = JSON.parse(text); } catch (e2) { }
+                        let productData = null;
+                        for (const query of apiQueries) {
+                            try {
+                                const apiUrl = `https://www.farmrio.com.br/api/catalog_system/pub/products/search?${query}`;
+                                const response = await page.goto(apiUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+                                let json = [];
+                                try {
+                                    json = await response.json();
+                                } catch (e) {
+                                    const text = await page.evaluate(() => document.body.innerText);
+                                    try { json = JSON.parse(text); } catch (e2) { }
+                                }
+
+                                if (json && json.length > 0) {
+                                    productData = json[0];
+                                    console.log(`      ✅ [API] ID ${id} encontrado via ${query.split('=')[0]}`);
+                                    break;
+                                }
+                            } catch (apiErr) {
+                                // Silently try next query if 400 or timeout
+                            }
                         }
 
                         // Check if JSON exists and has items
-                        if (!productsJson || productsJson.length === 0) {
-                            console.log(`      ⚠️ [Worker ${workerId}] ID ${id} não encontrado na API.`);
+                        if (!productData) {
+                            console.log(`      ⚠️ [Worker ${workerId}] ID ${id} não encontrado em nenhuma API.`);
                             itemNotFound = true;
                             continue;
                         }
 
-                        const productData = productsJson[0];
-
                         // --- OPTIMIZATION: FAST PARSE FROM API ---
-                        const fastProduct = fastParseFromApi(productData);
+                        const fastProduct = fastParseFromApi(productData, item.isFavorito);
 
                         // If fastProduct has an error (like OOS or forbidden category), we can skip it entirely
                         if (fastProduct && fastProduct.error) {
@@ -219,11 +236,11 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
  * Otimização: Extração de dados diretamente da API VTEX
  * Evita navegação desnecessária se os dados da API forem conclusivos.
  */
-function fastParseFromApi(productData) {
+function fastParseFromApi(productData, isFavorito = false) {
     if (!productData) return { error: 'Dados da API vazios' };
 
     const name = productData.productName;
-    const urlLower = productData.link.toLowerCase();
+    const urlLower = (productData.link || '').toLowerCase();
     const nameLower = name.toLowerCase();
 
     // 1. FILTRO ANTI-INFANTIL (Fábula / Bento / Teen / Mini / Kids)
@@ -231,10 +248,9 @@ function fastParseFromApi(productData) {
         return { error: 'Produto Infantil detectado' };
     }
 
-    // 2. CHECK BAZAR
+    // 2. CHECK BAZAR (REMOVIDO BLOQUEIO: Usuário Fran trabalha com Bazar)
     const isBazar = urlLower.includes('bazar') || nameLower.includes('bazar');
-    // Farm check: se for Bazar, costuma ser bloqueado no parser original
-    if (isBazar) return { error: 'Produto de Bazar bloqueado' };
+    // if (isBazar) return { error: 'Produto de Bazar bloqueado' };
 
     // 3. CATEGORIA
     let category = 'desconhecido';
@@ -262,7 +278,13 @@ function fastParseFromApi(productData) {
             return null;
         })();
         if (isForbidden) return { error: `${isForbidden} bloqueado` };
-        return { error: 'Categoria não identificada (Bloqueio Preventivo)' };
+
+        // Se for Favorito, permitimos "desconhecido" para não bloquear itens válidos que escaparam das categorias
+        if (isFavorito) {
+            category = 'outro';
+        } else {
+            return { error: 'Categoria não identificada (Bloqueio Preventivo)' };
+        }
     }
 
     // 4. PREÇOS E DISPONIBILIDADE
