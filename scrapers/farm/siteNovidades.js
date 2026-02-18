@@ -78,6 +78,8 @@ async function scrapeFarmSiteNovidades(quota = 2) {
                 isSiteNovidade: true, // Tag para o orchestrator
                 tamanhos: sizes,
                 estoque: stock,
+                bazar: pUrl.includes('bazar') || name.includes('bazar'),
+                isBazar: pUrl.includes('bazar') || name.includes('bazar'),
                 timerData: timerData
             });
         }

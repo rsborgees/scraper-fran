@@ -172,7 +172,8 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                     finalProduct.isFavorito = item.isFavorito || false;
                     finalProduct.novidade = item.novidade || false;
                     finalProduct.isNovidade = item.novidade || (finalProduct.isNovidade || false);
-                    finalProduct.bazar = item.bazar || false;
+                    finalProduct.bazar = item.bazar || finalProduct.bazar || false;
+                    finalProduct.isBazar = finalProduct.bazar;
                     finalProduct.bazarFavorito = item.bazarFavorito || false;
 
                     finalProduct.url = appendQueryParams(finalProduct.url, { utm_campaign: "7B1313" });
@@ -243,9 +244,13 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
 function fastParseFromApi(productData, isFavorito = false) {
     if (!productData) return { error: 'Dados da API vazios' };
 
-    const name = productData.productName;
-    const urlLower = (productData.link || '').toLowerCase();
+    const name = productData.productName || '';
+    const urlLower = String(productData.link || '').toLowerCase();
     const nameLower = name.toLowerCase();
+
+    if (!name || !urlLower) {
+        return { error: 'Nome ou Link ausente na API' };
+    }
 
     // 1. FILTRO ANTI-INFANTIL (Fábula / Bento / Teen / Mini / Kids)
     if (/fabula|bento|teen|kids|infantil|brincando/i.test(urlLower) || /bento|fábula|fabula/i.test(nameLower)) {
@@ -343,6 +348,7 @@ function fastParseFromApi(productData, isFavorito = false) {
             precoAtual: precoAtual,
             tamanhos: [...new Set(validSizes)],
             categoria: category,
+            bazar: isBazar,
             imageUrl: items[0]?.images[0]?.imageUrl || null
         }
     };

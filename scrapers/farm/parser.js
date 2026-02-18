@@ -518,6 +518,7 @@ async function parseProduct(page, url) {
                     precoAtual: precoAtual,
                     tamanhos: uniqueSizes,
                     categoria: category,
+                    bazar: isBazar,
                     imageUrl: (function () {
                         const gallerySelectors = [
                             '.pixel-image',
