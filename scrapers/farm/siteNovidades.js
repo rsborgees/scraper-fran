@@ -57,11 +57,25 @@ async function scrapeFarmSiteNovidades(quota = 2) {
             // 3. Filtro de Estoque
             if (stock === 0) continue;
 
-            // 4. Filtro de Tamanhos
-            const sizes = item.variations?.find(v => v.name === 'Tamanho')?.values || [];
-            const hasValidSize = sizes.some(s => ['P', 'M', 'G', 'U', 'UN'].includes(s.toUpperCase()));
+            // 4. Filtro de Tamanhos (Verifica todos os SKUs disponíveis)
+            const availableSizes = new Set();
+            p.items.forEach(itm => {
+                const itmStock = itm.sellers?.[0]?.commertialOffer?.AvailableQuantity || 0;
+                if (itmStock > 0) {
+                    const sValues = itm.variations?.find(v => v.name === 'Tamanho')?.values || [];
+                    sValues.forEach(sv => availableSizes.add(sv.toUpperCase().trim()));
+                }
+            });
 
-            if (!hasValidSize && sizes.length > 0) continue;
+            const uniqueSizesList = Array.from(availableSizes);
+            const isOnlyPP = uniqueSizesList.length === 1 && uniqueSizesList[0] === 'PP';
+            const isOnlyGG = uniqueSizesList.length === 1 && uniqueSizesList[0] === 'GG';
+
+            if (isOnlyPP || isOnlyGG) {
+                // console.log(`      ⏭️  Skip: Apenas um tamanho extremo (${uniqueSizesList[0]}) para ${fullId}`);
+                continue;
+            }
+            if (uniqueSizesList.length === 0) continue;
 
             // 5. Formatação do Produto
             finalProducts.push({

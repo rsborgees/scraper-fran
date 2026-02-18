@@ -305,20 +305,15 @@ async function parseProductZZMall(page, url) {
             });
             const uniqueTamanhos = [...new Set(tamanhos)];
 
-            // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou GG (sem P, M, G)
+            // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou só têm GG (se houver PP+GG é válido)
             if (uniqueTamanhos.length > 0) {
-                const standardSizes = ['P', 'M', 'G'];
-                const numericSizePattern = /^(3[4-9]|4[0-6])$/;
-
-                const hasStandardSize = uniqueTamanhos.some(size => {
-                    const normalized = size.toUpperCase().trim();
-                    return standardSizes.includes(normalized) || numericSizePattern.test(normalized);
-                });
+                const isOnlyPP = uniqueTamanhos.length === 1 && uniqueTamanhos[0] === 'PP';
+                const isOnlyGG = uniqueTamanhos.length === 1 && uniqueTamanhos[0] === 'GG';
 
                 // Only reject if it's clearly clothing (not shoes/bags)
                 const isClothing = uniqueTamanhos.some(s => ['PP', 'P', 'M', 'G', 'GG'].includes(s.toUpperCase()));
-                if (isClothing && !hasStandardSize) {
-                    return null; // Reject clothing items with only PP/GG
+                if (isClothing && (isOnlyPP || isOnlyGG)) {
+                    return null; // Reject clothing items with only PP or only GG
                 }
             }
 

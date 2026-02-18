@@ -173,6 +173,17 @@ async function parseProduct(url) {
             const uniqueSizes = [...new Set(validSizes)];
             if (uniqueSizes.length === 0) return { error: 'Sem tamanhos habilitados', debugInfo };
 
+            // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou só têm GG (se houver PP+GG é válido)
+            const clothingCategoriesList = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho', 'conjunto', 'casaco', 'top/body', 'banho'];
+            if (clothingCategoriesList.includes(category)) {
+                const isOnlyPP = uniqueSizes.length === 1 && uniqueSizes[0] === 'PP';
+                const isOnlyGG = uniqueSizes.length === 1 && uniqueSizes[0] === 'GG';
+
+                if (isOnlyPP || isOnlyGG) {
+                    return { error: `Apenas um tamanho extremo disponível (${uniqueSizes.join(', ')}) - necessário mais opções`, debugInfo };
+                }
+            }
+
             // 5. CATEGORIA (INFERÊNCIA INTELIGENTE)
             let category = 'outros';
             const url = window.location.href.toLowerCase();

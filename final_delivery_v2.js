@@ -52,11 +52,13 @@ async function finalSend() {
             // Tamanhos
             const sizes = item.variations?.find(v => v.name === 'Tamanho')?.values || [];
 
-            // Filtro de tamanhos (necessário ter pelo menos um de P, M, G ou ser UN)
-            const validSize = sizes.some(s => ['P', 'M', 'G', 'U', 'UN'].includes(s.toUpperCase()));
+            // Filtro de tamanhos: Rejeitar apenas se houver um único tamanho extremo (PP ou GG)
+            const upperSizes = sizes.map(s => s.toUpperCase());
+            const isOnlyPP = upperSizes.length === 1 && upperSizes[0] === 'PP';
+            const isOnlyGG = upperSizes.length === 1 && upperSizes[0] === 'GG';
 
-            if (!validSize && sizes.length > 0) {
-                console.log(`⏭️ Ignorando ${baseId} (Tamanhos extremos apenas: ${sizes.join(', ')})`);
+            if ((isOnlyPP || isOnlyGG) && sizes.length > 0) {
+                console.log(`⏭️ Ignorando ${baseId} (Tamanho extremo único: ${sizes.join(', ')})`);
                 continue;
             }
 

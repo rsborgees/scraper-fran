@@ -292,18 +292,14 @@ async function parseProductKJU(page, url) {
 
             const categoria = tamanhos.length > 0 ? 'roupa' : 'acessório';
 
-            // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou GG (sem P, M, G)
+            // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou só têm GG (se houver PP+GG é válido)
             if (categoria === 'roupa' && tamanhos.length > 0) {
-                const standardSizes = ['P', 'M', 'G'];
-                const numericSizePattern = /^(3[4-9]|4[0-6])$/;
+                const uniqueSizes = [...new Set(tamanhos.map(s => s.toUpperCase().trim()))];
+                const isOnlyPP = uniqueSizes.length === 1 && uniqueSizes[0] === 'PP';
+                const isOnlyGG = uniqueSizes.length === 1 && uniqueSizes[0] === 'GG';
 
-                const hasStandardSize = tamanhos.some(size => {
-                    const normalized = size.toUpperCase().trim();
-                    return standardSizes.includes(normalized) || numericSizePattern.test(normalized);
-                });
-
-                if (!hasStandardSize) {
-                    return null; // Reject items with only PP/GG
+                if (isOnlyPP || isOnlyGG) {
+                    return null; // Reject items with only PP or only GG
                 }
             }
 

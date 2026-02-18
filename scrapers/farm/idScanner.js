@@ -326,6 +326,18 @@ function fastParseFromApi(productData, isFavorito = false) {
         return { error: `Produto ESGOTADO (Sem tamanhos disponíveis para ${category})` };
     }
 
+    // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou só têm GG (se houver PP+GG é válido)
+    const clothingCategoriesForFilter = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho', 'conjunto', 'top/body', 'banho'];
+    if (clothingCategoriesForFilter.includes(category)) {
+        const uniqueSizes = [...new Set(validSizes.map(s => s.toUpperCase().trim()))];
+        const isOnlyPP = uniqueSizes.length === 1 && uniqueSizes[0] === 'PP';
+        const isOnlyGG = uniqueSizes.length === 1 && uniqueSizes[0] === 'GG';
+
+        if (isOnlyPP || isOnlyGG) {
+            return { error: `Apenas um tamanho extremo disponível (${uniqueSizes.join(', ')}) - necessário mais opções` };
+        }
+    }
+
     // Se não houver preço original no JSON, assume o atual
     if (!precoOriginal) precoOriginal = precoAtual;
 
