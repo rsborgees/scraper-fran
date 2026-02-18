@@ -208,18 +208,14 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
                                     }
                                 }
 
-                                // 2. Se não achou no Drive, vai no site (Fallback)
+                                // 🛑 DRESSTO DRIVE-ONLY RULE: No site fallback
                                 if (!imagePath) {
-                                    console.log(`      🌐 Buscando imagem no site...`);
-                                    const imgResult = product.imageUrl ?
-                                        await processImageDirect(product.imageUrl, 'DRESSTO', product.id) :
-                                        await processProductUrl(url, product.id);
-                                    if (imgResult?.status === 'success' && imgResult.cloudinary_urls?.length) {
-                                        imagePath = imgResult.cloudinary_urls[0];
-                                    }
+                                    console.log(`      ⚠️ [DRESSTO] Imagem não encontrada no Drive para o ID ${product.id}. Pulando produto...`);
+                                    continue;
                                 }
                             } catch (err) {
                                 console.error(`      ❌ Erro ao processar imagem: ${err.message}`);
+                                continue;
                             }
 
                             product.loja = 'dressto';

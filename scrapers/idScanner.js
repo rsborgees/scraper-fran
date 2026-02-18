@@ -336,11 +336,9 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             product.imagePath = item.driveUrl;
                             product.imageUrl = item.driveUrl;
                         } else if (storeName === 'dressto') {
-                            // 🛑 DRESS TO STRICT RULE: Only Site Novidades (scraped via index.js) use site images.
-                            // items processed here are from Drive, so they MUST have a driveUrl or they get no image.
-                            console.log(`   🛑 [DRESSTO] Bloqueando imagem do site para item do Drive sem link direto.`);
-                            product.imagePath = null;
-                            product.imageUrl = null;
+                            // 🛑 DRESS TO STRICT RULE: Only items with Drive URL are allowed.
+                            console.log(`   🛑 [DRESSTO] Bloqueando item do Drive sem link de imagem direto.`);
+                            continue; // Skip the product
                         }
 
                         product.favorito = item.isFavorito || false;
