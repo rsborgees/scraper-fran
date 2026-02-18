@@ -4,10 +4,12 @@ const { normalizeId, isDuplicate, markAsSent } = require('../../historyManager')
 
 /**
  * Scraper focado em IDs específicos (vindos do Drive)
- * @param {object} browser Playwright Browser instance
+ * @param {object} contextOrBrowser Playwright Browser instance
  * @param {Array} driveItems Lista de objetos { id, driveUrl, isFavorito, ... }
+ * @param {number} quota Meta de itens coletados
+ * @param {object} options Opções extras (maxAgeHours, etc.)
  */
-async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
+async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, options = {}) {
     console.log(`\n🚙 INICIANDO SCRAPE DRIVE-FIRST (${driveItems.length} itens disponíveis, meta: ${quota})...`);
 
     const collectedProducts = [];
@@ -34,12 +36,11 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
 
         try {
             // Context navigation (first time)
-            if (workerId === 1) {
-                try {
-                    await page.goto(`https://www.farmrio.com.br`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                } catch (e) {
-                    console.log(`⚠️ Worker ${workerId}: Erro ao acessar home (Ignorando): ${e.message}`);
-                }
+            try {
+                console.log(`📡 Worker ${workerId}: Estabelecendo sessão...`);
+                await page.goto(`https://www.farmrio.com.br`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            } catch (e) {
+                console.log(`⚠️ Worker ${workerId}: Erro ao estabelecer sessão (Ignorando): ${e.message}`);
             }
 
             while (itemQueue.length > 0 && !isQuotaReached) {
@@ -178,7 +179,10 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999) {
                     finalProduct.loja = 'farm';
                     if (item.driveId) finalProduct.id = item.driveId; // Use verbatim Drive ID
 
-                    const isDup = isDuplicate(normalizeId(finalProduct.id), { force: item.isFavorito, maxAgeHours: 48 }, finalProduct.preco);
+                    const isDup = isDuplicate(normalizeId(finalProduct.id), {
+                        force: item.isFavorito,
+                        maxAgeHours: options.maxAgeHours || 24
+                    }, finalProduct.preco);
 
                     if (!isDup) {
                         collectedProducts.push(finalProduct);
@@ -279,12 +283,9 @@ function fastParseFromApi(productData, isFavorito = false) {
         })();
         if (isForbidden) return { error: `${isForbidden} bloqueado` };
 
-        // Se for Favorito, permitimos "desconhecido" para não bloquear itens válidos que escaparam das categorias
-        if (isFavorito) {
-            category = 'outro';
-        } else {
-            return { error: 'Categoria não identificada (Bloqueio Preventivo)' };
-        }
+        // Se for do Drive (Favorito ou Novidade), permitimos "desconhecido"
+        // O fato de estar no Drive já é validação o suficiente.
+        category = 'outro';
     }
 
     // 4. PREÇOS E DISPONIBILIDADE

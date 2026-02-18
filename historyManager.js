@@ -129,17 +129,8 @@ function isDuplicate(id, options = {}, price = 0) {
     // 1. Busca no Histórico (Exact Match)
     let matchedIdInHistory = history[normId] ? normId : null;
 
-    // 2. Busca no Histórico (Fuzzy Match - Inclusão/SKU)
-    if (!matchedIdInHistory) {
-        matchedIdInHistory = Object.keys(history).find(historyId => {
-            // Se um contiver o outro e ambos forem longos (Cobre prefixos 01/A0 e sufixos de variantes)
-            if ((historyId.includes(normId) || normId.includes(historyId)) &&
-                normId.length >= 6 && historyId.length >= 6) {
-                return true;
-            }
-            return false;
-        });
-    }
+    // 2. [DELETE] Busca no Histórico (Fuzzy Match - Inclusão/SKU)
+    // Removido para evitar que IDs similares se bloqueiem indevidamente (ex: 363187 vs 36318755)
 
     // 3. Se achamos um registro no histórico
     if (matchedIdInHistory) {
@@ -147,13 +138,20 @@ function isDuplicate(id, options = {}, price = 0) {
         const ageMs = now - entry.timestamp;
         const ageHours = ageMs / (1000 * 60 * 60);
 
-        // REGRA ESPECIAL: FAVORITOS (podem repetir após 24h)
+        // REGRA ESPECIAL: FAVORITOS (podem repetir quando o dia vira)
         if (options.force) {
-            if (ageHours < 24) {
-                console.log(`   🚫 Favorito ignorado: ID ${normId} emitiu match com ${matchedIdInHistory} há ${ageHours.toFixed(1)}h (mínimo 24h)`);
+            const entryDate = new Date(entry.timestamp);
+            const today = new Date();
+
+            const isSameDay = entryDate.getFullYear() === today.getFullYear() &&
+                entryDate.getMonth() === today.getMonth() &&
+                entryDate.getDate() === today.getDate();
+
+            if (isSameDay) {
+                console.log(`   🚫 Favorito ignorado: ID ${normId} já enviado HOJE.`);
                 return true;
             }
-            console.log(`   ✅ Favorito liberado: ID ${normId} (match ${matchedIdInHistory}) enviado há ${ageHours.toFixed(1)}h.`);
+            console.log(`   ✅ Favorito liberado: ID ${normId} enviado pela última vez em ${entry.lastSent} (dia diferente).`);
             return false;
         }
 

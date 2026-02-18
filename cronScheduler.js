@@ -95,7 +95,7 @@ async function runDailyDriveSyncJob() {
 
                 let scraped;
                 if (store === 'farm') {
-                    scraped = await scrapeSpecificIds(context, storeItems, 999);
+                    scraped = await scrapeSpecificIds(context, storeItems, 999, { maxAgeHours: 23 });
                 } else {
                     // maxAgeHours: 23 permite que o item seja enviado todo dia às 5h se ele ainda estiver no Drive como favorito/novidade
                     scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, 999, { maxAgeHours: 23 });
