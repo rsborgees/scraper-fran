@@ -95,8 +95,9 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                     // NÃO é conjunto se houver underline: "351693_350740" -> Ignora underline
 
                     // Busca IDs preservando padrões de conjunto ou cor
-                    // 1. Tenta capturar padrões compostos primeiro (XXXXXX_YYYY ou XXXXXX-YYYY)
-                    const compositeMatches = file.name.match(/\d{6,}[_-]\d+/g) || [];
+                    // 1. Tenta capturar padrões compostos primeiro (XXXXXX_YYYY ou XXXXXX-YYYY ou XX.XX.XXXX_YYYY)
+                    // Padrão Dress To: 01.34.2813_2380 -> Captura as partes numéricas ignorando pontos
+                    const compositeMatches = file.name.match(/(\d{6,}[_-]\d+|\d{2}\.\d{2}\.\d{4}[_-]\d+)/g) || [];
 
                     // 2. Tenta capturar IDs simples (mínimo 6 dígitos)
                     // Filtra para não pegar partes de IDs compostos já capturados
@@ -105,8 +106,8 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                     });
 
                     let ids = [...compositeMatches, ...simpleMatches];
-                    // Normaliza hífens para underscores em todos os IDs capturados
-                    ids = ids.map(id => id.replace(/-/g, '_'));
+                    // Normaliza IDs: remove pontos e troca hífens por underscores
+                    ids = ids.map(id => id.replace(/\./g, '').replace(/-/g, '_'));
 
                     if (ids.length > 0) {
                         const verbatimId = ids.join(' ');

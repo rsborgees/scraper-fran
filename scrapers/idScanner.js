@@ -164,10 +164,12 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             }
 
                             // Preenche e busca
+                            // Preenche e busca. Tenta com underscore primeiro, depois hífen se falhar (se aplicável)
                             await page.waitForSelector(searchInput, { state: 'visible', timeout: 15000 });
-                            await page.fill(searchInput, item.id);
+                            const searchId = item.id;
+                            await page.fill(searchInput, searchId);
                             await page.press(searchInput, 'Enter');
-                            await page.waitForTimeout(3000);
+                            await page.waitForTimeout(4000); // Wait for results
 
                             // Verifica se chegou em uma página de resultados ou produto
                             const currentUrl = page.url();
@@ -179,11 +181,16 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 // 4. Fallback se necessário: URL Direta de Busca
                                 if (!navigationSuccess) {
                                     console.log(`      🔍 Tentando busca direta por ID: ${item.id}...`);
-                                    const directSearchUrl = `https://www.dressto.com.br/${item.id}?_q=${item.id}&map=ft`;
-                                    await page.goto(directSearchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                                    await page.waitForTimeout(3000);
-                                    if (page.url().includes('/p')) {
-                                        navigationSuccess = true;
+                                    const variations = [item.id, item.id.replace(/_/g, '-'), item.id.replace(/_/g, '')];
+                                    for (const v of variations) {
+                                        if (navigationSuccess) break;
+                                        console.log(`      🔄 Buscando variação: ${v}`);
+                                        const directSearchUrl = `https://www.dressto.com.br/${v}?_q=${v}&map=ft`;
+                                        await page.goto(directSearchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                        await page.waitForTimeout(3000);
+                                        if (page.url().includes('/p')) {
+                                            navigationSuccess = true;
+                                        }
                                     }
                                 }
                                 navigationSuccess = true;
@@ -269,12 +276,15 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             // --- [FALLBACK HTML SEARCH] ---
                             if (!href && (storeName === 'dressto' || storeName === 'zzmall')) {
                                 console.log(`      🔍 Link não encontrado por seletor. Tentando busca exaustiva no HTML para ID ${item.id}...`);
-                                href = await page.evaluate((id) => {
+                                const idVariations = [item.id, item.id.replace(/_/g, '-'), item.id.replace(/_/g, ''), item.id.split('_')[0]];
+                                href = await page.evaluate((vars) => {
                                     const allLinks = Array.from(document.querySelectorAll('a'));
-                                    // Look for any link that contains the ID in its href (VTEX slugs usually have the ID)
-                                    const match = allLinks.find(a => a.href && a.href.includes(id) && !a.href.includes('javascript'));
-                                    return match ? match.href : null;
-                                }, item.id);
+                                    for (const v of vars) {
+                                        const match = allLinks.find(a => a.href && a.href.includes(v) && !a.href.includes('javascript'));
+                                        if (match) return match.href;
+                                    }
+                                    return null;
+                                }, idVariations);
                             }
 
                             if (href) {

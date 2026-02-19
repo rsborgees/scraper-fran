@@ -229,7 +229,7 @@ async function runAllScrapers(overrideQuotas = null) {
                         .sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history))
                         .slice(0, 50);
 
-                    const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, 'dressto', quotas.dressto - 2, { maxAgeHours: 24 }); // Permite fallback de 24h
+                    const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, 'dressto', quotas.dressto, { maxAgeHours: 24 }); // Permite fallback de 24h
 
                     scrapedItems.forEach(p => {
                         p.message = buildDressMessage(p);
@@ -297,7 +297,8 @@ async function runAllScrapers(overrideQuotas = null) {
 
         const remainingQuotaDressTo = Math.max(0, quotas.dressto - allProducts.filter(p => p.loja === 'dressto').length);
 
-        // Aba de Novidades do Site (Sempre tenta pegar os 10%)
+        // Aba de Novidades do Site (Removido para Dress To ser Drive-Only)
+        /*
         const dressSiteQuota = Math.round(quotas.dressto * 0.10) || 2;
         console.log(`🌐 [DRESSTO] Buscando Novidades do Site (Meta: ${dressSiteQuota})...`);
         try {
@@ -305,11 +306,12 @@ async function runAllScrapers(overrideQuotas = null) {
             let products = await scrapeDressTo(dressSiteQuota, context);
             products.forEach(p => {
                 p.message = buildDressMessage(p);
-                p.isSiteNovidade = true; // Necessário para o motor de distribuição
+                p.isSiteNovidade = true; // Necessário para o motor de distribution
             });
             allProducts.push(...products);
             console.log(`✅ [DRESSTO] Novidades Site: ${products.length} msgs geradas`);
         } catch (e) { console.error(`❌ [DRESSTO] Novidades Site Error: ${e.message}`); }
+        */
 
         if (remainingQuotaDressTo > 0 && !DRIVE_ONLY_STORES.includes('dressto')) {
             // Este bloco agora é legado, pois Dress To é Drive-First + Site Novidades
