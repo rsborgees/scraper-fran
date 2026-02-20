@@ -62,7 +62,7 @@ async function scrapeFarmSiteNovidades(quota = 2) {
             p.items.forEach(itm => {
                 const itmStock = itm.sellers?.[0]?.commertialOffer?.AvailableQuantity || 0;
                 if (itmStock > 0) {
-                    const sValues = itm.variations?.find(v => v.name === 'Tamanho')?.values || [];
+                    const sValues = itm['Tamanho'] || [];
                     sValues.forEach(sv => availableSizes.add(sv.toUpperCase().trim()));
                 }
             });
@@ -71,10 +71,7 @@ async function scrapeFarmSiteNovidades(quota = 2) {
             const isOnlyPP = uniqueSizesList.length === 1 && uniqueSizesList[0] === 'PP';
             const isOnlyGG = uniqueSizesList.length === 1 && uniqueSizesList[0] === 'GG';
 
-            if (isOnlyPP || isOnlyGG) {
-                // console.log(`      ⏭️  Skip: Apenas um tamanho extremo (${uniqueSizesList[0]}) para ${fullId}`);
-                continue;
-            }
+            if (isOnlyPP || isOnlyGG) continue;
             if (uniqueSizesList.length === 0) continue;
 
             // 5. Formatação do Produto
@@ -90,7 +87,7 @@ async function scrapeFarmSiteNovidades(quota = 2) {
                 novidade: true,
                 isNovidade: true,
                 isSiteNovidade: true, // Tag para o orchestrator
-                tamanhos: sizes,
+                tamanhos: uniqueSizesList,
                 estoque: stock,
                 bazar: pUrl.includes('bazar') || name.includes('bazar'),
                 isBazar: pUrl.includes('bazar') || name.includes('bazar'),

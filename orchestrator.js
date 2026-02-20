@@ -284,7 +284,7 @@ async function runAllScrapers(overrideQuotas = null) {
         }
 
         // --- NOVIDADES DO SITE (10% Rule) ---
-        const farmSiteQuota = Math.round(quotas.farm * 0.10) || 1;
+        const farmSiteQuota = 1;
         console.log(`🌐 [FARM] Buscando Novidades do Site (Meta: ${farmSiteQuota})...`);
         try {
             let products = await scrapeFarmSiteNovidades(farmSiteQuota);
