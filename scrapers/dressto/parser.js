@@ -124,16 +124,12 @@ async function fetchViaVtexAPI(searchKey) {
         // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou GG (sem P, M, G)
         const clothingCategories = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'casaco'];
         if (clothingCategories.includes(categoria)) {
-            const standardSizes = ['P', 'M', 'G'];
-            const numericSizePattern = /^(3[4-9]|4[0-6])$/;
+            const normalizedSizes = tamanhos.map(s => s.toUpperCase().trim());
+            const isOnlyPP = normalizedSizes.length === 1 && normalizedSizes[0] === 'PP';
+            const isOnlyGG = normalizedSizes.length === 1 && normalizedSizes[0] === 'GG';
 
-            const hasStandardSize = tamanhos.some(size => {
-                const normalized = size.toUpperCase().trim();
-                return standardSizes.includes(normalized) || numericSizePattern.test(normalized);
-            });
-
-            if (!hasStandardSize) {
-                console.log(`      ❌ [SERVER-SIDE] Apenas tamanhos extremos disponíveis (${tamanhos.join(', ')}) - necessário P, M ou G`);
+            if (isOnlyPP || isOnlyGG) {
+                console.log(`      ❌ [SERVER-SIDE] Apenas um tamanho extremo disponível (${tamanhos.join(', ')}) - necessário mais opções`);
                 return null;
             }
         }
@@ -322,20 +318,14 @@ async function parseProductDressTo(page, url) {
             if (tamanhos.length === 0) return null;
 
             // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou GG (sem P, M, G)
-            const clothingCategories = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'casaco'];
-            // categoria is determined later, so we check if tamanhos suggests clothing
             const hasClothingSizes = tamanhos.some(s => ['PP', 'P', 'M', 'G', 'GG'].includes(s.toUpperCase()));
             if (hasClothingSizes) {
-                const standardSizes = ['P', 'M', 'G'];
-                const numericSizePattern = /^(3[4-9]|4[0-6])$/;
+                const normalizedSizes = tamanhos.map(s => s.toUpperCase().trim());
+                const isOnlyPP = normalizedSizes.length === 1 && normalizedSizes[0] === 'PP';
+                const isOnlyGG = normalizedSizes.length === 1 && normalizedSizes[0] === 'GG';
 
-                const hasStandardSize = tamanhos.some(size => {
-                    const normalized = size.toUpperCase().trim();
-                    return standardSizes.includes(normalized) || numericSizePattern.test(normalized);
-                });
-
-                if (!hasStandardSize) {
-                    return null; // Reject clothing items with only PP/GG
+                if (isOnlyPP || isOnlyGG) {
+                    return null; // Reject clothing items with only PP or only GG
                 }
             }
 

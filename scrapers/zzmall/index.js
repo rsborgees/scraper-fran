@@ -307,11 +307,12 @@ async function parseProductZZMall(page, url) {
 
             // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou só têm GG (se houver PP+GG é válido)
             if (uniqueTamanhos.length > 0) {
-                const isOnlyPP = uniqueTamanhos.length === 1 && uniqueTamanhos[0] === 'PP';
-                const isOnlyGG = uniqueTamanhos.length === 1 && uniqueTamanhos[0] === 'GG';
+                const normalizedSizes = uniqueTamanhos.map(s => s.toUpperCase().trim());
+                const isOnlyPP = normalizedSizes.length === 1 && normalizedSizes[0] === 'PP';
+                const isOnlyGG = normalizedSizes.length === 1 && normalizedSizes[0] === 'GG';
 
                 // Only reject if it's clearly clothing (not shoes/bags)
-                const isClothing = uniqueTamanhos.some(s => ['PP', 'P', 'M', 'G', 'GG'].includes(s.toUpperCase()));
+                const isClothing = normalizedSizes.some(s => ['PP', 'P', 'M', 'G', 'GG'].includes(s));
                 if (isClothing && (isOnlyPP || isOnlyGG)) {
                     return null; // Reject clothing items with only PP or only GG
                 }

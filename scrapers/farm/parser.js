@@ -425,10 +425,10 @@ async function parseProduct(page, url) {
             // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou só têm GG (se houver PP+GG é válido)
             const clothingCategoriesList = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho', 'conjunto', 'casaco', 'top/body', 'banho'];
             if (clothingCategoriesList.includes(category)) {
-                const normalizedSizes = uniqueSizes.map(s => s.toUpperCase().trim());
+                const uniqueSizesNormalized = uniqueSizes.map(s => s.toUpperCase().trim());
 
-                const isOnlyPP = normalizedSizes.length === 1 && normalizedSizes[0] === 'PP';
-                const isOnlyGG = normalizedSizes.length === 1 && normalizedSizes[0] === 'GG';
+                const isOnlyPP = uniqueSizesNormalized.length === 1 && uniqueSizesNormalized[0] === 'PP';
+                const isOnlyGG = uniqueSizesNormalized.length === 1 && uniqueSizesNormalized[0] === 'GG';
 
                 if (isOnlyPP || isOnlyGG) {
                     return { error: `Apenas um tamanho extremo disponível (${uniqueSizes.join(', ')}) - necessário mais opções` };

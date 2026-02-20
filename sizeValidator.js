@@ -16,30 +16,36 @@ function hasStandardSizes(tamanhos) {
         return false;
     }
 
-    // Standard sizes that indicate the item is acceptable
-    const standardSizes = ['P', 'M', 'G'];
+    const normalizedSizes = tamanhos.map(s => s.toUpperCase().trim());
 
-    // Numeric sizes (clothing sizes 34-46)
-    const numericSizePattern = /^(3[4-9]|4[0-6])$/;
+    // 🚫 NOVA REGRA: Não pode ter APENAS PP ou APENAS GG
+    // Se tiver PP e GG juntos, ou qualquer outro tamanho, é válido.
+    const isOnlyPP = normalizedSizes.length === 1 && normalizedSizes[0] === 'PP';
+    const isOnlyGG = normalizedSizes.length === 1 && normalizedSizes[0] === 'GG';
 
-    // Check if at least one standard size exists
-    const hasStandard = tamanhos.some(size => {
-        const normalized = size.toUpperCase().trim();
-
-        // Check for letter sizes P, M, G
-        if (standardSizes.includes(normalized)) {
-            return true;
-        }
-
-        // Check for numeric sizes (34-46)
-        if (numericSizePattern.test(normalized)) {
-            return true;
-        }
-
+    if (isOnlyPP || isOnlyGG) {
         return false;
-    });
+    }
 
-    return hasStandard;
+    // Mantemos a regra legada de "tamanhos padrão" para categorias que exigem P/M/G
+    // mas a regra acima é a mais restritiva para a exclusão imediata.
+    return true;
+}
+
+/**
+ * Check if the sizes are acceptable for clothing
+ * @param {Array<string>} tamanhos 
+ * @param {string} categoria 
+ * @returns {boolean}
+ */
+function isValidClothingSize(tamanhos, categoria) {
+    const clothingCategories = ['vestido', 'macacão', 'saia', 'short', 'blusa', 'calça', 'macaquinho', 'conjunto', 'casaco', 'top/body', 'banho', 'roupa'];
+
+    if (!categoria || !clothingCategories.includes(categoria.toLowerCase())) {
+        return true; // Não é roupa, aceita qualquer tamanho (ex: Calçado 35)
+    }
+
+    return hasStandardSizes(tamanhos);
 }
 
 /**
@@ -53,10 +59,15 @@ function getSizeRejectionReason(tamanhos) {
     }
 
     const sizesStr = tamanhos.join(', ');
-    return `Apenas tamanhos extremos disponíveis (${sizesStr}) - necessário P, M ou G`;
+    if (tamanhos.length === 1 && (tamanhos[0].toUpperCase() === 'PP' || tamanhos[0].toUpperCase() === 'GG')) {
+        return `Apenas um tamanho extremo disponível (${sizesStr}) - necessário mais opções`;
+    }
+
+    return `Grade de tamanhos insuficiente (${sizesStr})`;
 }
 
 module.exports = {
     hasStandardSizes,
+    isValidClothingSize,
     getSizeRejectionReason
 };

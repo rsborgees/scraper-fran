@@ -433,9 +433,9 @@ async function parseProductLive(page, url) {
 
             // 🚫 VALIDAÇÃO: Rejeitar roupas que só têm PP ou só têm GG (se houver PP+GG é válido)
             if (tamanhos.length > 0) {
-                const uniqueSizes = [...new Set(tamanhos.map(s => s.toUpperCase().trim()))];
-                const isOnlyPP = uniqueSizes.length === 1 && uniqueSizes[0] === 'PP';
-                const isOnlyGG = uniqueSizes.length === 1 && uniqueSizes[0] === 'GG';
+                const uniqueSizesNormalized = [...new Set(tamanhos.map(s => s.toUpperCase().trim()))];
+                const isOnlyPP = uniqueSizesNormalized.length === 1 && uniqueSizesNormalized[0] === 'PP';
+                const isOnlyGG = uniqueSizesNormalized.length === 1 && uniqueSizesNormalized[0] === 'GG';
 
                 if (isOnlyPP || isOnlyGG) {
                     return null; // Reject items with only PP or only GG
