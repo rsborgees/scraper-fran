@@ -172,7 +172,9 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                     finalProduct.isFavorito = item.isFavorito || false;
                     finalProduct.novidade = item.novidade || false;
                     finalProduct.isNovidade = item.novidade || (finalProduct.isNovidade || false);
-                    finalProduct.bazar = item.bazar || finalProduct.bazar || false;
+
+                    // REGRA ESTRITA: Bazar vem apenas do que está no Drive
+                    finalProduct.bazar = item.bazar || false;
                     finalProduct.isBazar = finalProduct.bazar;
                     finalProduct.bazarFavorito = item.bazarFavorito || false;
 

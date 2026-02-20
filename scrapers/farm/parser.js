@@ -291,21 +291,17 @@ async function parseProduct(page, url) {
                     if (window.__RUNTIME__.route.path.toLowerCase().includes('bazar')) return true;
                 }
 
-                // 4. Breadcrumb / Main Content Check
-                // Avoid Footer/Header by targetting 'main' or specific classes, or just top of body text
-                const mainEl = document.querySelector('.vtex-store-components-3-x-container') || document.querySelector('main') || document.body;
-                // Limit text search to first 2000 chars to avoid hitting footer
-                const relevantText = mainEl.innerText.substring(0, 3000).toLowerCase();
+                // 4. Main Content Check (Careful: menu/footer might contain 'bazar')
+                const mainEl = document.querySelector('.vtex-store-components-3-x-container') || document.querySelector('main');
+                const relevantText = mainEl ? mainEl.innerText.substring(0, 1500).toLowerCase() : '';
 
-                // Specific patterns seen in Bazar
-                if (relevantText.includes('bazar farm') || relevantText.includes('bazar 50%')) return true;
-
-                // Breadcrumb precise check
-                const breadcrumbs = Array.from(document.querySelectorAll('a')).filter(a => {
-                    // Filter anchors inside known breadcrumb containers or just high up in DOM
-                    return a.closest('.vtex-breadcrumb') || a.closest('[data-testid="breadcrumb"]');
-                });
+                // Breadcrumb precise check is better
+                const breadcrumbs = Array.from(document.querySelectorAll('.vtex-breadcrumb__container a, [class*="breadcrumb"] a'));
                 if (breadcrumbs.some(b => b.innerText.toLowerCase().includes('bazar'))) return true;
+
+                // Only matches if 'bazar' is a dominant part or in specificPDP context
+                // Removed: relevantText.includes('bazar farm') as it's too broad
+                if (relevantText.includes('categoria: bazar')) return true;
 
                 return false;
             })();

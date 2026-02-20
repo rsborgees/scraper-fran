@@ -355,6 +355,8 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         product.isFavorito = item.isFavorito || false;
                         product.novidade = item.novidade || false;
                         product.isNovidade = item.novidade || (product.isNovidade || false);
+
+                        // REGRA ESTRITA: Bazar vem apenas do que está no Drive (se for item de Drive)
                         product.bazar = item.bazar || false;
                         product.bazarFavorito = item.bazarFavorito || false;
 
