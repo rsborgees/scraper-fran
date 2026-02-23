@@ -210,7 +210,8 @@ async function runAllScrapers(overrideQuotas = null) {
 
                     // Passo 1: Sem repetição recente (48h default, 24h para favoritos)
                     let candidates = dressItems.filter(item => {
-                        return !isDuplicate(item.id, { force: !!item.isFavorito, maxAgeHours: 48 });
+                        const finalId = item.driveId || item.id;
+                        return !isDuplicate(finalId, { force: !!item.isFavorito, maxAgeHours: 48 });
                     });
 
                     // Passo 2: Fallback se pool for pequeno (Aceita repetição de 24h para qualquer um)
@@ -218,9 +219,10 @@ async function runAllScrapers(overrideQuotas = null) {
                     if (candidates.length < quotas.dressto) {
                         console.log(`   ⚠️ [DRESSTO] Poucos itens novos no Drive. Aplicando fallback de repetição (24h)...`);
                         const fallbackCandidates = dressItems.filter(item => {
-                            const normId = normalizeId(item.id);
-                            if (candidates.some(c => normalizeId(c.id) === normId)) return false;
-                            return !isDuplicate(item.id, { force: true, maxAgeHours: 24 });
+                            const finalId = item.driveId || item.id;
+                            const normId = normalizeId(finalId);
+                            if (candidates.some(c => normalizeId(c.driveId || c.id) === normId)) return false;
+                            return !isDuplicate(finalId, { force: true, maxAgeHours: 24 });
                         });
                         candidates = [...candidates, ...fallbackCandidates];
                     }

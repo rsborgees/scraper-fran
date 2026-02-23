@@ -89,22 +89,27 @@ function saveHistory(idsObject) {
  */
 function normalizeId(id) {
     if (!id) return '';
-    const sid = id.toString().trim();
+    const sid = id.toString().trim().toUpperCase();
 
-    // Se contém letras e possui um tamanho razoável,
+    // Se contém letras e não parece um ID composto (sem espaço/hifen), 
     // mantemos como está para evitar colisões em IDs alfanuméricos.
-    if (/[a-zA-Z]/.test(sid) && sid.length >= 4) {
-        return sid.toUpperCase();
+    if (/[A-Z]/.test(sid) && !/[\s_-]/.test(sid) && sid.length >= 4) {
+        return sid;
     }
 
-    // Preserva padrão NUMERO_NUMERO ou NUMERO-NUMERO (códigos com variação de cor)
-    // Exemplo: 357793_51202 ou 357793-51202
-    if (/^\d+[_-]\d+$/.test(sid)) {
-        return sid.replace(/-/g, '_'); // Normaliza hífen para underscore
-    }
+    // Normaliza separadores para underscore e remove pontos
+    // Ex: "02.08.3403 03.07.0283" -> "02083403_03070283"
+    let clean = sid.replace(/\./g, '').replace(/[\s-]/g, '_');
 
-    // Remove tudo que não é dígito e depois remove zeros à esquerda
-    return sid.replace(/\D/g, '').replace(/^0+/, '');
+    // Divide em partes (caso seja conjunto) e remove zeros à esquerda de cada parte numérica
+    const parts = clean.split('_').map(part => {
+        if (/^\d+$/.test(part)) {
+            return part.replace(/^0+/, '') || '0';
+        }
+        return part;
+    });
+
+    return parts.filter(p => p).join('_');
 }
 /**
  * Verifica se um ID é duplicado
@@ -128,9 +133,6 @@ function isDuplicate(id, options = {}, price = 0) {
 
     // 1. Busca no Histórico (Exact Match)
     let matchedIdInHistory = history[normId] ? normId : null;
-
-    // 2. [DELETE] Busca no Histórico (Fuzzy Match - Inclusão/SKU)
-    // Removido para evitar que IDs similares se bloqueiem indevidamente (ex: 363187 vs 36318755)
 
     // 3. Se achamos um registro no histórico
     if (matchedIdInHistory) {
@@ -173,18 +175,33 @@ function isDuplicate(id, options = {}, price = 0) {
  * Marca IDs como enviados com timestamp atual
  */
 function markAsSent(ids) {
+    if (!Array.isArray(ids)) ids = [ids];
     const history = loadHistory();
     const now = Date.now();
     const timestamp = new Date().toISOString();
 
+    const idsToMark = new Set();
+
     ids.forEach(id => {
         const normId = normalizeId(id);
         if (normId) {
-            history[normId] = {
-                timestamp: now,
-                lastSent: timestamp
-            };
+            idsToMark.add(normId);
+
+            // Se for um ID composto (conjunto), marca também as partes individuais
+            if (normId.includes('_')) {
+                const subParts = normId.split('_');
+                subParts.forEach(p => {
+                    if (p && p.length >= 4) idsToMark.add(p);
+                });
+            }
         }
+    });
+
+    idsToMark.forEach(normId => {
+        history[normId] = {
+            timestamp: now,
+            lastSent: timestamp
+        };
     });
 
     saveHistory(history);

@@ -97,10 +97,11 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                 if (collectedProducts.length >= quota) break;
 
                 stats.checked++;
-                attemptedIds.push(item.id);
-                console.log(`\n🔍 [${storeName}] Buscando ID ${item.id} (${item.isFavorito ? '⭐ Favorito' : 'Regular'})...`);
+                const finalIdCandidate = item.driveId || item.id;
+                attemptedIds.push(finalIdCandidate);
+                console.log(`\n🔍 [${storeName}] Buscando ID ${finalIdCandidate} (${item.isFavorito ? '⭐ Favorito' : 'Regular'})...`);
 
-                const normIdCheck = normalizeId(item.id);
+                const normIdCheck = normalizeId(finalIdCandidate);
                 if (!item.isFavorito && isDuplicate(normIdCheck, { maxAgeHours })) {
                     console.log(`   ⏭️  Pulando: Já enviado recentemente.`);
                     stats.duplicates++;
