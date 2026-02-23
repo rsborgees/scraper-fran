@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { processProductUrl, processImageDirect } = require('../../imageDownloader');
 const { isDuplicate, markAsSent } = require('../../historyManager');
-const { parseProductDressTo } = require('./parser');
+const { parseProductDressTo, fetchViaVtexAPI } = require('./parser');
 
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 
@@ -314,4 +314,4 @@ async function scrapeDressTo(quota = 18, parentBrowser = null) {
     return selectedProducts.slice(0, quota);
 }
 
-module.exports = { scrapeDressTo, parseProductDressTo };
+module.exports = { scrapeDressTo, parseProductDressTo, fetchViaVtexAPI };

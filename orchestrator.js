@@ -208,9 +208,9 @@ async function runAllScrapers(overrideQuotas = null) {
                 if (dressItems && dressItems.length > 0) {
                     console.log(`🔍 [DRESSTO] Iniciando Drive-First (${dressItems.length} itens)...`);
 
-                    // Passo 1: Sem repetição recente (72h default, 24h para favoritos)
+                    // Passo 1: Sem repetição recente (48h default, 24h para favoritos)
                     let candidates = dressItems.filter(item => {
-                        return !isDuplicate(item.id, { force: !!item.isFavorito, maxAgeHours: 72 });
+                        return !isDuplicate(item.id, { force: !!item.isFavorito, maxAgeHours: 48 });
                     });
 
                     // Passo 2: Fallback se pool for pequeno (Aceita repetição de 24h para qualquer um)
@@ -224,6 +224,8 @@ async function runAllScrapers(overrideQuotas = null) {
                         });
                         candidates = [...candidates, ...fallbackCandidates];
                     }
+
+                    console.log(`   👗 [DRESSTO] Pool final para cota ${quotas.dressto}: ${candidates.length} candidatos.`);
 
                     const limitedItems = candidates
                         .sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history))

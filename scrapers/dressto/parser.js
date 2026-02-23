@@ -470,4 +470,4 @@ async function parseProductDressTo(page, url) {
     }
 }
 
-module.exports = { parseProductDressTo };
+module.exports = { parseProductDressTo, fetchViaVtexAPI };
