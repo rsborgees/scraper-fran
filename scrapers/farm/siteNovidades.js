@@ -1,6 +1,8 @@
 const axios = require('axios');
 const { getExistingIdsFromDrive } = require('../../driveManager');
 const { checkFarmTimer } = require('./timer_check');
+const { processImageDirect } = require('../../imageDownloader');
+const { isDuplicate, markAsSent } = require('../../historyManager');
 require('dotenv').config();
 
 /**
@@ -43,11 +45,14 @@ async function scrapeFarmSiteNovidades(quota = 2) {
             // 1. Filtro de Drive (evitar duplicar o que já temos no Drive)
             if (driveBaseIds.has(baseId)) continue;
 
+            // 1.1 Filtro de Histórico (evitar repetir a mesma novidade em toda rodada horária)
+            if (isDuplicate(baseId)) continue;
+
             // 2. Filtro de Categoria (Apenas roupas)
             const catPath = p.categories ? p.categories.join(' ').toLowerCase() : '';
             const name = p.productName.toLowerCase();
             const pUrl = p.link.toLowerCase();
-            const isAcessorio = /brinco|bolsa|colar|cinto|acessorio|culos|garrafa|copo|chaveiro|necessaire|pochete|carteira/.test(catPath + ' ' + name + ' ' + pUrl);
+            const isAcessorio = /brinco|pulseira|colar|bolsa|colar|cinto|acessorio|culos|garrafa|copo|chaveiro|necessaire|pochete|carteira/.test(catPath + ' ' + name + ' ' + pUrl);
 
             if (isAcessorio) continue;
 
@@ -74,14 +79,26 @@ async function scrapeFarmSiteNovidades(quota = 2) {
             if (isOnlyPP || isOnlyGG) continue;
             if (uniqueSizesList.length === 0) continue;
 
-            // 5. Formatação do Produto
-            finalProducts.push({
+            // 5. Upload da imagem para Cloudinary
+            let imagePath = item.images[0].imageUrl;
+            try {
+                const imgResult = await processImageDirect(item.images[0].imageUrl, 'FARM', baseId);
+                if (imgResult.status === 'success' && imgResult.cloudinary_urls.length > 0) {
+                    imagePath = imgResult.cloudinary_urls[0];
+                }
+            } catch (err) {
+                console.error(`⚠️ [FARM] Erro no upload Cloudinary para ${baseId}:`, err.message);
+            }
+
+            // 6. Formatação do Produto
+            const product = {
                 nome: p.productName,
                 id: baseId,
                 sku: item.itemId,
                 precoAtual: item.sellers[0].commertialOffer.Price,
                 precoOriginal: item.sellers[0].commertialOffer.ListPrice,
                 imageUrl: item.images[0].imageUrl,
+                imagePath: imagePath,
                 url: p.link,
                 loja: 'farm',
                 novidade: true,
@@ -92,10 +109,13 @@ async function scrapeFarmSiteNovidades(quota = 2) {
                 bazar: pUrl.includes('bazar') || name.includes('bazar'),
                 isBazar: pUrl.includes('bazar') || name.includes('bazar'),
                 timerData: timerData
-            });
+            };
+
+            finalProducts.push(product);
+            markAsSent([baseId]); // Marca no histórico para não repetir na próxima execução
         }
 
-        console.log(`✅ [FARM] ${finalProducts.length} Novidades do Site encontradas.`);
+        console.log(`✅ [FARM] ${finalProducts.length} Novidades do Site encontradas (Cloudinary + Histórico OK).`);
         return finalProducts;
 
     } catch (err) {
