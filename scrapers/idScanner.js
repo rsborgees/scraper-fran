@@ -89,6 +89,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                 userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                 locale: 'pt-BR'
             });
+            ownsPage = true;
 
         } else {
             // It's already a page object
@@ -111,6 +112,13 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     });
                 }
                 return route.continue();
+            });
+
+            // 🛡️ CAPTURA LOGS DO CONSOLE (DEBUG)
+            page.on('console', msg => {
+                if (msg.type() === 'error' || msg.text().includes('[IDSCANNER]')) {
+                    console.log(`      🖥️ [BROWSER] ${msg.text()}`);
+                }
             });
 
             // 1. WARMUP ÚNICO: Vamos para a home primeiro para estabelecer a sessão antes de processar os itens
@@ -249,13 +257,6 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         // SPECIAL HANDLING FOR ZZMALL: Explicit search -> wait -> click
                         if (storeName === 'zzmall') {
                             let isPaginaValida = false;
-
-                            // 🛡️ CAPTURA LOGS DO CONSOLE (DEBUG)
-                            page.on('console', msg => {
-                                if (msg.type() === 'error' || msg.text().includes('[IDSCANNER]')) {
-                                    console.log(`      🖥️ [BROWSER] ${msg.text()}`);
-                                }
-                            });
 
                             // 1. WARMUP: Removido do loop (movido para antes do processamento dos itens)
 
@@ -405,7 +406,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             const finalValida = finalCheckUrl.includes('/p') || finalCheckUrl.includes('/produto') || finalCheckUrl.includes('/search/');
 
                             if (!finalValida) {
-                                console.log(`   ❌ [ZZMALL] BLOQUEADO: Destino inválido após todas as tentativas.`);
+                                console.log(`   ❌ [${storeName.toUpperCase()}] BLOQUEADO: Destino inválido após todas as tentativas.`);
                                 stats.notFound++;
                                 continue;
                             }
@@ -433,7 +434,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
                                     const checkUrl = page.url();
                                     if (!checkUrl.includes('/p') && !checkUrl.includes('/produto') && !checkUrl.includes('/search/')) {
-                                        console.log(`   ❌ [ZZMALL] BLOQUEADO: Página inválida após clique.`);
+                                        console.log(`   ❌ [${storeName.toUpperCase()}] BLOQUEADO: Página inválida após clique.`);
                                         continue;
                                     }
                                 } else {
@@ -470,8 +471,8 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             }, selector);
 
                             const currentUrlBeforeHref = page.url();
-                            if (!currentUrlBeforeHref.includes('/p') && !currentUrlBeforeHref.includes('/produto') && !currentUrlBeforeHref.includes('/search/')) {
-                                console.log(`   ❌ [ZZMALL] Abortando: Landing page inválida.`);
+                            if (storeName === 'zzmall' && !currentUrlBeforeHref.includes('/p') && !currentUrlBeforeHref.includes('/produto') && !currentUrlBeforeHref.includes('/search/')) {
+                                console.log(`   ❌ [${storeName.toUpperCase()}] Abortando: Landing page inválida.`);
                                 continue;
                             }
                         }
