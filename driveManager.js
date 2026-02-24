@@ -99,15 +99,23 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                     // Padrão Dress To: 01.34.2813_2380 -> Captura as partes numéricas ignorando pontos
                     const compositeMatches = file.name.match(/(\d{6,}[_-]\d+|\d{2}\.\d{2}\.\d{4}[_-]\d+)/g) || [];
 
-                    // 2. Tenta capturar IDs simples (mínimo 6 dígitos)
-                    // Filtra para não pegar partes de IDs compostos já capturados
+                    // 2. Tenta capturar IDs alfanuméricos longos (ZZMall: A123..., C123..., P123..., S123...)
+                    const alphaMatches = (file.name.match(/[A-Z]\d{8,}/gi) || []);
+
+                    // 3. Tenta capturar IDs simples (mínimo 6 dígitos)
+                    // Filtra para não pegar partes de IDs compostos ou alfanuméricos já capturados
                     const simpleMatches = (file.name.match(/\d{6,}/g) || []).filter(sid => {
-                        return !compositeMatches.some(cid => cid.includes(sid));
+                        const inComposite = compositeMatches.some(cid => cid.includes(sid));
+                        const inAlpha = alphaMatches.some(aid => aid.includes(sid));
+                        return !inComposite && !inAlpha;
                     });
 
-                    let ids = [...compositeMatches, ...simpleMatches];
-                    // Normaliza IDs: remove pontos e troca hífens por underscores
-                    ids = ids.map(id => id.replace(/\./g, '').replace(/-/g, '_'));
+                    let ids = [...compositeMatches, ...alphaMatches, ...simpleMatches];
+                    // Normaliza IDs: remove pontos e troca hífens por underscores (apenas para compostos e simples, preserva Alphanum)
+                    ids = ids.map(id => {
+                        if (/[A-Z]/i.test(id)) return id.toUpperCase(); // Preserva Alphanum como está (+ uppercase)
+                        return id.replace(/\./g, '').replace(/-/g, '_');
+                    });
 
                     if (ids.length > 0) {
                         const verbatimId = ids.join(' ');

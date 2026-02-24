@@ -99,17 +99,42 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
         if (storeName === 'zzmall') {
             await page.route('**/*', (route) => {
                 const url = route.request().url().toLowerCase();
-                // Bloqueio estrito de qualquer recurso ou navegação para caminhos proibidos
-                if (url.includes('novidades') || url.includes('fallback') || url.includes('transparencia')) {
-                    // Cumpriremos com uma página vazia para evitar erro de navegador (ERR_FAILED)
+                const isNavigation = route.request().isNavigationRequest();
+
+                // Bloqueio apenas se for uma NAVEGAÇÃO para páginas de erro/fallback conhecidas do ZZMall que indicam detecção
+                if (isNavigation && (url.includes('/novidades') || url.includes('fallback=true') || url.includes('/transparencia'))) {
+                    console.log(`      🛡️ [ZZMALL] Bloqueando Redirecionamento de Bot detectado: ${url}`);
                     return route.fulfill({
                         status: 200,
                         contentType: 'text/html',
-                        body: '<html><body>Destino Bloqueado</body></html>'
+                        body: '<html><body>Destino Bloqueado por Detecção de Bot</body></html>'
                     });
                 }
                 return route.continue();
             });
+
+            // 1. WARMUP ÚNICO: Vamos para a home primeiro para estabelecer a sessão antes de processar os itens
+            console.log(`      🍪 [ZZMALL] Estabelecendo sessão inicial (Warmup)...`);
+            try {
+                await page.goto('https://www.zzmall.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await page.waitForTimeout(3000);
+
+                // Tenta aceitar cookies para limpar o overlay
+                try {
+                    const cookieBtn = await page.$('#onesignal-slidedown-cancel-button, button:has-text("Aceitar"), .cookie-accept-button');
+                    if (cookieBtn) {
+                        console.log(`      🍪 [ZZMALL] Aceitando cookies/notificações...`);
+                        await cookieBtn.click();
+                        await page.waitForTimeout(1000);
+                    }
+                } catch (e) { }
+
+                // Pequeno scroll humano
+                await page.mouse.wheel(0, 300);
+                await page.waitForTimeout(1000);
+            } catch (e) {
+                console.log(`      ⚠️ [ZZMALL] Falha no warmup inicial: ${e.message}`);
+            }
         }
 
         if (storeName === 'dressto') {
@@ -232,26 +257,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 }
                             });
 
-                            // 1. WARMUP: Vamos para a home primeiro para estabelecer a sessão
-                            try {
-                                await page.goto('https://www.zzmall.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-                                await page.waitForTimeout(2000);
-
-                                // Tenta aceitar cookies para limpar o overlay
-                                try {
-                                    const cookieBtn = await page.$('#onesignal-slidedown-cancel-button, button:has-text("Aceitar"), .cookie-accept-button');
-                                    if (cookieBtn) {
-                                        console.log(`      🍪 [ZZMALL] Aceitando cookies/notificações...`);
-                                        await cookieBtn.click();
-                                    }
-                                } catch (e) { }
-
-                                // Pequeno scroll humano
-                                await page.mouse.wheel(0, 300);
-                                await page.waitForTimeout(3000);
-                            } catch (e) {
-                                console.log(`      ⚠️ [ZZMALL] Falha no warmup: ${e.message}`);
-                            }
+                            // 1. WARMUP: Removido do loop (movido para antes do processamento dos itens)
 
                             // 2. API DE BUSCA DIRETA (Tenta antes da navegação para ser mais limpo)
                             console.log(`      🔎 [ZZMALL] Tentando API de busca direta para ID ${item.id}...`);
