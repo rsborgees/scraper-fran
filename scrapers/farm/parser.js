@@ -279,27 +279,37 @@ async function parseProduct(page, url) {
             // FILTRO BAZAR (Requisito: Se estiver no Bazar, NÃO envia, independente do desconto)
             const isBazar = (function () {
                 // 1. URL Check
-                if (window.location.href.toLowerCase().includes('bazar')) return true;
+                const url = window.location.href.toLowerCase();
+                if (url.includes('/bazar') || url.includes('?bazar') || url.includes('&bazar')) return true;
 
                 // 2. Title Check
-                if (document.title.toLowerCase().includes('bazar')) return true;
+                if (document.title.toLowerCase().includes('bazar farm')) return true;
 
-                // 3. Runtime Check (Vtex)
-                if (window.__RUNTIME__ && window.__RUNTIME__.route && window.__RUNTIME__.route.path) {
-                    if (window.__RUNTIME__.route.path.toLowerCase().includes('bazar')) return true;
-                }
+                // 3. Breadcrumb precise check (Legitimate Breadcrumbs only)
+                const breadcrumbs = Array.from(document.querySelectorAll('.vtex-breadcrumb__container a, .vtex-breadcrumb__item a, [class*="breadcrumb"] a'));
+                // Filter out navigation menu links that might be caught by broad selectors
+                const realBreadcrumbs = breadcrumbs.filter(b => {
+                    let parent = b.parentElement;
+                    let isMenu = false;
+                    while (parent && parent !== document.body) {
+                        const cls = (parent.className || '').toString().toLowerCase();
+                        if (cls.includes('menu') || cls.includes('navbar') || cls.includes('navigation') || cls.includes('header')) {
+                            isMenu = true;
+                            break;
+                        }
+                        parent = parent.parentElement;
+                    }
+                    return !isMenu;
+                });
 
-                // 4. Main Content Check (Careful: menu/footer might contain 'bazar')
+                if (realBreadcrumbs.some(b => b.innerText.toLowerCase().includes('bazar'))) return true;
+
+                // 4. Main Content Specific Flag
                 const mainEl = document.querySelector('.vtex-store-components-3-x-container') || document.querySelector('main');
-                const relevantText = mainEl ? mainEl.innerText.substring(0, 1500).toLowerCase() : '';
-
-                // Breadcrumb precise check is better
-                const breadcrumbs = Array.from(document.querySelectorAll('.vtex-breadcrumb__container a, [class*="breadcrumb"] a'));
-                if (breadcrumbs.some(b => b.innerText.toLowerCase().includes('bazar'))) return true;
-
-                // Only matches if 'bazar' is a dominant part or in specificPDP context
-                // Removed: relevantText.includes('bazar farm') as it's too broad
-                if (relevantText.includes('categoria: bazar')) return true;
+                if (mainEl) {
+                    const text = mainEl.innerText.substring(0, 1000).toLowerCase();
+                    if (text.includes('categoria: bazar')) return true;
+                }
 
                 return false;
             })();

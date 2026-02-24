@@ -14,9 +14,10 @@ async function scrapeFarmSiteNovidades(quota = 2) {
     console.log(`🌐 [FARM] Buscando ${quota} Novidades do Site (fora do Drive)...`);
 
     try {
+        const { normalizeId } = require('../../historyManager');
         const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
         const driveItems = await getExistingIdsFromDrive(folderId);
-        const driveBaseIds = new Set(driveItems.map(item => item.id.split('_')[0]));
+        const driveBaseIds = new Set(driveItems.map(item => normalizeId(item.id.split('_')[0])));
 
         const url = 'https://www.farmrio.com.br/api/catalog_system/pub/products/search?O=OrderByReleaseDateDESC&_from=0&_to=49';
 
@@ -40,10 +41,13 @@ async function scrapeFarmSiteNovidades(quota = 2) {
             if (finalProducts.length >= quota) break;
 
             const fullId = p.productReference;
-            const baseId = fullId.split('_')[0];
+            const baseId = normalizeId(fullId.split('_')[0]);
 
             // 1. Filtro de Drive (evitar duplicar o que já temos no Drive)
-            if (driveBaseIds.has(baseId)) continue;
+            if (driveBaseIds.has(baseId)) {
+                console.log(`      ⏭️ [FarmNovidades] Código ${baseId} já está no Drive. Pulando.`);
+                continue;
+            }
 
             // 1.1 Filtro de Histórico (evitar repetir a mesma novidade em toda rodada horária)
             if (isDuplicate(baseId)) continue;
@@ -106,8 +110,8 @@ async function scrapeFarmSiteNovidades(quota = 2) {
                 isSiteNovidade: true, // Tag para o orchestrator
                 tamanhos: uniqueSizesList,
                 estoque: stock,
-                bazar: pUrl.includes('bazar') || name.includes('bazar'),
-                isBazar: pUrl.includes('bazar') || name.includes('bazar'),
+                bazar: pUrl.includes('/bazar') || pUrl.includes('?bazar') || name.includes('bazar'),
+                isBazar: pUrl.includes('/bazar') || pUrl.includes('?bazar') || name.includes('bazar'),
                 timerData: timerData
             };
 

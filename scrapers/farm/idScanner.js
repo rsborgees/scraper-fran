@@ -173,16 +173,17 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                     finalProduct.novidade = item.novidade || false;
                     finalProduct.isNovidade = item.novidade || (finalProduct.isNovidade || false);
 
-                    // REGRA ESTRITA: Bazar vem apenas do que está no Drive
-                    finalProduct.bazar = item.bazar || false;
-                    finalProduct.isBazar = finalProduct.bazar;
-                    finalProduct.bazarFavorito = item.bazarFavorito || false;
+                    // REGRA ESTRITA: Bazar vem apenas do que está no Drive (Se for item de Drive)
+                    finalProduct.bazar = !!item.bazar;
+                    finalProduct.isBazar = !!item.bazar;
+                    finalProduct.bazarFavorito = !!item.bazarFavorito;
 
                     finalProduct.url = appendQueryParams(finalProduct.url, { utm_campaign: "7B1313" });
                     finalProduct.loja = 'farm';
-                    if (item.driveId) finalProduct.id = item.driveId; // Use verbatim Drive ID
+                    if (item.driveId) finalProduct.id = item.driveId; // Use verbatim Drive ID (e.g. 355028)
+                    else finalProduct.id = finalProduct.id; // Keep original if no driveId
 
-                    const isDup = isDuplicate(normalizeId(finalProduct.id), {
+                    const isDup = isDuplicate(finalProduct.id, {
                         force: item.isFavorito,
                         maxAgeHours: options.maxAgeHours || 24
                     }, finalProduct.preco);
