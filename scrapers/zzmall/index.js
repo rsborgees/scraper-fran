@@ -361,10 +361,18 @@ async function parseProductZZMall(page, url) {
             let id = 'unknown';
             const refEl = document.querySelector('.vtex-product-identifier, .productReference');
             if (refEl) {
-                id = getSafeText(refEl).replace(/\D/g, '');
+                const text = getSafeText(refEl);
+                // Procura por sequências alfanuméricas longas (ID ZZMall)
+                const match = text.match(/[A-Z0-9]{8,}/i);
+                if (match) {
+                    id = match[0].toUpperCase();
+                } else {
+                    // Fallback: Remove apenas caracteres especiais, mantém letras e números
+                    id = text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+                }
             } else {
-                const urlMatch = window.location.href.match(/(\d{6,})/);
-                if (urlMatch) id = urlMatch[1];
+                const urlMatch = window.location.href.match(/([A-Z0-9]{10,})/i);
+                if (urlMatch) id = urlMatch[1].toUpperCase();
             }
 
             return {
