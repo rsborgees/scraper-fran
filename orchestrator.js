@@ -71,16 +71,15 @@ async function runAllScrapers(overrideQuotas = null) {
     // 1. Obter quotas restantes do dia
     const remaining = getRemainingQuotas();
 
-    // 2. Definir meta para ESTA execução (Total ~10-11 para chegar em 156)
-    // Se estivermos muito atrás, tentamos pegar um pouco mais
-    const itemsPerRun = 10;
+    // 2. Definir meta para ESTA execução (Total ~7 para chegar em 106)
+    const itemsPerRun = 7;
 
     // Distribuição proporcional baseada no que FALTA para o dia
     const quotas = overrideQuotas || {
         farm: Math.min(4, remaining.stores.farm),
-        dressto: Math.min(3, remaining.stores.dressto),
-        kju: Math.min(3, remaining.stores.kju),
-        live: Math.min(2, remaining.stores.live),
+        dressto: Math.min(2, remaining.stores.dressto),
+        kju: Math.min(2, remaining.stores.kju),
+        live: Math.min(1, remaining.stores.live),
         zzmall: Math.min(1, remaining.stores.zzmall)
     };
 

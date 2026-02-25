@@ -2,34 +2,34 @@
  * Engine de Distribuição de Links
  */
 
-// Cotas Diárias (Base 10-11 links por execução para atingir 156/dia em 15 horários)
-const TOTAL_LINKS = 10;
+// Cotas Diárias (Base ~7 links por execução para atingir 106/dia em 15 horários)
+const TOTAL_LINKS = 7;
 const QUOTAS = {
-    // Farm, Dress, Kju dividem a maior parte (87% / 3 = 29% cada aprox)
+    // Farm (56), others split remaining 50
     FARM: {
-        percent: 0.29,
-        count: 3, // Per execution target
-        dailyGoal: 46
+        percent: 0.53,
+        count: 4, // Per execution target
+        dailyGoal: 56
     },
     DRESS: {
-        percent: 0.29,
-        count: 3,
-        dailyGoal: 45
+        percent: 0.17,
+        count: 1.2,
+        dailyGoal: 18
     },
     KJU: {
-        percent: 0.29,
-        count: 3,
-        dailyGoal: 45
+        percent: 0.17,
+        count: 1.2,
+        dailyGoal: 18
     },
     LIVE: {
         percent: 0.11,
-        count: 1.1, // ~17/15 runs
-        dailyGoal: 17
+        count: 0.8,
+        dailyGoal: 12
     },
     ZZMALL: {
         percent: 0.02,
-        count: 0.2, // ~1 a cada 5 execuções (3/15 runs)
-        dailyGoal: 3
+        count: 0.13,
+        dailyGoal: 2
     }
 };
 
@@ -128,14 +128,14 @@ function distributeLinks(allProducts) {
             const farmOutros = storeItems.filter(p => p.categoria !== 'vestido' && p.categoria !== 'macacão').slice(0, Math.ceil(countToTake * 0.15));
 
             [...farmVestidos, ...farmMacacoes, ...farmOutros].forEach(p => {
-                if (finalSelection.length < 11) { // Cap global ~10-11
+                if (finalSelection.length < 8) { // Cap global ~7
                     finalSelection.push(p);
                     selectedIds.add(p.id);
                 }
             });
         } else {
             storeItems.slice(0, countToTake).forEach(p => {
-                if (finalSelection.length < 11) {
+                if (finalSelection.length < 8) {
                     finalSelection.push(p);
                     selectedIds.add(p.id);
                 }
@@ -143,9 +143,9 @@ function distributeLinks(allProducts) {
         }
     }
 
-    // Preenchimento de segurança se não atingiu 10
-    if (finalSelection.length < 10) {
-        const gap = 10 - finalSelection.length;
+    // Preenchimento de segurança se não atingiu 7
+    if (finalSelection.length < 7) {
+        const gap = 7 - finalSelection.length;
         const extras = regularPool.filter(p => !selectedIds.has(p.id));
         finalSelection.push(...extras.slice(0, gap));
     }

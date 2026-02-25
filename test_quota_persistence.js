@@ -22,10 +22,10 @@ recordSentItems([p1, p2, p3]);
 // 3. Check remaining
 let remaining = getRemainingQuotas();
 console.log('3. Quotas restantes:');
-console.log(`   - Total: ${remaining.total} (Esperado: 153) -> ${remaining.total === 153 ? '✅' : '❌'}`);
-console.log(`   - Farm: ${remaining.stores.farm} (Esperado: 44) -> ${remaining.stores.farm === 44 ? '✅' : '❌'}`);
-console.log(`   - Farm Vestidos: ${remaining.farmCategories.vestido} (Esperado: 27) -> ${remaining.farmCategories.vestido === 27 ? '✅' : '❌'}`);
-console.log(`   - Farm Macacões: ${remaining.farmCategories.macacão} (Esperado: 11) -> ${remaining.farmCategories.macacão === 11 ? '✅' : '❌'}`);
+console.log(`   - Total: ${remaining.total} (Esperado: 103) -> ${remaining.total === 103 ? '✅' : '❌'}`);
+console.log(`   - Farm: ${remaining.stores.farm} (Esperado: 54) -> ${remaining.stores.farm === 54 ? '✅' : '❌'}`);
+console.log(`   - Farm Vestidos: ${remaining.farmCategories.vestido} (Esperado: 33) -> ${remaining.farmCategories.vestido === 33 ? '✅' : '❌'}`);
+console.log(`   - Farm Macacões: ${remaining.farmCategories.macacão} (Esperado: 13) -> ${remaining.farmCategories.macacão === 13 ? '✅' : '❌'}`);
 
 // 4. Test New Day reset (Mock date)
 console.log('\n4. Testando reset de novo dia (Mocking data antiga)...');
@@ -38,7 +38,7 @@ const today = new Date().toISOString().split('T')[0];
 console.log(`   - Data resetada para hoje? ${newStats.date === today ? '✅' : '❌'}`);
 console.log(`   - Total resetado para 0? ${newStats.total === 0 ? '✅' : '❌'}`);
 
-if (remaining.total === 153 && newStats.total === 0) {
+if (remaining.total === 103 && newStats.total === 0) {
     console.log('\n✅ TESTE DE PERSISTÊNCIA OK!');
 } else {
     console.log('\n❌ TESTE DE PERSISTÊNCIA FALHOU!');
