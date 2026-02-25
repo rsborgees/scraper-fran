@@ -2,30 +2,35 @@
  * Engine de Distribuição de Links
  */
 
-// Cotas Diárias (Base 12 links por execução)
-const TOTAL_LINKS = 12;
+// Cotas Diárias (Base 10-11 links por execução para atingir 156/dia em 15 horários)
+const TOTAL_LINKS = 10;
 const QUOTAS = {
+    // Farm, Dress, Kju dividem a maior parte (87% / 3 = 29% cada aprox)
     FARM: {
-        percent: 0.50,
-        count: 6,
-        segments: {
-            SITE: 1,      // 1 fixo
-            BAZAR: 1,     // 1 fixo
-            REGULAR: 4    // 4 fixos
-        }
+        percent: 0.29,
+        count: 3, // Per execution target
+        dailyGoal: 46
     },
-    KJU: { percent: 0.08, count: 1 },  // 1
     DRESS: {
-        percent: 0.17,
-        count: 2, // 2
-        segments: {
-            BAZAR: 0.10,    // 10% of Dress To Quota (Bazar Drive)
-            NOVIDADE: 0.10, // 10% of Dress To Quota (Site Novidades)
-            REGULAR: 0.80   // 80% remaining
-        }
+        percent: 0.29,
+        count: 3,
+        dailyGoal: 45
     },
-    LIVE: { percent: 0.17, count: 2 }, // 2
-    ZZMALL: { percent: 0.08, count: 1 }// 1
+    KJU: {
+        percent: 0.29,
+        count: 3,
+        dailyGoal: 45
+    },
+    LIVE: {
+        percent: 0.11,
+        count: 1.1, // ~17/15 runs
+        dailyGoal: 17
+    },
+    ZZMALL: {
+        percent: 0.02,
+        count: 0.2, // ~1 a cada 5 execuções (3/15 runs)
+        dailyGoal: 3
+    }
 };
 
 
@@ -81,99 +86,70 @@ function filterEligibleProducts(products) {
  * Distribui produtos nos slots disponíveis
  * @param {Array} allProducts Array de objetos de produto { nome, categoria, brand, ... }
  */
+/**
+ * Distribui produtos nos slots disponíveis
+ * @param {Array} allProducts Array de objetos de produto
+ */
 function distributeLinks(allProducts) {
-    const eligible = filterEligibleProducts(allProducts);
+    // 1. FILTRO: Remove Favoritos e Novidades (Não devem ir no horário)
+    const eligible = allProducts.filter(p => !p.favorito && !p.isFavorito && !p.novidade && !p.isNovidade);
+
     const finalSelection = [];
 
-    // Processamento FARM
-    const farmPool = eligible.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm');
-    const farmQuota = QUOTAS.FARM.count;
-
-    // 1. Site Novidades (Exatamente 1)
-    const farmSiteItems = farmPool.filter(p => p.isSiteNovidade);
-    if (farmSiteItems.length > 0) {
-        finalSelection.push(...farmSiteItems.slice(0, 1));
+    // 2. SELEÇÃO BAZAR (Exatamente 1 item por execução, prioridade FARM)
+    const bazarPool = eligible.filter(p => p.bazar);
+    if (bazarPool.length > 0) {
+        // Prioriza Farm se houver
+        const farmBazar = bazarPool.find(p => p.loja === 'farm' || p.brand === 'FARM');
+        if (farmBazar) {
+            finalSelection.push(farmBazar);
+        } else {
+            finalSelection.push(bazarPool[0]);
+        }
     }
 
-    // 2. Bazar (Exatamente 1)
-    const currentFarmIds = new Set(finalSelection.map(p => p.id));
-    const farmBazarItems = farmPool.filter(p => p.bazar && !currentFarmIds.has(p.id));
-    if (farmBazarItems.length > 0) {
-        finalSelection.push(...farmBazarItems.slice(0, 1));
+    // 3. SELEÇÃO REGULAR (9-10 itens restantes)
+    const regularPool = eligible.filter(p => !p.bazar);
+    const selectedIds = new Set(finalSelection.map(p => p.id));
+
+    // Preenche por loja respeitando proporção (Simples)
+    const storePriority = ['farm', 'dressto', 'kju', 'live', 'zzmall'];
+
+    for (const store of storePriority) {
+        const quota = QUOTAS[store === 'dressto' ? 'DRESS' : store.toUpperCase()].count;
+        const countToTake = Math.ceil(quota);
+
+        const storeItems = regularPool.filter(p => (p.loja === store || (p.brand || '').toLowerCase() === store) && !selectedIds.has(p.id));
+
+        // Se FARM, aplica sub-cotas categoria (60/25/15)
+        if (store === 'farm') {
+            const farmVestidos = storeItems.filter(p => p.categoria === 'vestido').slice(0, Math.ceil(countToTake * 0.60));
+            const farmMacacoes = storeItems.filter(p => p.categoria === 'macacão').slice(0, Math.ceil(countToTake * 0.25));
+            const farmOutros = storeItems.filter(p => p.categoria !== 'vestido' && p.categoria !== 'macacão').slice(0, Math.ceil(countToTake * 0.15));
+
+            [...farmVestidos, ...farmMacacoes, ...farmOutros].forEach(p => {
+                if (finalSelection.length < 11) { // Cap global ~10-11
+                    finalSelection.push(p);
+                    selectedIds.add(p.id);
+                }
+            });
+        } else {
+            storeItems.slice(0, countToTake).forEach(p => {
+                if (finalSelection.length < 11) {
+                    finalSelection.push(p);
+                    selectedIds.add(p.id);
+                }
+            });
+        }
     }
 
-    // 3. Regular (4 itens restantes, distribuídos por categoria)
-    const farmRegularPool = farmPool.filter(p => !p.bazar && !p.isSiteNovidade);
-    const farmRegularQuota = 4;
-
-    // Atualiza IDs já selecionados (que podem ser site novelty ou bazar)
-    const farmIdsInSelection = new Set(finalSelection.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm').map(p => p.id));
-
-    // Filtra o pool regular para remover o que já foi pego (improvável se as flags forem exclusivas, mas safe)
-    const availableRegular = farmRegularPool.filter(p => !farmIdsInSelection.has(p.id));
-
-    // Distribuição proporcional por categoria para o pool regular
-    for (const [cat, percent] of Object.entries(FARM_SUBQUOTAS)) {
-        const count = Math.round(farmRegularQuota * percent);
-        const catProducts = availableRegular.filter(p => p.categoria === cat && !finalSelection.some(fs => fs.id === p.id));
-        const currentFarmCount = finalSelection.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm').length;
-        const take = Math.min(count, farmQuota - currentFarmCount);
-        if (take > 0) finalSelection.push(...catProducts.slice(0, take));
+    // Preenchimento de segurança se não atingiu 10
+    if (finalSelection.length < 10) {
+        const gap = 10 - finalSelection.length;
+        const extras = regularPool.filter(p => !selectedIds.has(p.id));
+        finalSelection.push(...extras.slice(0, gap));
     }
 
-    // Preenchimento de segurança para FARM (até atingir 6)
-    let finalFarmCount = finalSelection.filter(p => (p.brand || '').toUpperCase() === 'FARM' || (p.loja || '').toLowerCase() === 'farm').length;
-    if (finalFarmCount < farmQuota) {
-        const gap = farmQuota - finalFarmCount;
-        const extra = farmPool.filter(p => !finalSelection.some(fs => fs.id === p.id));
-        finalSelection.push(...extra.slice(0, gap));
-    }
-
-
-    // Processamento Dress To (Com sub-cotas e segmentos)
-    const dressQuota = QUOTAS.DRESS.count;
-    const dressPool = eligible.filter(p => p.brand === 'DRESS' || p.loja === 'dressto');
-
-    // 1. Bazar (Drive) - 10%
-    const bazarQuota = Math.round(dressQuota * QUOTAS.DRESS.segments.BAZAR);
-    const bazarItems = dressPool.filter(p => p.bazar);
-    finalSelection.push(...bazarItems.slice(0, bazarQuota));
-
-    // 2. Novidades (Site) - 10%
-    const novidadeQuota = Math.round(dressQuota * QUOTAS.DRESS.segments.NOVIDADE);
-    const novidadeItems = dressPool.filter(p => p.isSiteNovidade && !p.bazar); // Prioriza bazar se estiver em ambos (?)
-    finalSelection.push(...novidadeItems.slice(0, novidadeQuota));
-
-    // 3. Distribuição por Categoria (Restante)
-    const currentDressIds = new Set(finalSelection.filter(p => p.brand === 'DRESS' || p.loja === 'dressto').map(p => p.id));
-    const remainingDressPool = dressPool.filter(p => !currentDressIds.has(p.id));
-    const remainingDressQuota = dressQuota - finalSelection.filter(p => p.brand === 'DRESS' || p.loja === 'dressto').length;
-
-    for (const [cat, percent] of Object.entries(DRESS_SUBQUOTAS)) {
-        const count = Math.round(dressQuota * percent);
-        const catProducts = remainingDressPool.filter(p => p.categoria === cat);
-        // Evita ultrapassar a quota total de Dress To se houver muitos macacões/vestidos
-        const take = Math.min(count, dressQuota - finalSelection.filter(p => p.brand === 'DRESS' || p.loja === 'dressto').length);
-        if (take > 0) finalSelection.push(...catProducts.slice(0, take));
-    }
-
-    // Preenchimento de segurança para Dress To (até atingir 2)
-    let finalDressCount = finalSelection.filter(p => p.brand === 'DRESS' || p.loja === 'dressto').length;
-    if (finalDressCount < dressQuota) {
-        const gap = dressQuota - finalDressCount;
-        const extra = dressPool.filter(p => !finalSelection.some(fs => fs.id === p.id));
-        finalSelection.push(...extra.slice(0, gap));
-    }
-
-    // Processamento Demais Marcas
-    ['KJU', 'LIVE', 'ZZMALL'].forEach(brand => {
-        const quota = QUOTAS[brand].count;
-        const brandProducts = eligible.filter(p => (p.brand || '').toUpperCase() === brand || (p.loja || '').toUpperCase() === brand);
-        finalSelection.push(...brandProducts.slice(0, quota));
-    });
-
-    // Regra: Nunca repetir sequência (Shuffle final)
-    // Retorna apenas produtos reais, sem fallbacks genéricos
     return shuffle(finalSelection);
 }
 

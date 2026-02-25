@@ -23,6 +23,7 @@ const {
     buildZzMallMessage
 } = require('./messageBuilder');
 const { scrapeFarmSiteNovidades } = require('./scrapers/farm/siteNovidades');
+const { getRemainingQuotas, recordSentItems } = require('./dailyStatsManager');
 
 
 /**
@@ -66,13 +67,26 @@ function getPriorityScore(item, history = {}) {
 
 async function runAllScrapers(overrideQuotas = null) {
     const allProducts = [];
+
+    // 1. Obter quotas restantes do dia
+    const remaining = getRemainingQuotas();
+
+    // 2. Definir meta para ESTA execução (Total ~10-11 para chegar em 156)
+    // Se estivermos muito atrás, tentamos pegar um pouco mais
+    const itemsPerRun = 10;
+
+    // Distribuição proporcional baseada no que FALTA para o dia
     const quotas = overrideQuotas || {
-        farm: 6,     // 50% (Aprox)
-        dressto: 2,  // 17%
-        kju: 1,      // 8%
-        live: 2,     // 17%
-        zzmall: 1    // 8%
+        farm: Math.min(4, remaining.stores.farm),
+        dressto: Math.min(3, remaining.stores.dressto),
+        kju: Math.min(3, remaining.stores.kju),
+        live: Math.min(2, remaining.stores.live),
+        zzmall: Math.min(1, remaining.stores.zzmall)
     };
+
+    // Ajuste se o total for menor que o esperado
+    const currentTarget = Object.values(quotas).reduce((a, b) => a + b, 0);
+    console.log(`📊 [Orchestrator] Meta desta rodada: ${currentTarget} itens. Falta para o dia: ${remaining.total}`);
 
     // 🚀 SINGLE BROWSER INSTANCE SHARING
     // Inicializa o navegador uma única vez para todos os scrapers
@@ -123,9 +137,11 @@ async function runAllScrapers(overrideQuotas = null) {
                 });
 
                 const farmDriveItems = Array.from(uniqueFarmItems.values()).filter(item => {
-                    if (item.isFavorito) return true;
+                    // REGRA OUT/2026: Não pega mais favoritos e novidades no horário
+                    if (item.isFavorito || item.novidade) return false;
+
                     // Farm Drive: 48h (2 dias)
-                    return !isDuplicate(normalizeId(item.id), { force: item.isFavorito, maxAgeHours: 48 }, item.preco);
+                    return !isDuplicate(normalizeId(item.id), { force: false, maxAgeHours: 48 }, item.preco);
                 });
 
                 if (farmDriveItems.length > 0) {
@@ -162,8 +178,8 @@ async function runAllScrapers(overrideQuotas = null) {
                 const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
 
                 for (const store of otherStores) {
-                    // REMOVIDO isDuplicate PREVIO: O scraper interno vai lidar para mostrar o log de tentativa
-                    const items = driveItemsByStore[store];
+                    // Filtra favoritos e novidades
+                    const items = (driveItemsByStore[store] || []).filter(item => !item.isFavorito && !item.novidade);
 
                     if (items.length > 0) {
                         const limitedItems = items
@@ -208,10 +224,11 @@ async function runAllScrapers(overrideQuotas = null) {
                 if (dressItems && dressItems.length > 0) {
                     console.log(`🔍 [DRESSTO] Iniciando Drive-First (${dressItems.length} itens)...`);
 
-                    // Passo 1: Sem repetição recente (48h default, 24h para favoritos)
+                    // Passo 1: Sem repetição recente (48h default) e SEM Favoritos/Novidades
                     let candidates = dressItems.filter(item => {
+                        if (item.isFavorito || item.novidade) return false;
                         const finalId = item.driveId || item.id;
-                        return !isDuplicate(finalId, { force: !!item.isFavorito, maxAgeHours: 48 });
+                        return !isDuplicate(finalId, { force: false, maxAgeHours: 48 });
                     });
 
                     // Passo 2: Fallback se pool for pequeno (Aceita repetição de 24h para qualquer um)
@@ -548,8 +565,10 @@ async function runAllScrapers(overrideQuotas = null) {
         console.log('Aplicando motor de distribuição final...');
         const distributedProducts = distributeLinks(allProducts);
 
-        console.log(`Mensagens finais selecionadas: ${distributedProducts.length}`);
-        console.log('==================================================');
+        // 4. Gravar Stats Diárias
+        if (distributedProducts.length > 0) {
+            recordSentItems(distributedProducts);
+        }
 
         return distributedProducts;
 
