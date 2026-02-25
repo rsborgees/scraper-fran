@@ -78,7 +78,7 @@ async function runAllScrapers(overrideQuotas = null) {
     const quotas = overrideQuotas || {
         farm: Math.min(4, remaining.stores.farm),
         dressto: Math.min(2, remaining.stores.dressto),
-        kju: Math.min(2, remaining.stores.kju),
+        kju: Math.min(1, remaining.stores.kju),
         live: Math.min(1, remaining.stores.live),
         zzmall: Math.min(1, remaining.stores.zzmall)
     };

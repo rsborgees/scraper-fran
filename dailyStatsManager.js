@@ -106,10 +106,10 @@ function getRemainingQuotas() {
         total: 106,
         stores: {
             farm: 56,
-            dressto: 18,
-            kju: 18,
+            dressto: 22,
+            kju: 10,
             live: 12,
-            zzmall: 2
+            zzmall: 6
         },
         farmCategories: {
             vestido: 34, // ~60% of 56
