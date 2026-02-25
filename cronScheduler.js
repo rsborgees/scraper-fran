@@ -51,6 +51,7 @@ async function runDailyPromoJob() {
 
 /**
  * Job das 05h: Envia favoritos e novidades do Google Drive
+ * Regra: Até 50 produtos, rotação determinística (não repetir até percorrer todos)
  */
 async function runDailyDriveSyncJob() {
     console.log('\n' + '='.repeat(60));
@@ -63,47 +64,68 @@ async function runDailyDriveSyncJob() {
         const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
         const { initBrowser } = require('./browser_setup');
         const { buildFarmMessage, buildDressMessage, buildKjuMessage, buildLiveMessage, buildZzMallMessage } = require('./messageBuilder');
+        const { loadHistory, normalizeId } = require('./historyManager');
 
         const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
         if (!folderId) throw new Error('GOOGLE_DRIVE_FOLDER_ID não configurado');
 
-        // 1. Buscar itens do Drive
-        console.log('📂 Coletando itens do Google Drive...');
+        // 1. Buscar itens do Drive e Histórico
+        console.log('📂 Coletando itens do Google Drive e Histórico...');
         const allDriveItems = await getExistingIdsFromDrive(folderId);
+        const history = loadHistory();
 
-        // 2. Filtrar favoritos e novidades
-        const targetItems = allDriveItems.filter(item => item.isFavorito || item.novidade);
-        console.log(`✅ Encontrados ${targetItems.length} itens (Favoritos ou Novidades) no Drive.`);
+        // 2. Seleção de Candidatos (Favoritos ou Novidades)
+        let candidates = allDriveItems.filter(item => item.isFavorito || item.novidade);
+        console.log(`✅ Encontrados ${candidates.length} candidatos (Favoritos ou Novidades) no Drive.`);
 
-        if (targetItems.length === 0) {
+        if (candidates.length === 0) {
             console.log('ℹ️ Nenhum favorito ou novidade encontrado para enviar.');
             return;
         }
 
-        // 3. Inicializar navegador
+        // 3. Ordenação para Rotação (Inéditos primeiro, depois os mais antigos)
+        candidates.forEach(item => {
+            const normId = normalizeId(item.driveId || item.id);
+            const historyEntry = history[normId];
+            // Se nunca enviado, timestamp = 0 (total prioridade)
+            item._lastSent = historyEntry ? historyEntry.timestamp : 0;
+        });
+
+        // Ordenação ascendente por timestamp (0 vem primeiro)
+        // Secundária: Favoritos primeiro se houver empate de data (ou seja, ambos nunca enviados)
+        candidates.sort((a, b) => {
+            if (a._lastSent !== b._lastSent) return a._lastSent - b._lastSent;
+            if (a.isFavorito && !b.isFavorito) return -1;
+            if (!a.isFavorito && b.isFavorito) return 1;
+            return 0;
+        });
+
+        // 4. Limite de 50 produtos
+        const targetItems = candidates.slice(0, 50);
+        console.log(`🎯 Selecionados ${targetItems.length} itens para rotação hoje (Priorizando inéditos/antigos).`);
+
+        // 5. Inicializar navegador
         const { browser, context } = await initBrowser();
         const results = [];
 
         try {
-            // Agrupar por loja para eficiência
-            const stores = ['farm', 'dressto', 'kju', 'live', 'zzmall'];
+            // Agrupar por loja para processamento
+            const stores = [...new Set(targetItems.map(item => item.store))];
+
             for (const store of stores) {
                 const storeItems = targetItems.filter(item => item.store === store);
-                if (storeItems.length === 0) continue;
-
                 console.log(`\n🔍 Processando ${storeItems.length} itens da ${store.toUpperCase()}...`);
 
                 let scraped;
                 if (store === 'farm') {
-                    scraped = await scrapeSpecificIds(context, storeItems, 999, { maxAgeHours: 23 });
+                    // maxAgeHours: -1 para forçar o scraping e a atualização do histórico independente da regra de 24h
+                    scraped = await scrapeSpecificIds(context, storeItems, 999, { maxAgeHours: -1 });
                 } else {
-                    // maxAgeHours: 23 permite que o item seja enviado todo dia às 5h se ele ainda estiver no Drive como favorito/novidade
-                    scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, 999, { maxAgeHours: 23 });
+                    scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, 999, { maxAgeHours: -1 });
                 }
 
                 if (scraped.products && scraped.products.length > 0) {
                     scraped.products.forEach(p => {
-                        // Gerar mensagem se não tiver
                         if (!p.message) {
                             switch (store) {
                                 case 'farm': p.message = buildFarmMessage(p, p.timerData); break;
@@ -121,28 +143,24 @@ async function runDailyDriveSyncJob() {
             console.log(`\n📦 Total coletado para o Job das 05h: ${results.length} produtos.`);
 
             if (results.length > 0) {
-                // 4. Enviar para Webhook específico
+                // 6. Enviar para Webhook
                 const payload = {
                     timestamp: new Date().toISOString(),
                     totalProducts: results.length,
                     products: results,
                     summary: {
                         sent: results.length,
-                        totalCandidates: targetItems.length,
+                        totalCandidates: candidates.length,
                         novidades: results.filter(p => p.novidade || p.isNovidade).length,
                         favoritos: results.filter(p => p.favorito || p.isFavorito).length,
-                        stores: {
-                            farm: results.filter(p => p.loja === 'farm').length,
-                            dressto: results.filter(p => p.loja === 'dressto').length,
-                            kju: results.filter(p => p.loja === 'kju').length,
-                            live: results.filter(p => p.loja === 'live').length,
-                            zzmall: results.filter(p => p.loja === 'zzmall').length
-                        }
+                        stores: stores.reduce((acc, store) => {
+                            acc[store] = results.filter(p => p.loja === store).length;
+                            return acc;
+                        }, {})
                     },
                     type: 'daily_drive_sync'
                 };
 
-                // Enviando o lote completo (padrão)
                 await axios.post(DRIVE_SYNC_WEBHOOK_URL, payload, {
                     headers: { 'Content-Type': 'application/json' },
                     timeout: 60000
