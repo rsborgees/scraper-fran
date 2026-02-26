@@ -46,25 +46,28 @@ ${LINKTREE}
 /**
  * DRESS TO TEMPLATE
  */
-function buildDressMessage(produto) {
-    const sizes = produto.tamanhos ? produto.tamanhos.join(' ') : 'P M G';
-    const isPromotional = produto.precoOriginal && (produto.precoOriginal > produto.precoAtual);
+function buildDressMessage(p) {
+    const sizes = p.tamanhos ? p.tamanhos.join(' ') : 'P M G';
+    const precoVal = p.precoAtual || p.preco || 0;
+    const precoOldVal = p.precoOriginal || precoVal;
+    const prodUrl = p.url || p.link || '#';
+    const isPromotional = precoOldVal > precoVal;
 
     let priceLine;
     if (isPromotional) {
-        priceLine = `De ~${formatPrice(produto.precoOriginal)}~ Por *${formatPrice(produto.precoAtual)}* 🔥`;
+        priceLine = `De ~${formatPrice(precoOldVal)}~ Por *${formatPrice(precoVal)}* 🔥`;
     } else {
-        priceLine = `Por *${formatPrice(produto.precoAtual)}* 🔥`;
+        priceLine = `Por *${formatPrice(precoVal)}* 🔥`;
     }
 
     return `
-${produto.nome}
+${p.nome}
 ${sizes}
 ${priceLine}
 
 + código de vendedora: 5KP4
 
-${produto.url}
+${prodUrl}
 
 🌈*Vaga pra entrar no grupo:*
 ${LINKTREE}

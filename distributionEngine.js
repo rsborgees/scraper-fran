@@ -12,7 +12,7 @@ const QUOTAS = {
     },
     DRESS: {
         percent: 0.21,
-        count: 1.5,
+        count: 2.0,
         dailyGoal: 22
     },
     KJU: {
