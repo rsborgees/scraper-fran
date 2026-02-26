@@ -110,8 +110,8 @@ async function scrapeFarmSiteNovidades(quota = 2) {
                 isSiteNovidade: true, // Tag para o orchestrator
                 tamanhos: uniqueSizesList,
                 estoque: stock,
-                bazar: pUrl.includes('/bazar') || pUrl.includes('?bazar') || name.includes('bazar'),
-                isBazar: pUrl.includes('/bazar') || pUrl.includes('?bazar') || name.includes('bazar'),
+                bazar: false, // strictly from photo filenames in idScanner
+                isBazar: false,
                 timerData: timerData
             };
 

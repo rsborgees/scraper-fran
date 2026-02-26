@@ -173,7 +173,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                     finalProduct.novidade = item.novidade || false;
                     finalProduct.isNovidade = item.novidade || (finalProduct.isNovidade || false);
 
-                    // REGRA ESTRITA: Bazar vem apenas do que está no Drive (Se for item de Drive)
+                    // REGRA ESTRITA: Bazar vem UNICAMENTE do que está no Drive (BAZAR no nome da foto)
                     finalProduct.bazar = !!item.bazar;
                     finalProduct.isBazar = !!item.bazar;
                     finalProduct.bazarFavorito = !!item.bazarFavorito;
@@ -260,9 +260,8 @@ function fastParseFromApi(productData, isFavorito = false) {
         return { error: 'Produto Infantil detectado' };
     }
 
-    // 2. CHECK BAZAR (REMOVIDO BLOQUEIO: Usuário Fran trabalha com Bazar)
-    const isBazar = urlLower.includes('bazar') || nameLower.includes('bazar');
-    // if (isBazar) return { error: 'Produto de Bazar bloqueado' };
+    // 2. CHECK BAZAR (Removed - strictly from Drive filenames now)
+    const isBazar = false;
 
     // 3. CATEGORIA
     let category = 'desconhecido';
