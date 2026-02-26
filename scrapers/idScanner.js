@@ -150,14 +150,15 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 navigationSuccess = true;
                             } else {
                                 console.log(`      ⚠️ [DRESSTO] API falhou. Tentando Browser...`);
-                                await page.goto('https://www.dressto.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                await page.goto('https://www.dressto.com.br/', { waitUntil: 'load', timeout: 45000 });
 
-                                const variations = [item.id, item.id.replace(/_/g, '-'), item.id.replace(/_/g, '')];
+                                const prefix = item.id.split('_')[0];
+                                const variations = [item.id, item.id.replace(/_/g, '-'), item.id.replace(/_/g, ''), prefix];
                                 for (const v of variations) {
                                     if (navigationSuccess) break;
                                     const searchUrl = `https://www.dressto.com.br/${v}?_q=${v}&map=ft&sc=1`;
                                     console.log(`      🔄 Tentando Browser: ${searchUrl}`);
-                                    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                    await page.goto(searchUrl, { waitUntil: 'load', timeout: 45000 });
                                     await page.waitForTimeout(4000);
 
                                     if (page.url().includes('/p')) {
@@ -181,7 +182,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     if (!navigationSuccess && config.directUrlBuilder) {
                         const directUrl = config.directUrlBuilder(item.id);
                         try {
-                            await page.goto(directUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                            await page.goto(directUrl, { waitUntil: 'load', timeout: 45000 });
                             navigationSuccess = true;
                             await page.waitForTimeout(1500);
                         } catch (e) {
@@ -192,7 +193,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                     if (!navigationSuccess) {
                         const searchUrl = config.searchUrl(item.id);
                         try {
-                            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                            await page.goto(searchUrl, { waitUntil: 'load', timeout: 45000 });
                             navigationSuccess = true;
                             await page.waitForTimeout(2500);
                         } catch (e) {
@@ -394,20 +395,22 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 }
                             }
 
-                            // Re-valida final
-                            const finalCheckUrl = page.url();
-                            const finalValida = finalCheckUrl.includes('/p') || finalCheckUrl.includes('/produto') || finalCheckUrl.includes('/search/');
+                        } // FIM IF ZZMALL
 
-                            if (!finalValida) {
-                                console.log(`   ❌ [ZZMALL] BLOQUEADO: Destino inválido após todas as tentativas.`);
-                                stats.notFound++;
-                                continue;
-                            }
+                        let finalPageUrl = page.url();
+                        let isProductPage = finalPageUrl.includes('/p') || finalPageUrl.includes('/produto');
 
-                            const isProductPage = page.url().includes('/p') || page.url().includes('/produto');
-                            if (!isProductPage) {
-                                console.log(`      🖱️ [ZZMALL] Tentando clicar no item que corresponde ao ID ${item.id}...`);
-                                const selector = config.productLinkSelector || 'a[href*="/p/"]';
+                        // Se não for PDP direta, tenta identificar se é busca e clicar no item
+                        if (!isProductPage) {
+                            const isLikelySearch = finalPageUrl.includes('/search/') ||
+                                finalPageUrl.includes('/busca/') ||
+                                finalPageUrl.includes('_q=') ||
+                                finalPageUrl.includes('map=ft') ||
+                                finalPageUrl.toLowerCase().includes(item.id.toLowerCase());
+
+                            if (isLikelySearch) {
+                                console.log(`      🖱️ [${storeName.toUpperCase()}] Landing em busca. Tentando clicar no item que corresponde ao ID ${item.id}...`);
+                                const selector = config.productLinkSelector || 'a[href*="/p/"], a[href*="/produto/"]';
 
                                 const itemFound = await page.evaluate(({ sel, targetId }) => {
                                     const anchors = Array.from(document.querySelectorAll(sel));
@@ -422,22 +425,13 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 }, { sel: selector, targetId: item.id });
 
                                 if (itemFound) {
-                                    console.log(`      ✅ [ZZMALL] Clique realizado. Aguardando PDP...`);
+                                    console.log(`      ✅ [${storeName.toUpperCase()}] Clique realizado. Aguardando PDP...`);
                                     await page.waitForTimeout(5000);
-
-                                    const checkUrl = page.url();
-                                    if (!checkUrl.includes('/p') && !checkUrl.includes('/produto') && !checkUrl.includes('/search/')) {
-                                        console.log(`   ❌ [ZZMALL] BLOQUEADO: Página inválida após clique.`);
-                                        continue;
-                                    }
-                                } else {
-                                    console.log(`      ⚠️ [ZZMALL] Nenhum item clicável encontrado no seletor.`);
+                                    finalPageUrl = page.url();
+                                    isProductPage = finalPageUrl.includes('/p') || finalPageUrl.includes('/produto');
                                 }
                             }
                         }
-
-                        let finalPageUrl = page.url();
-                        let isProductPage = finalPageUrl.includes('/p') || finalPageUrl.includes('/produto');
 
                         if (!isProductPage) {
                             isProductPage = await page.evaluate(() => {
@@ -464,8 +458,13 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             }, selector);
 
                             const currentUrlBeforeHref = page.url();
-                            if (!currentUrlBeforeHref.includes('/p') && !currentUrlBeforeHref.includes('/produto') && !currentUrlBeforeHref.includes('/search/')) {
-                                console.log(`   ❌ [${storeName.toUpperCase()}] Abortando: Landing page inválida.`);
+                            const isLikelySearch = currentUrlBeforeHref.includes('/search/') ||
+                                currentUrlBeforeHref.includes('/busca/') ||
+                                currentUrlBeforeHref.includes('_q=') ||
+                                currentUrlBeforeHref.includes('map=ft');
+
+                            if (!currentUrlBeforeHref.includes('/p') && !currentUrlBeforeHref.includes('/produto') && !isLikelySearch) {
+                                console.log(`   ❌ [${storeName.toUpperCase()}] Abortando: Landing page inválida (${currentUrlBeforeHref}).`);
                                 continue;
                             }
                         }
@@ -500,6 +499,12 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             product.favorito = !!item.isFavorito;
                             product.novidade = !!item.novidade;
                             product.id = item.driveId || product.id || item.id;
+
+                            // 🖼️ PRIORIZA FOTO DO DRIVE (Se item veio do Drive)
+                            if (item.driveUrl) {
+                                product.imagePath = item.driveUrl;
+                                product.imageUrl = item.driveUrl;
+                            }
 
                             collectedProducts.push(product);
                             stats.found++;

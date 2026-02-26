@@ -551,9 +551,12 @@ async function runAllScrapers(overrideQuotas = null) {
                         }
                     }
                 }
-            } else if (gap > 0 && unusedFarmDriveItems.length > 0) {
-                console.log(`\n⚠️ Lacuna de ${gap} produtos restante, mas ainda há ${unusedFarmDriveItems.length} itens no Drive.`);
-                console.log(`   💡 Os itens não processados ainda não foram tentados. Se o log acima mostra muitos "não encontrados", verifique a disponibilidade.`);
+            } else if (gap > 0) {
+                const unusedFarmDriveItems = allUnusedDriveItems.filter(i => i.store === 'farm');
+                if (unusedFarmDriveItems.length > 0) {
+                    console.log(`\n⚠️ Lacuna de ${gap} produtos restante, mas ainda há ${unusedFarmDriveItems.length} itens no Drive.`);
+                    console.log(`   💡 Os itens não processados ainda não foram tentados. Se o log acima mostra muitos "não encontrados", verifique a disponibilidade.`);
+                }
             }
         }
 

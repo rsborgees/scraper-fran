@@ -159,9 +159,9 @@ async function parseProductDressTo(page, url) {
         // 🛡️ ANTI-REDIRECT: Garantir sc=1 em DressTo para evitar Shopify Redirect
         const targetUrl = url.includes('sc=1') ? url : (url.includes('?') ? `${url}&sc=1` : `${url}?sc=1`);
 
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto(targetUrl, { waitUntil: 'load', timeout: 60000 });
         // Espera de estabilização extra para sites VTEX pesados
-        await page.waitForTimeout(6000);
+        await page.waitForTimeout(10000);
 
         // Check for VTEX error
         const pageTitle = await page.title().catch(() => 'unknown');
