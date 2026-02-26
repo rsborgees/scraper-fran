@@ -561,8 +561,15 @@ async function runAllScrapers(overrideQuotas = null) {
         console.log(`RESULTADO FINAL: ${allProducts.length}/${totalTarget} produtos coletados`);
         console.log('Aplicando ordenação de prioridade final...');
 
+        const countsByStore = allProducts.reduce((acc, p) => {
+            const s = (p.loja || p.brand || 'unknown').toLowerCase();
+            acc[s] = (acc[s] || 0) + 1;
+            return acc;
+        }, {});
+        console.log('📦 Pool de produtos coletados:', countsByStore);
+
         console.log('Aplicando motor de distribuição final...');
-        const distributedProducts = distributeLinks(allProducts);
+        const distributedProducts = distributeLinks(allProducts, quotas, remaining);
 
         // 4. Gravar Stats Diárias
         if (distributedProducts.length > 0) {

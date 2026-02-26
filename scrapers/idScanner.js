@@ -465,7 +465,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
                             const currentUrlBeforeHref = page.url();
                             if (!currentUrlBeforeHref.includes('/p') && !currentUrlBeforeHref.includes('/produto') && !currentUrlBeforeHref.includes('/search/')) {
-                                console.log(`   ❌ [ZZMALL] Abortando: Landing page inválida.`);
+                                console.log(`   ❌ [${storeName.toUpperCase()}] Abortando: Landing page inválida.`);
                                 continue;
                             }
                         }
@@ -495,9 +495,16 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         else if (storeName === 'zzmall') product = await parseProductZZMall(page, page.url());
 
                         if (product) {
+                            product.loja = storeName;
+                            product.brand = storeName === 'dressto' ? 'DRESS' : storeName.toUpperCase();
+                            product.favorito = !!item.isFavorito;
+                            product.novidade = !!item.novidade;
+                            product.id = item.driveId || product.id || item.id;
+
                             collectedProducts.push(product);
                             stats.found++;
                             if (collectedProducts.length >= quota) break;
+                            if (!product.favorito) markAsSent([product.id]);
                         }
                     }
 
