@@ -1,17 +1,17 @@
 {
   "date": "2026-02-27",
-  "total": 9,
+  "total": 58,
   "stores": {
-    "farm": 4,
-    "dressto": 2,
-    "kju": 1,
-    "live": 1,
-    "zzmall": 1
+    "farm": 24,
+    "dressto": 14,
+    "kju": 7,
+    "live": 7,
+    "zzmall": 6
   },
   "farmCategories": {
-    "vestido": 4,
-    "macacão": 0,
-    "outros": 0
+    "vestido": 22,
+    "macacão": 1,
+    "outros": 1
   },
-  "bazarCount": 1
+  "bazarCount": 4
 }

@@ -108,6 +108,7 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
 
     // 2. SELEÇÃO BAZAR (Exatamente 1 item por execução, prioridade FARM)
     const bazarPool = eligible.filter(p => p.bazar);
+    console.log(`📊 [Distribution] Pool de Bazar: ${bazarPool.length} itens.`);
     if (bazarPool.length > 0) {
         // Prioriza Farm se houver bazar e se Farm tiver saldo
         const farmBazar = bazarPool.find(p => (p.loja === 'farm' || p.brand === 'FARM') && hasDailySaldo('farm'));
@@ -125,11 +126,14 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
         }
 
         if (selectedBazar) {
+            console.log(`✅ [Distribution] Selecionado Bazaar: ${selectedBazar.nome} (${selectedBazar.id})`);
             finalSelection.push(selectedBazar);
             selectedIds.add(selectedBazar.id);
             const s = (selectedBazar.brand || selectedBazar.loja || '').toLowerCase();
             const storeKey = s === 'dress' || s === 'dressto' ? 'dressto' : s;
             if (roundCounts[storeKey] !== undefined) roundCounts[storeKey]++;
+        } else {
+            console.log(`⚠️ [Distribution] Nenhum item do Bazar pool foi selecionado (saldo esgotado?).`);
         }
     }
 

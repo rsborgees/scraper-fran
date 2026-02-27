@@ -39,6 +39,9 @@ function getPriorityScore(item, history = {}) {
     const now = Date.now();
     const normId = normalizeId(item.id);
 
+    // 0. Bazar Priority (Absolute priority for this feature)
+    if (item.bazar || item.bazarFavorito) score += 10000;
+
     // 1. Weekly Coverage (Absolute Priority: everything in Drive must be sent during the week)
     if (history[normId]) {
         const lastSentMs = history[normId].timestamp;
@@ -136,8 +139,8 @@ async function runAllScrapers(overrideQuotas = null) {
                 });
 
                 const farmDriveItems = Array.from(uniqueFarmItems.values()).filter(item => {
-                    // REGRA OUT/2026: Não pega mais favoritos e novidades no horário
-                    if (item.isFavorito || item.novidade) return false;
+                    // REGRA OUT/2026: Não pega mais favoritos e novidades no horário (A MENOS QUE SEJA BAZAR)
+                    if ((item.isFavorito || item.novidade) && !item.bazar) return false;
 
                     // Farm Drive: 48h (2 dias)
                     return !isDuplicate(normalizeId(item.id), { force: false, maxAgeHours: 48 }, item.preco);
@@ -157,10 +160,23 @@ async function runAllScrapers(overrideQuotas = null) {
                     // UPDATE: Agora retorna objeto com stats
                     const { products: scrapedDriveItems, attemptedIds, stats } = await scrapeSpecificIds(context, sortedFarmDriveItems, farmQuota);
 
-                    scrapedDriveItems.forEach(p => p.message = buildFarmMessage(p, p.timerData));
+                    scrapedDriveItems.forEach(p => {
+                        const driveItem = sortedFarmDriveItems.find(i => normalizeId(i.id) === normalizeId(p.id));
+                        p.bazar = driveItem ? !!driveItem.bazar : false;
+                        p.message = buildFarmMessage(p, p.timerData);
+                    });
 
                     allProducts.push(...scrapedDriveItems);
                     driveProducts.push(...scrapedDriveItems);
+
+                    // Propagar flags (FAVORITO/BAZAR) do Drive para o produto final
+                    scrapedDriveItems.forEach(p => {
+                        const driveItem = farmDriveItems.find(i => normalizeId(i.id) === normalizeId(p.id)); // Use farmDriveItems for context
+                        if (driveItem) {
+                            p.bazar = !!driveItem.bazar;
+                            p.favorito = !!driveItem.isFavorito;
+                        }
+                    });
 
                     // TRACK UNUSED
                     const pickedIds = new Set(scrapedDriveItems.map(p => normalizeId(p.id)));
@@ -177,8 +193,11 @@ async function runAllScrapers(overrideQuotas = null) {
                 const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
 
                 for (const store of otherStores) {
-                    // Filtra favoritos e novidades
-                    const items = (driveItemsByStore[store] || []).filter(item => !item.isFavorito && !item.novidade);
+                    // Filtra favoritos e novidades (A MENOS QUE SEJA BAZAR)
+                    const items = (driveItemsByStore[store] || []).filter(item => {
+                        if (item.bazar) return true;
+                        return !item.isFavorito && !item.novidade;
+                    });
 
                     if (items.length > 0) {
                         const limitedItems = items
@@ -223,9 +242,9 @@ async function runAllScrapers(overrideQuotas = null) {
                 if (dressItems && dressItems.length > 0) {
                     console.log(`🔍 [DRESSTO] Iniciando Drive-First (${dressItems.length} itens)...`);
 
-                    // Passo 1: Sem repetição recente (48h default) e SEM Favoritos/Novidades
+                    // Passo 1: Sem repetição recente (48h default) e SEM Favoritos/Novidades (A MENOS QUE SEJA BAZAR)
                     let candidates = dressItems.filter(item => {
-                        if (item.isFavorito || item.novidade) return false;
+                        if ((item.isFavorito || item.novidade) && !item.bazar) return false;
                         const finalId = item.driveId || item.id;
                         return !isDuplicate(finalId, { force: false, maxAgeHours: 48 });
                     });
