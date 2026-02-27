@@ -31,141 +31,155 @@ async function scrapeZZMall(quota = 6, parentBrowser = null) {
     }
 
     try {
-        // URL da página de promoções
-        const promoUrl = 'https://www.zzmall.com.br/c/promocao';
+        const brandPromoUrls = [
+            'https://www.zzmall.com.br/arezzo/promocao',
+            'https://www.zzmall.com.br/schutz/promocao',
+            'https://www.zzmall.com.br/anacapri/promocao',
+            'https://www.zzmall.com.br/vizzano/promocao',
+            'https://www.zzmall.com.br/bolsas/promocao'
+        ];
 
-        console.log(`   💎 Visitando página de PROMOÇÕES: ${promoUrl}`);
+        for (const promoUrl of brandPromoUrls) {
+            if (products.length >= quota) break;
 
-        try {
-            await page.goto(promoUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
-            await page.waitForTimeout(3000); // Espera maior para VTEX carregar
+            console.log(`   💎 Visitando página de PROMOÇÕES: ${promoUrl}`);
 
-            // Fecha popups (Genérico)
             try {
-                await page.evaluate(() => {
-                    const closers = document.querySelectorAll('.modal-close, button[aria-label="Close"], [class*="close"]');
-                    closers.forEach(b => b.click());
+                await page.goto(promoUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+                await page.waitForTimeout(3000);
+
+                // Scroll profundo para carregar produtos
+                console.log('      📜 Rolando página profundamente para carregar produtos...');
+                await page.evaluate(async () => {
+                    for (let i = 0; i < 8; i++) {
+                        window.scrollBy(0, 1000);
+                        await new Promise(r => setTimeout(r, 600));
+                    }
                 });
-            } catch (e) { }
 
-            // Scroll para carregar mais produtos
-            console.log('      📜 Rolando página para carregar produtos...');
-            try {
-                await page.waitForSelector('a[href*="/p/"]', { timeout: 10000 });
-            } catch (e) {
-                console.log('      ⚠️ Timeout esperando produtos. Tentando rolar mesmo assim...');
-            }
+                // Tenta aguardar rede estabilizar
+                try { await page.waitForLoadState('networkidle', { timeout: 8000 }); } catch (e) { }
 
-            await page.evaluate(async () => {
-                for (let i = 0; i < 30; i++) { // Scroll profundo
-                    window.scrollBy(0, 1000);
-                    await new Promise(r => setTimeout(r, 600));
-                }
-            });
+                // Coleta URLs de produtos - SELETORES AMPLOS + REGEX REFORÇADO (MAIS RÍGIDO)
+                const productUrls = await page.evaluate(() => {
+                    const anchors = Array.from(document.querySelectorAll('a[href]'));
+                    const urls = [...new Set(anchors
+                        .map(a => a.href)
+                        .filter(url => {
+                            if (!url) return false;
 
-            // Coleta URLs de produtos
-            const productUrls = await page.evaluate(() => {
-                const anchors = Array.from(document.querySelectorAll('a'));
-                return [...new Set(anchors
-                    .map(a => a.href)
-                    .filter(url => {
-                        if (!url) return false;
-                        const isProd = (url.includes('/p/') || url.includes('/produto/'));
-                        const isExcluded = url.includes('login') || url.includes('cart') || url.includes('checkout');
-                        return isProd && !isExcluded;
-                    })
-                )];
-            });
+                            // 1. Deve ser do domínio zzmall
+                            if (!url.includes('zzmall.com.br')) return false;
 
-            console.log(`      🔎 Encontrados ${productUrls.length} produtos em promoção`);
+                            // 2. Pattern de produto VTEX: /nome-do-produto/p/ID ou /p?id=ID
+                            const vtexPattern = /\/p($|\/|\?)/i.test(url) || url.includes('/produto/');
+                            // 3. Pattern Schutz/Arezzo (Letra + Números Longos no final)
+                            const codePattern = /\/[S|A|F][0-9]{5,}/i.test(url);
 
-            // Processa produtos
-            for (const url of productUrls) {
-                if (products.length >= quota) break;
+                            const isProd = vtexPattern || codePattern;
 
-                console.log(`      🔎 Analisando: ${url}`);
-                const product = await parseProductZZMall(page, url);
+                            // 4. Exclusões rígidas
+                            const isExcluded = /login|cart|checkout|transparencia|minha-conta|favoritos|institucional|atendimento|hc\/|facebook|instagram|spotify|app-store|google-play/i.test(url);
 
-                if (product) {
-                    // FILTER: ZZMall - NO CLOTHES (ONLY SHOES/BAGS)
-                    const normalizedCat = product.categoria ? product.categoria.toLowerCase() : '';
-                    const productNomeLower = product.nome.toLowerCase();
+                            return isProd && !isExcluded;
+                        })
+                    )];
+                    return urls;
+                });
 
-                    // List of terms that definitely indicate clothing - EXPANDED
-                    const clothingTerms = [
-                        'vestido', 'blusa', 'casaco', 'saia', 'short', 'macacão', 'macacao', 'top',
-                        'biquíni', 'biquini', 'body', 'camisa', 'jaqueta', 'blazer', 'pantalo',
-                        'regata', 't-shirt', 'tshirt', 'tricot', 'tricô', 'camiseta', 'bermuda',
-                        'moletom', 'cardigan', 'kimono', 'chemise', 'macaquinho', 'parka', 'colete',
-                        'pijama', 'lingerie', 'cueca', 'calcinha', 'sutiã', 'sutia', 'meia',
-                        'legging', 'fitness', 'sunga', 'bata', 'túnica', 'tunica', 'tricô', 'malha',
-                        'suéter', 'sueter', 'pullover', 'sobretudo', 'trench', 'corset', 'corselet'
-                    ];
+                console.log(`      🔎 Encontrados ${productUrls.length} produtos em promoção nesta página`);
 
-                    // Refined exclusion: Use word boundaries to avoid matching "calçado" for "calça"
-                    const hasCalca = /\bcalça\b/i.test(normalizedCat) || /\bcalça\b/i.test(productNomeLower);
+                // Processa produtos desta página
+                for (const url of productUrls) {
+                    if (products.length >= quota) break;
 
-                    // Check clothing terms with word boundaries
-                    const matchedClothingTerm = clothingTerms.find(term => {
-                        const regex = new RegExp(`\\b${term}\\b`, 'i');
-                        return regex.test(normalizedCat) || regex.test(productNomeLower);
-                    });
+                    console.log(`      🔎 Analisando: ${url}`);
+                    const product = await parseProductZZMall(page, url);
 
-                    let isCloth = !!matchedClothingTerm || hasCalca || normalizedCat === 'roupa';
+                    if (product) {
+                        // FILTER: ZZMall - NO CLOTHES (ONLY SHOES/BAGS)
+                        const normalizedCat = product.categoria ? product.categoria.toLowerCase() : '';
+                        const productNomeLower = product.nome.toLowerCase();
 
-                    // Safety: IF it's explicitly categorized as shoe or bag, don't ignore it as cloth
-                    if (normalizedCat === 'calçado' || normalizedCat === 'bolsa') {
-                        isCloth = false;
-                    }
+                        // List of terms that definitely indicate clothing - EXPANDED
+                        const clothingTerms = [
+                            'vestido', 'blusa', 'casaco', 'saia', 'short', 'macacão', 'macacao', 'top',
+                            'biquíni', 'biquini', 'body', 'camisa', 'jaqueta', 'blazer', 'pantalo',
+                            'regata', 't-shirt', 'tshirt', 'tricot', 'tricô', 'camiseta', 'bermuda',
+                            'moletom', 'cardigan', 'kimono', 'chemise', 'macaquinho', 'parka', 'colete',
+                            'pijama', 'lingerie', 'cueca', 'calcinha', 'sutiã', 'sutia', 'meia',
+                            'legging', 'fitness', 'sunga', 'bata', 'túnica', 'tunica', 'tricô', 'malha',
+                            'suéter', 'sueter', 'pullover', 'sobretudo', 'trench', 'corset', 'corselet'
+                        ];
 
-                    if (isCloth) {
-                        console.log(`      ⛔ Ignorado (Roupa detectada): ${product.nome} (${product.categoria})`);
-                        continue;
-                    }
+                        // Refined exclusion: Use word boundaries to avoid matching "calçado" for "calça"
+                        const hasCalca = /\bcalça\b/i.test(normalizedCat) || /\bcalça\b/i.test(productNomeLower);
 
-                    const normId = normalizeId(product.id);
-                    if (normId && (seenInRun.has(normId) || isDuplicate(normId))) {
-                        console.log(`      ⏭️  Duplicado (Histórico/Run): ${normId}`);
-                        continue;
-                    }
+                        // Check clothing terms with word boundaries
+                        const matchedClothingTerm = clothingTerms.find(term => {
+                            const regex = new RegExp(`\\b${term}\\b`, 'i');
+                            return regex.test(normalizedCat) || regex.test(productNomeLower);
+                        });
 
-                    if (normId) seenInRun.add(normId);
+                        let isCloth = !!matchedClothingTerm || hasCalca || normalizedCat === 'roupa';
 
-                    // Image Download
-                    console.log(`      🖼️  Baixando imagem com ID: ${product.id}...`);
-                    let imagePath = null;
-                    try {
-                        let imgResult;
-                        if (product.imageUrl) {
-                            imgResult = await processImageDirect(product.imageUrl, 'ZZMALL', product.id);
-                        } else {
-                            imgResult = await processProductUrl(url, product.id);
+                        // Safety: IF it's explicitly categorized as shoe or bag, don't ignore it as cloth
+                        if (normalizedCat === 'calçado' || normalizedCat === 'bolsa') {
+                            isCloth = false;
                         }
 
-                        if (imgResult.status === 'success' && imgResult.cloudinary_urls?.length > 0) {
-                            imagePath = imgResult.cloudinary_urls[0];
+                        if (isCloth) {
+                            console.log(`      ⛔ Ignorado (Roupa detectada): ${product.nome} (${product.categoria})`);
+                            continue;
                         }
-                    } catch (err) {
-                        console.log(`      ❌ Erro download imagem: ${err.message}`);
+
+                        const normId = normalizeId(product.id);
+                        const duplicateStatus = isDuplicate(normId);
+                        console.log(`      🔎 [ZZMALL DEBUG] ID: ${product.id} | NormID: ${normId} | isDuplicate: ${duplicateStatus}`);
+
+                        if (normId && (seenInRun.has(normId) || duplicateStatus)) {
+                            console.log(`      ⏭️  Duplicado (Histórico/Run): ${normId}`);
+                            continue;
+                        }
+
+                        if (normId) seenInRun.add(normId);
+
+                        // Image Download
+                        console.log(`      🖼️  Baixando imagem com ID: ${product.id}...`);
+                        let imagePath = null;
+                        try {
+                            let imgResult;
+                            if (product.imageUrl) {
+                                imgResult = await processImageDirect(product.imageUrl, 'ZZMALL', product.id);
+                            } else {
+                                imgResult = await processProductUrl(url, product.id);
+                            }
+
+                            if (imgResult.status === 'success' && imgResult.cloudinary_urls?.length > 0) {
+                                imagePath = imgResult.cloudinary_urls[0];
+                            }
+                        } catch (err) {
+                            console.log(`      ❌ Erro download imagem: ${err.message}`);
+                        }
+
+                        product.url = url.includes('?') ? `${url}&influ=cupomdafran` : `${url}?influ=cupomdafran`;
+                        product.loja = 'zzmall';
+                        product.desconto = product.precoOriginal - product.precoAtual;
+                        if (product.desconto < 0) product.desconto = 0;
+                        product.imagePath = imagePath;
+
+                        markAsSent([product.id]);
+                        products.push(product);
+                        console.log(`      ✅ Coletado: ${product.nome} | R$${product.precoAtual}`);
                     }
+                } // Fim do loop de productUrls
 
-                    product.url = url.includes('?') ? `${url}&influ=cupomdafran` : `${url}?influ=cupomdafran`;
-                    product.loja = 'zzmall';
-                    product.desconto = product.precoOriginal - product.precoAtual;
-                    if (product.desconto < 0) product.desconto = 0;
-                    product.imagePath = imagePath;
 
-                    markAsSent([product.id]);
-                    products.push(product);
-                    console.log(`      ✅ Coletado: ${product.nome} | R$${product.precoAtual}`);
-                }
+            } catch (errPromo) {
+                console.log(`      ❌ Erro ao processar página de promoções: ${errPromo.message}`);
             }
 
-
-        } catch (errPromo) {
-            console.log(`      ❌ Erro ao processar página de promoções: ${errPromo.message}`);
-        }
-
+        } // Fim do loop de brandPromoUrls
     } catch (error) {
         console.error(`Erro no scraper ZZMall: ${error.message}`);
     } finally {

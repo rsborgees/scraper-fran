@@ -216,10 +216,37 @@ ${produto.url}
 `.trim();
 }
 
+/**
+ * GLOBAL MESSAGE BUILDER HELPER
+ * Identifica a loja e chama o builder correto
+ */
+function buildMessageForProduct(p) {
+    const store = (p.loja || p.brand || '').toLowerCase();
+
+    switch (store) {
+        case 'farm':
+            return buildFarmMessage(p, p.timerData);
+        case 'dressto':
+        case 'dress':
+            return buildDressMessage(p);
+        case 'kju':
+            return buildKjuMessage(p);
+        case 'live':
+            // Live expects an array
+            return buildLiveMessage([p]);
+        case 'zzmall':
+            return buildZzMallMessage(p);
+        default:
+            console.warn(`⚠️ No message builder for store: ${store}`);
+            return `Confira essa oferta: ${p.nome}\n${p.url || p.link}`;
+    }
+}
+
 module.exports = {
     buildKjuMessage,
     buildDressMessage,
     buildLiveMessage,
     buildFarmMessage,
-    buildZzMallMessage
+    buildZzMallMessage,
+    buildMessageForProduct
 };

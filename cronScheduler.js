@@ -127,13 +127,7 @@ async function runDailyDriveSyncJob() {
                 if (scraped.products && scraped.products.length > 0) {
                     scraped.products.forEach(p => {
                         if (!p.message) {
-                            switch (store) {
-                                case 'farm': p.message = buildFarmMessage(p, p.timerData); break;
-                                case 'dressto': p.message = buildDressMessage(p); break;
-                                case 'kju': p.message = buildKjuMessage(p); break;
-                                case 'live': p.message = buildLiveMessage([p]); break;
-                                case 'zzmall': p.message = buildZzMallMessage(p); break;
-                            }
+                            p.message = buildMessageForProduct(p);
                         }
                         results.push(p);
                     });
@@ -185,7 +179,17 @@ async function runDailyDriveSyncJob() {
  */
 async function sendToWebhook(products, retries = 3) {
     try {
+        const { buildMessageForProduct } = require('./messageBuilder');
+
         console.log(`\n📤 Enviando ${products.length} produtos para webhook...`);
+
+        // Garantir que todos os produtos tenham o campo 'message'
+        products.forEach(p => {
+            if (!p.message) {
+                console.log(`   🔸 Gerando mensagem faltante para: ${p.nome} (${p.loja || p.brand})`);
+                p.message = buildMessageForProduct(p);
+            }
+        });
 
         // Formata os dados no formato esperado
         const payload = {

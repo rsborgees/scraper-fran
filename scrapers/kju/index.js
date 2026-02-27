@@ -134,7 +134,7 @@ async function scrapeKJU(quota = 6, parentBrowser = null) {
                 product.url = url.includes('?') ? `${url}&ref=7B1313` : `${url}?ref=7B1313`;
                 product.loja = 'kju';
                 product.imagePath = imagePath;
-                markAsSent([product.id]); // DISABLED FOR TESTING
+                markAsSent([product.id]);
                 products.push(product);
             }
 
