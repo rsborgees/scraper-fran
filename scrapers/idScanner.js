@@ -498,6 +498,8 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             product.brand = storeName === 'dressto' ? 'DRESS' : storeName.toUpperCase();
                             product.favorito = !!item.isFavorito;
                             product.novidade = !!item.novidade;
+                            product.bazar = !!item.bazar;
+                            product.bazarFavorito = !!item.bazarFavorito;
 
                             // GANTE QUE O ID DO DRIVE SEJA MANTIDO COM PRIORIDADE (Fix Duplicatas KJU)
                             const driveId = item.driveId || item.id;

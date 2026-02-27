@@ -79,8 +79,12 @@ function filterEligibleProducts(products) {
  * @param {Object} dailyRemaining Quotas restantes do dia (opcional)
  */
 function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
-    // 1. FILTRO: Remove Favoritos e Novidades (Não devem ir no horário)
-    const eligible = allProducts.filter(p => !p.favorito && !p.isFavorito && !p.novidade && !p.isNovidade);
+    // 1. FILTRO: Remove Favoritos e Novidades (Não devem ir no horário, A MENOS QUE SEJAM BAZAR)
+    const eligible = allProducts.filter(p => {
+        const isFavOrNov = p.favorito || p.isFavorito || p.novidade || p.isNovidade;
+        const isBazar = p.bazar || p.isBazar;
+        return isBazar || !isFavOrNov;
+    });
 
     const finalSelection = [];
     const selectedIds = new Set();

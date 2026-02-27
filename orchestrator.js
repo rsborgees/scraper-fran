@@ -503,6 +503,8 @@ async function runAllScrapers(overrideQuotas = null) {
 
                             p.novidade = !!(p.novidade || p.isNovidade);
                             p.favorito = !!(p.favorito || p.isFavorito);
+                            p.bazar = !!p.bazar;
+                            p.bazarFavorito = !!(p.bazarFavorito || (p.bazar && p.favorito));
                         });
 
                         const pickedIds = new Set(allProducts.map(p => p.id));
