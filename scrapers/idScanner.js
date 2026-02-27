@@ -498,7 +498,14 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             product.brand = storeName === 'dressto' ? 'DRESS' : storeName.toUpperCase();
                             product.favorito = !!item.isFavorito;
                             product.novidade = !!item.novidade;
-                            product.id = item.driveId || product.id || item.id;
+
+                            // GANTE QUE O ID DO DRIVE SEJA MANTIDO COM PRIORIDADE (Fix Duplicatas KJU)
+                            const driveId = item.driveId || item.id;
+                            if (driveId) {
+                                product.id = driveId;
+                            } else {
+                                product.id = product.id || item.id;
+                            }
 
                             // 🖼️ PRIORIZA FOTO DO DRIVE (Se item veio do Drive)
                             if (item.driveUrl) {

@@ -304,11 +304,31 @@ async function parseProductKJU(page, url) {
             }
 
             let id = 'unknown';
-            const specificIdEl = document.querySelector('.codigo_produto, [itemprop="identifier"], .productReference');
-            if (specificIdEl) {
-                const text = getSafeText(specificIdEl);
-                const match = text.match(/\d+/);
-                if (match) id = match[0];
+
+            // 1. TENTA IDS INTERNOS (Prioridade Máxima para bater com o Drive)
+            try {
+                // Tenta var produto_id direto do script
+                if (typeof window.produto_id !== 'undefined') {
+                    id = window.produto_id.toString();
+                } else if (window.performaData && window.performaData.productID) {
+                    id = window.performaData.productID.toString();
+                } else {
+                    // Tenta regex no HTML bruto se as variáveis não estiverem acessíveis
+                    const html = document.documentElement.innerHTML;
+                    const idMatch = html.match(/var\s+produto_id\s*=\s*(?:'|")?(\d+)(?:'|")?/i) ||
+                        html.match(/["']productID["']\s*:\s*(\d+)/i);
+                    if (idMatch) id = idMatch[1];
+                }
+            } catch (e) { }
+
+            // 2. TENTA IDS VISÍVEIS (Fallback ou se falhar o interno)
+            if (id === 'unknown' || !id) {
+                const specificIdEl = document.querySelector('.codigo_produto, [itemprop="identifier"], .productReference');
+                if (specificIdEl) {
+                    const text = getSafeText(specificIdEl);
+                    const match = text.match(/\d+/);
+                    if (match) id = match[0];
+                }
             }
 
             if (id === 'unknown' && h1) {
