@@ -163,6 +163,8 @@ async function runAllScrapers(overrideQuotas = null) {
                     scrapedDriveItems.forEach(p => {
                         const driveItem = sortedFarmDriveItems.find(i => normalizeId(i.id) === normalizeId(p.id));
                         p.bazar = driveItem ? !!driveItem.bazar : false;
+                        p.isBazar = p.bazar;
+                        p.bazarFavorito = driveItem ? !!driveItem.bazarFavorito : false;
                         p.message = buildFarmMessage(p, p.timerData);
                     });
 
@@ -523,6 +525,7 @@ async function runAllScrapers(overrideQuotas = null) {
                             p.novidade = !!(p.novidade || p.isNovidade);
                             p.favorito = !!(p.favorito || p.isFavorito);
                             p.bazar = !!p.bazar;
+                            p.isBazar = p.bazar;
                             p.bazarFavorito = !!(p.bazarFavorito || (p.bazar && p.favorito));
                         });
 

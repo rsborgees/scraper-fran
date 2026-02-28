@@ -135,6 +135,9 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                         const product = await parseProduct(page, page.url());
 
                         if (product) {
+                            product.bazar = !!item.bazar;
+                            product.isBazar = !!item.bazar;
+                            product.bazarFavorito = !!item.bazarFavorito;
                             mergedProducts.push(product);
                         }
 
@@ -362,7 +365,7 @@ function fastParseFromApi(productData, isFavorito = false) {
             precoAtual: precoAtual,
             tamanhos: [...new Set(validSizes)],
             categoria: category,
-            bazar: isBazar,
+            bazar: false, // Default to false, will be overridden by Drive metadata if available
             imageUrl: items[0]?.images[0]?.imageUrl || null
         }
     };

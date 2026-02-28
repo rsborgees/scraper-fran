@@ -107,7 +107,7 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
     };
 
     // 2. SELEÇÃO BAZAR (Exatamente 1 item por execução, prioridade FARM)
-    const bazarPool = eligible.filter(p => p.bazar);
+    const bazarPool = eligible.filter(p => p.bazar || p.isBazar);
     console.log(`📊 [Distribution] Pool de Bazar: ${bazarPool.length} itens.`);
     if (bazarPool.length > 0) {
         // Prioriza Farm se houver bazar e se Farm tiver saldo

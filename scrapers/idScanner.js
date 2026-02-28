@@ -214,6 +214,9 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
                         product.favorito = !!item.isFavorito;
                         product.novidade = !!item.novidade;
+                        product.bazar = !!item.bazar;
+                        product.isBazar = !!item.bazar;
+                        product.bazarFavorito = !!item.bazarFavorito;
                         product.loja = storeName;
                         product.id = item.driveId || product.id || item.id;
 
