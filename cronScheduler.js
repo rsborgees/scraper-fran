@@ -63,7 +63,7 @@ async function runDailyDriveSyncJob() {
         const { scrapeSpecificIds } = require('./scrapers/farm/idScanner');
         const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
         const { initBrowser } = require('./browser_setup');
-        const { buildFarmMessage, buildDressMessage, buildKjuMessage, buildLiveMessage, buildZzMallMessage } = require('./messageBuilder');
+        const { buildFarmMessage, buildDressMessage, buildKjuMessage, buildLiveMessage, buildZzMallMessage, buildMessageForProduct } = require('./messageBuilder');
         const { loadHistory, normalizeId } = require('./historyManager');
 
         const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -118,10 +118,10 @@ async function runDailyDriveSyncJob() {
 
                 let scraped;
                 if (store === 'farm') {
-                    // maxAgeHours: -1 para forçar o scraping e a atualização do histórico independente da regra de 24h
-                    scraped = await scrapeSpecificIds(context, storeItems, 999, { maxAgeHours: -1 });
+                    // maxAgeHours: 0 para permitir repetição de itens já enviados em dias anteriores se necessário para atingir a meta
+                    scraped = await scrapeSpecificIds(context, storeItems, 999, { maxAgeHours: 0 });
                 } else {
-                    scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, 999, { maxAgeHours: -1 });
+                    scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, 999, { maxAgeHours: 0 });
                 }
 
                 if (scraped.products && scraped.products.length > 0) {

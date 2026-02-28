@@ -141,7 +141,7 @@ function isDuplicate(id, options = {}, price = 0) {
         const ageHours = ageMs / (1000 * 60 * 60);
 
         // REGRA ESPECIAL: FAVORITOS (podem repetir quando o dia vira)
-        if (options.force) {
+        if (options.force || options.maxAgeHours === 0) {
             const entryDate = new Date(entry.timestamp);
             const today = new Date();
 
@@ -150,10 +150,22 @@ function isDuplicate(id, options = {}, price = 0) {
                 entryDate.getDate() === today.getDate();
 
             if (isSameDay) {
+                // Se maxAgeHours é 0, permitimos repetir no mesmo dia (útil para testes ou jobs de redirecionamento)
+                // desde que não tenha sido enviado há menos de 1 minuto (segurança anti-loop)
+                if (options.maxAgeHours === 0) {
+                    const diffSeconds = (now - entry.timestamp) / 1000;
+                    if (diffSeconds < 60) {
+                        console.log(`   🚫 ID ignorado: ID ${normId} enviado há menos de 1 minuto.`);
+                        return true;
+                    }
+                    console.log(`   ✅ ID liberado (maxAge 0): ID ${normId} já enviado hoje, mas repetindo por solicitação.`);
+                    return false;
+                }
+
                 console.log(`   🚫 Favorito ignorado: ID ${normId} já enviado HOJE.`);
                 return true;
             }
-            console.log(`   ✅ Favorito liberado: ID ${normId} enviado pela última vez em ${entry.lastSent} (dia diferente).`);
+            console.log(`   ✅ ID liberado: ID ${normId} enviado pela última vez em ${entry.lastSent} (dia diferente).`);
             return false;
         }
 

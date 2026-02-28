@@ -185,7 +185,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
 
                     const isDup = isDuplicate(finalProduct.id, {
                         force: item.isFavorito,
-                        maxAgeHours: options.maxAgeHours || 24
+                        maxAgeHours: options.maxAgeHours !== undefined ? options.maxAgeHours : 24
                     }, finalProduct.preco);
 
                     if (!isDup) {
