@@ -148,7 +148,7 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
                                 if (seenInRun.has(normId) || isDuplicate(normId, { maxAgeHours: 168 }, product.preco)) continue;
 
                                 seenInRun.add(normId);
-                                if (!dryRun) markAsSent([product.id]);
+
 
                                 // Image Download
                                 let imagePath = null;

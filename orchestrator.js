@@ -80,10 +80,10 @@ async function runAllScrapers(overrideQuotas = null) {
     // Distribuição proporcional baseada no que FALTA para o dia
     const quotas = overrideQuotas || {
         farm: Math.min(4, remaining.stores.farm),
-        dressto: Math.min(2, remaining.stores.dressto),
-        kju: Math.min(1, remaining.stores.kju),
-        live: Math.min(1, remaining.stores.live),
-        zzmall: Math.min(1, remaining.stores.zzmall)
+        dressto: Math.min(10, remaining.stores.dressto),
+        kju: Math.min(10, remaining.stores.kju),
+        live: Math.min(10, remaining.stores.live),
+        zzmall: Math.min(10, remaining.stores.zzmall)
     };
 
     // Ajuste se o total for menor que o esperado
@@ -598,8 +598,11 @@ async function runAllScrapers(overrideQuotas = null) {
         console.log('Aplicando motor de distribuição final...');
         const distributedProducts = distributeLinks(allProducts, quotas, remaining);
 
-        // 4. Gravar Stats Diárias
+        // 4. Gravar Stats Diárias e Marcar como Enviado
         if (distributedProducts.length > 0) {
+            const { markAsSent } = require('./historyManager');
+            const allIds = distributedProducts.map(p => p.id);
+            markAsSent(allIds);
             recordSentItems(distributedProducts);
         }
 

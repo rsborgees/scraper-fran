@@ -74,8 +74,8 @@ async function runDailyDriveSyncJob() {
         const allDriveItems = await getExistingIdsFromDrive(folderId);
         const history = loadHistory();
 
-        // 2. Seleção de Candidatos (Favoritos ou Novidades)
-        let candidates = allDriveItems.filter(item => item.isFavorito || item.novidade);
+        // 2. Seleção de Candidatos (Favoritos ou Novidades) - EXCLUI BAZAR (apenas horários)
+        let candidates = allDriveItems.filter(item => (item.isFavorito || item.novidade) && !item.bazar);
         console.log(`✅ Encontrados ${candidates.length} candidatos (Favoritos ou Novidades) no Drive.`);
 
         if (candidates.length === 0) {

@@ -28,30 +28,35 @@ async function send10BazarItems() {
             return;
         }
 
-        const targetItems = bazarItems.slice(0, 10);
-        console.log(`🎯 Selected ${targetItems.length} items to scrape and send.`);
-
         const results = [];
-        const stores = [...new Set(targetItems.map(item => item.store))];
+        let currentIndex = 0;
 
-        for (const store of stores) {
-            const storeItems = targetItems.filter(item => item.store === store);
-            console.log(`🔍 Scraping ${storeItems.length} items from ${store.toUpperCase()}...`);
+        while (results.length < 10 && currentIndex < bazarItems.length) {
+            const batch = bazarItems.slice(currentIndex, currentIndex + 5);
+            currentIndex += 5;
 
-            let scraped;
-            if (store === 'farm') {
-                scraped = await scrapeSpecificIds(context, storeItems, 999, { maxAgeHours: 0 });
-            } else {
-                scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, 999, { maxAgeHours: 0 });
-            }
+            console.log(`🔍 Scraping batch of ${batch.length} items (Total collected: ${results.length})...`);
 
-            if (scraped.products && scraped.products.length > 0) {
-                scraped.products.forEach(p => {
-                    p.message = buildMessageForProduct(p);
-                    p.bazar = true; // Force-ensure flag matches Drive intent
-                    p.isBazar = true;
-                    results.push(p);
-                });
+            const stores = [...new Set(batch.map(item => item.store))];
+            for (const store of stores) {
+                const storeItems = batch.filter(item => item.store === store);
+                let scraped;
+                if (store === 'farm') {
+                    scraped = await scrapeSpecificIds(context, storeItems, 999, { maxAgeHours: 0 });
+                } else {
+                    scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, 999, { maxAgeHours: 0 });
+                }
+
+                if (scraped.products && scraped.products.length > 0) {
+                    scraped.products.forEach(p => {
+                        if (results.length < 10) {
+                            p.message = buildMessageForProduct(p);
+                            p.bazar = true;
+                            p.isBazar = true;
+                            results.push(p);
+                        }
+                    });
+                }
             }
         }
 

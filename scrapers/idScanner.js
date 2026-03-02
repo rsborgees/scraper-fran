@@ -521,7 +521,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             collectedProducts.push(product);
                             stats.found++;
                             if (collectedProducts.length >= quota) break;
-                            if (!product.favorito) markAsSent([product.id]);
+
                         }
                     }
 

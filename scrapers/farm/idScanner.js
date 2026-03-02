@@ -196,9 +196,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                         stats.found++;
                         console.log(`   ✅ [Worker ${workerId}] Capturado: ${finalProduct.nome}`);
 
-                        const allIds = mergedProducts.map(p => p.id);
-                        markAsSent(allIds);
-                        if (mergedProducts.length > 1) markAsSent([finalProduct.id]);
+
                     } else {
                         console.log(`   ⏭️  [Worker ${workerId}] Skip: Duplicado.`);
                         stats.duplicates++;
