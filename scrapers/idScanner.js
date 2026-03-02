@@ -444,6 +444,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
 
                         if (!isProductPage) {
                             const notFound = await page.evaluate(() => {
+                                if (!document.body) return false;
                                 const text = document.body.innerText || '';
                                 return text.includes('Nenhum produto foi encontrado') || text.includes('NÃO ENCONTRAMOS O QUE VOCÊ BUSCOU');
                             });

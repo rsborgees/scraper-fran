@@ -153,7 +153,8 @@ async function runAllScrapers(overrideQuotas = null) {
                     console.log(`📊 [FARM] ${sortedFarmDriveItems.length} itens disponíveis no Drive (${farmDriveItems.filter(i => i.novidade).length} novidades, ${farmDriveItems.filter(i => i.isFavorito).length} favoritos)`);
 
                     // O scraper interno vai respeitar a quota da FARM
-                    const farmQuota = quotas.farm;
+                    // GARANTIA: Mínimo 6 para preencher a cota de 4 com segurança
+                    const farmQuota = Math.max(quotas.farm || 0, 6);
 
                     // Reutiliza o browser instanciado
                     // UPDATE: Agora retorna objeto com stats
@@ -214,7 +215,14 @@ async function runAllScrapers(overrideQuotas = null) {
                             .slice(0, 50);
 
                         console.log(`🔍 [${store.toUpperCase()}] Iniciando Drive-First (${items.length} itens)...`);
-                        const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, store, quotas[store]);
+
+                        // GARANTIA: Cotas mínimas para permitir a regra 4-2-1 (variedade)
+                        let currentQuota = quotas[store] || 0;
+                        if (store === 'kju' && currentQuota < 2) currentQuota = 2;
+                        if (store === 'dressto' && currentQuota < 4) currentQuota = 4;
+                        if (store === 'zzmall' && currentQuota < 1) currentQuota = 1;
+
+                        const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, store, currentQuota);
 
                         // Apply message builder
                         scrapedItems.forEach(p => {
@@ -604,6 +612,12 @@ async function runAllScrapers(overrideQuotas = null) {
 
         console.log('Aplicando motor de distribuição final...');
         const distributedProducts = distributeLinks(allProducts, quotas, remaining);
+
+        // Debug Log for Bazar Flag
+        console.log('\n📊 [Orchestrator] Concluindo Distribuição. Verificando Flag Bazar:');
+        distributedProducts.forEach(p => {
+            console.log(`   🔸 ${p.nome} (${p.id}): Bazar=${!!p.bazar} | isBazar=${!!p.isBazar}`);
+        });
 
         // 4. Gravar Stats Diárias e Marcar como Enviado
         if (distributedProducts.length > 0) {

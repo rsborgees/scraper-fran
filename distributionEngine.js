@@ -137,44 +137,65 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
         }
     }
 
-    // 3. SELEÇÃO REGULAR (Até atingir TOTAL_LINKS)
+    // 3. SELEÇÃO REGULAR (Até atingir TOTAL_LINKS = 7)
+    // Regra: 4 Farm, 2 Dress To, 1 Kju
     const regularPool = eligible.filter(p => !p.bazar);
-    const storePriority = ['farm', 'dressto', 'kju', 'live', 'zzmall'];
 
-    for (const store of storePriority) {
-        // Usa quota calculada pelo orchestrator (runQuotas) ou o default hardcoded
-        const targetForRun = runQuotas[store] !== undefined
-            ? runQuotas[store]
-            : Math.ceil(QUOTAS[store === 'dressto' ? 'DRESS' : store.toUpperCase()].count);
+    // PRIORIDADES E QUOTAS
+    const mainStores = ['farm', 'dressto', 'kju'];
+    const secondaryStores = ['live', 'zzmall'];
+    const storeTargets = {
+        farm: 4,
+        dressto: 2,
+        kju: 1
+    };
 
-        // Quanto levar desta loja, respeitando o saldo diário
-        let countToTake = Math.min(targetForRun, Math.max(0, (dailyRemaining && dailyRemaining.stores ? dailyRemaining.stores[store] : 999) - roundCounts[store]));
-        if (countToTake <= 0) continue;
+    // 1ª PASSAGEM: Prioridade Total para 4-2-1
+    let iterations = 0;
+    while (finalSelection.length < 7 && iterations < 4) {
+        iterations++;
+        let addedThisRound = false;
+        for (const store of mainStores) {
+            if (finalSelection.length >= 7) break;
+            const target = storeTargets[store] || 0;
+            if (roundCounts[store] >= target) continue;
 
-        const storeItems = regularPool.filter(p => {
-            const s = (p.loja || p.brand || '').toLowerCase();
-            const matches = (s === store || (store === 'dressto' && (s === 'dress' || s === 'dressto')));
-            return matches && !selectedIds.has(p.id);
-        });
-
-        // Se FARM, aplica sub-cotas categoria (60/25/15)
-        if (store === 'farm') {
-            const farmVestidos = storeItems.filter(p => p.categoria === 'vestido').slice(0, Math.ceil(countToTake * 0.60));
-            const farmMacacoes = storeItems.filter(p => p.categoria === 'macacão').slice(0, Math.ceil(countToTake * 0.25));
-            const farmOutros = storeItems.filter(p => p.categoria !== 'vestido' && p.categoria !== 'macacão').slice(0, Math.ceil(countToTake * 0.15));
-
-            const selected = [...farmVestidos, ...farmMacacoes, ...farmOutros].slice(0, countToTake);
-            selected.forEach(p => {
-                finalSelection.push(p);
-                selectedIds.add(p.id);
-                roundCounts.farm++;
+            const nextItem = regularPool.find(p => {
+                if (selectedIds.has(p.id)) return false;
+                const s = (p.loja || p.brand || '').toLowerCase();
+                return s === store || (store === 'dressto' && (s === 'dress' || s === 'dressto'));
             });
-        } else {
-            storeItems.slice(0, countToTake).forEach(p => {
-                finalSelection.push(p);
-                selectedIds.add(p.id);
+
+            if (nextItem) {
+                finalSelection.push(nextItem);
+                selectedIds.add(nextItem.id);
                 roundCounts[store]++;
+                addedThisRound = true;
+            }
+        }
+        if (!addedThisRound) break;
+    }
+
+    // 2ª PASSAGEM: Se ainda houver vaga, tenta secundários ou sobra das principais (sem passar de 7)
+    if (finalSelection.length < 7) {
+        const allStores = [...mainStores, ...secondaryStores];
+        for (const store of allStores) {
+            if (finalSelection.length >= 7) break;
+
+            // Se for secundário, respeita saldo diário
+            if (secondaryStores.includes(store) && !hasDailySaldo(store)) continue;
+
+            const nextItem = regularPool.find(p => {
+                if (selectedIds.has(p.id)) return false;
+                const s = (p.loja || p.brand || '').toLowerCase();
+                return s === store || (store === 'dressto' && (s === 'dress' || s === 'dressto'));
             });
+
+            if (nextItem) {
+                finalSelection.push(nextItem);
+                selectedIds.add(nextItem.id);
+                roundCounts[store]++;
+            }
         }
     }
 

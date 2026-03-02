@@ -178,6 +178,7 @@ async function parseProductKJU(page, url) {
                 .trim();
 
             let container = document.querySelector('.detalhes') || document.querySelector('.produto-info') || document.querySelector('.info') || document.querySelector('#product-container') || document.body;
+            if (!container) return null;
 
             // Strategy: Find explicit prices first
             let precoOriginal = null;
