@@ -108,14 +108,15 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
 
     // 2. SELEÇÃO BAZAR (Exatamente 1 item por execução, prioridade FARM)
     const bazarPool = eligible.filter(p => p.bazar || p.isBazar);
-    console.log(`📊 [Distribution] Pool de Bazar: ${bazarPool.length} itens.`);
+    console.log(`📊 [Distribution] Pool de Bazar: ${bazarPool.length} itens. (${bazarPool.map(p => p.id).join(', ')})`);
     if (bazarPool.length > 0) {
         // Prioriza Farm se houver bazar e se Farm tiver saldo
-        const farmBazar = bazarPool.find(p => (p.loja === 'farm' || p.brand === 'FARM') && hasDailySaldo('farm'));
+        const farmBazar = bazarPool.find(p => (p.loja === 'farm' || (p.brand || '').toLowerCase() === 'farm') && hasDailySaldo('farm'));
         let selectedBazar = null;
 
         if (farmBazar) {
             selectedBazar = farmBazar;
+            console.log(`✅ [Distribution] Selecionado Bazaar FARM (Prioridade): ${selectedBazar.nome} (${selectedBazar.id})`);
         } else {
             // Pega o primeiro bazar disponível de uma loja que tenha saldo diário
             selectedBazar = bazarPool.find(p => {
@@ -123,17 +124,17 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
                 const storeKey = s === 'dress' || s === 'dressto' ? 'dressto' : s;
                 return hasDailySaldo(storeKey);
             });
+            if (selectedBazar) console.log(`✅ [Distribution] Selecionado Bazaar Outra Loja: ${selectedBazar.nome} (${selectedBazar.id})`);
         }
 
         if (selectedBazar) {
-            console.log(`✅ [Distribution] Selecionado Bazaar: ${selectedBazar.nome} (${selectedBazar.id})`);
             finalSelection.push(selectedBazar);
             selectedIds.add(selectedBazar.id);
             const s = (selectedBazar.brand || selectedBazar.loja || '').toLowerCase();
             const storeKey = s === 'dress' || s === 'dressto' ? 'dressto' : s;
             if (roundCounts[storeKey] !== undefined) roundCounts[storeKey]++;
         } else {
-            console.log(`⚠️ [Distribution] Nenhum item do Bazar pool foi selecionado (saldo esgotado?).`);
+            console.log(`⚠️ [Distribution] Nenhum item do Bazar pool foi selecionado (saldo diário esgotado para todas as lojas com bazar?).`);
         }
     }
 
