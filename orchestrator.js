@@ -75,12 +75,12 @@ async function runAllScrapers(overrideQuotas = null) {
     // 1. Obter quotas restantes do dia
     const remaining = getRemainingQuotas();
 
-    // 2. Definir meta para ESTA execução (Total ~7 para chegar em 106)
-    const itemsPerRun = 7;
+    // 2. Definir meta para ESTA execução (Total ~9 para chegar em 135)
+    const itemsPerRun = 9;
 
     // Distribuição proporcional baseada no que FALTA para o dia
     const quotas = overrideQuotas || {
-        farm: Math.min(4, remaining.stores.farm),
+        farm: Math.min(5, remaining.stores.farm),
         dressto: Math.min(10, remaining.stores.dressto),
         kju: Math.min(10, remaining.stores.kju),
         live: Math.min(10, remaining.stores.live),
@@ -153,8 +153,8 @@ async function runAllScrapers(overrideQuotas = null) {
                     console.log(`📊 [FARM] ${sortedFarmDriveItems.length} itens disponíveis no Drive (${farmDriveItems.filter(i => i.novidade).length} novidades, ${farmDriveItems.filter(i => i.isFavorito).length} favoritos)`);
 
                     // O scraper interno vai respeitar a quota da FARM
-                    // GARANTIA: Mínimo 6 para preencher a cota de 4 com segurança
-                    const farmQuota = Math.max(quotas.farm || 0, 6);
+                    // GARANTIA: Mínimo 7 para preencher a cota de 5 com segurança
+                    const farmQuota = Math.max(quotas.farm || 0, 7);
 
                     // Reutiliza o browser instanciado
                     // UPDATE: Agora retorna objeto com stats

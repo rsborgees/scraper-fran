@@ -2,8 +2,8 @@
  * Engine de Distribuição de Links
  */
 
-// Cotas Diárias (Base ~7 links por execução para atingir 106/dia em 15 horários)
-const TOTAL_LINKS = 7;
+// Cotas Diárias (Base ~9 links por execução para atingir ~135/dia em 15 horários)
+const TOTAL_LINKS = 9;
 const QUOTAS = {
     FARM: {
         percent: 0.53,
@@ -138,25 +138,26 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
     }
 
     // 3. SELEÇÃO REGULAR (Até atingir TOTAL_LINKS = 7)
-    // Regra: 4 Farm, 2 Dress To, 1 Kju
+    // Regra: 5 Farm, 2 Dress To, 1 Kju, 1 Live
     const regularPool = eligible.filter(p => !p.bazar);
 
     // PRIORIDADES E QUOTAS
-    const mainStores = ['farm', 'dressto', 'kju'];
-    const secondaryStores = ['live', 'zzmall'];
+    const mainStores = ['farm', 'dressto', 'kju', 'live'];
+    const secondaryStores = ['zzmall'];
     const storeTargets = {
-        farm: 4,
+        farm: 5,
         dressto: 2,
-        kju: 1
+        kju: 1,
+        live: 1
     };
 
     // 1ª PASSAGEM: Prioridade Total para 4-2-1
     let iterations = 0;
-    while (finalSelection.length < 7 && iterations < 4) {
+    while (finalSelection.length < TOTAL_LINKS && iterations < 4) {
         iterations++;
         let addedThisRound = false;
         for (const store of mainStores) {
-            if (finalSelection.length >= 7) break;
+            if (finalSelection.length >= TOTAL_LINKS) break;
             const target = storeTargets[store] || 0;
             if (roundCounts[store] >= target) continue;
 
@@ -177,10 +178,10 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
     }
 
     // 2ª PASSAGEM: Se ainda houver vaga, tenta secundários ou sobra das principais (sem passar de 7)
-    if (finalSelection.length < 7) {
+    if (finalSelection.length < TOTAL_LINKS) {
         const allStores = [...mainStores, ...secondaryStores];
         for (const store of allStores) {
-            if (finalSelection.length >= 7) break;
+            if (finalSelection.length >= TOTAL_LINKS) break;
 
             // Se for secundário, respeita saldo diário
             if (secondaryStores.includes(store) && !hasDailySaldo(store)) continue;
@@ -199,9 +200,9 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
         }
     }
 
-    // 4. Preenchimento de segurança se não atingiu ~7 itens (SEM PASSAR DA QUOTA DIÁRIA)
-    if (finalSelection.length < 7) {
-        let gap = 7 - finalSelection.length;
+    // 4. Preenchimento de segurança se não atingiu ~9 itens (SEM PASSAR DA QUOTA DIÁRIA)
+    if (finalSelection.length < TOTAL_LINKS) {
+        let gap = TOTAL_LINKS - finalSelection.length;
 
         // Tenta preencher primeiro com quem ainda NÃO atingiu sua quota da rodada (runQuotas)
         const priorityExtras = regularPool.filter(p => {
@@ -223,8 +224,8 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
         });
 
         // Se ainda houver gap, preenche com QUALQUER um que tenha saldo diário (Regular ou Bazar)
-        if (finalSelection.length < 7) {
-            gap = 7 - finalSelection.length;
+        if (finalSelection.length < TOTAL_LINKS) {
+            gap = TOTAL_LINKS - finalSelection.length;
             const remainingExtras = eligible.filter(p => { // Alterado de regularPool para eligible
                 if (selectedIds.has(p.id)) return false;
                 const s = (p.brand || p.loja || '').toLowerCase();
