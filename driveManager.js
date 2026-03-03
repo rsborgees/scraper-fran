@@ -135,6 +135,11 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                             store = defaultStore;
                         }
 
+                        // 🔥 [FIX] Se não detectou loja mas tem "Bazar" e o ID parece da Farm (6 dígitos)
+                        if (!store && isBazar && /^\d{5,7}$/.test(mainId)) {
+                            store = 'farm';
+                        }
+
                         if (store) {
                             items.push({
                                 id: mainId,
