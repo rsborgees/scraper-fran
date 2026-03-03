@@ -215,7 +215,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                         product.favorito = !!item.isFavorito;
                         product.novidade = !!item.novidade;
                         product.bazar = !!item.bazar;
-                        product.isBazar = !!item.bazar;
+                        product.isBazar = product.bazar;
                         product.bazarFavorito = !!item.bazarFavorito;
                         product.loja = storeName;
                         product.id = item.driveId || product.id || item.id;
@@ -503,6 +503,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             product.favorito = !!item.isFavorito;
                             product.novidade = !!item.novidade;
                             product.bazar = !!item.bazar;
+                            product.isBazar = product.bazar;
                             product.bazarFavorito = !!item.bazarFavorito;
 
                             // GANTE QUE O ID DO DRIVE SEJA MANTIDO COM PRIORIDADE (Fix Duplicatas KJU)

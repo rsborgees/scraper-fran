@@ -136,7 +136,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
 
                         if (product) {
                             product.bazar = !!item.bazar;
-                            product.isBazar = !!item.bazar;
+                            product.isBazar = product.bazar;
                             product.bazarFavorito = !!item.bazarFavorito;
                             mergedProducts.push(product);
                         }

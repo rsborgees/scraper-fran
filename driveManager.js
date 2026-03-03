@@ -114,7 +114,7 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                         const mainId = ids[0];
                         const isFavorito = nameLower.includes('favorito');
                         const isNovidade = nameLower.includes('novidade');
-                        const isBazar = /(^|[^a-z0-9])bazar([^a-z0-9]|$)/i.test(nameLower);
+                        const isBazar = /(^|[^a-z0-9])bazar([^a-z0-9]|$)/i.test(nameLower) || nameLower.includes('bazar');
                         const isBazarFavorito = isBazar && isFavorito;
 
                         // 🏪 DETECÇÃO DE LOJA pelo nome do arquivo
@@ -156,7 +156,7 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                         // 🆕 FEATURE: Live Items by Name (No ID in filename)
                         const isFavorito = nameLower.includes('favorito');
                         const isNovidade = nameLower.includes('novidade');
-                        const isBazar = /(^|[^a-z0-9])bazar([^a-z0-9]|$)/i.test(nameLower);
+                        const isBazar = /(^|[^a-z0-9])bazar([^a-z0-9]|$)/i.test(nameLower) || nameLower.includes('bazar');
                         const isBazarFavorito = isBazar && isFavorito;
 
                         // Clean name for search

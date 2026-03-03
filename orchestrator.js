@@ -166,7 +166,7 @@ async function runAllScrapers(overrideQuotas = null) {
                             const prodBase = normalizeId(p.id).split('_')[0];
                             return driveBase === prodBase;
                         });
-                        p.bazar = driveItem ? !!driveItem.bazar : false;
+                        p.bazar = !!driveItem.bazar;
                         p.isBazar = p.bazar;
                         p.bazarFavorito = driveItem ? !!driveItem.bazarFavorito : false;
                         p.message = buildFarmMessage(p, p.timerData);
@@ -184,6 +184,7 @@ async function runAllScrapers(overrideQuotas = null) {
                         });
                         if (driveItem) {
                             p.bazar = !!driveItem.bazar;
+                            p.isBazar = p.bazar;
                             p.favorito = !!driveItem.isFavorito;
                         }
                     });
@@ -236,7 +237,9 @@ async function runAllScrapers(overrideQuotas = null) {
                             p.isNovidade = p.novidade;
                             p.favorito = p.favorito || p.isFavorito || false;
                             p.isFavorito = p.favorito;
-                            p.bazar = p.bazar || false;
+                            const driveItem = limitedItems.find(item => normalizeId(item.id) === normalizeId(p.id));
+                            p.bazar = !!(p.bazar || driveItem?.bazar);
+                            p.isBazar = p.bazar;
                             p.bazarFavorito = p.bazarFavorito || (p.bazar && p.favorito) || false;
                         });
 
@@ -266,7 +269,7 @@ async function runAllScrapers(overrideQuotas = null) {
                         return !isDuplicate(finalId, { force: false, maxAgeHours: 48 });
                     });
 
-                    // Passo 2: Fallback se pool for pequeno (Aceita repetição de 24h para qualquer um)
+                    // Passo 2: Fallback se pool for pequeno (Aceita repetição de 24h para qualquer uno)
                     // Consideramos "pool pequeno" se tivermos menos candidatos que a cota da Dress To
                     if (candidates.length < quotas.dressto) {
                         console.log(`   ⚠️ [DRESSTO] Poucos itens novos no Drive. Aplicando fallback de repetição (24h)...`);
@@ -293,7 +296,9 @@ async function runAllScrapers(overrideQuotas = null) {
                         p.isNovidade = p.novidade;
                         p.favorito = !!(p.favorito || p.isFavorito);
                         p.isFavorito = p.favorito;
-                        p.bazar = !!p.bazar;
+                        const driveItem = limitedItems.find(item => normalizeId(item.id) === normalizeId(p.id));
+                        p.bazar = !!(p.bazar || driveItem?.bazar);
+                        p.isBazar = p.bazar;
                         p.bazarFavorito = !!(p.bazarFavorito || (p.bazar && p.favorito));
                     });
 
@@ -539,7 +544,8 @@ async function runAllScrapers(overrideQuotas = null) {
 
                             p.novidade = !!(p.novidade || p.isNovidade);
                             p.favorito = !!(p.favorito || p.isFavorito);
-                            p.bazar = !!p.bazar;
+                            const driveItem = storeItems.find(item => normalizeId(item.id) === normalizeId(p.id));
+                            p.bazar = !!(p.bazar || driveItem?.bazar);
                             p.isBazar = p.bazar;
                             p.bazarFavorito = !!(p.bazarFavorito || (p.bazar && p.favorito));
                         });
