@@ -141,6 +141,8 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
         if (isDressTo) return true; // DressTo always eligible in regular pool
 
         const isFavOrNov = p.favorito || p.isFavorito || p.novidade || p.isNovidade;
+        if (isFavOrNov && (s === 'farm' || s === 'brand')) return false; // Strictly exclude from Farm hourly
+
         return !isFavOrNov; // Other stores must be fresh
     });
 
@@ -156,13 +158,19 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
 
     // 1ª PASSAGEM: Prioridade Total para 4-2-1
     let iterations = 0;
-    while (finalSelection.length < TOTAL_LINKS && iterations < 4) {
+    while (finalSelection.length < TOTAL_LINKS && iterations < 20) {
         iterations++;
         let addedThisRound = false;
         for (const store of mainStores) {
             if (finalSelection.length >= TOTAL_LINKS) break;
             const target = storeTargets[store] || 0;
+
+            // Especial para FARM: A cota de 7 já inclui 1 Bazar. 
+            // Na primeira passagem, pegamos apenas NORMÁIS.
+            // Então o limite de normais é target - bazares_já_selecionados.
+            const bazarCount = finalSelection.filter(p => (p.loja === store || (p.brand || '').toLowerCase() === store) && (p.bazar || p.isBazar)).length;
             if (roundCounts[store] >= target) continue;
+            if (store === 'farm' && (roundCounts[store] - bazarCount) >= 6) continue;
 
             const nextItem = regularPool.find(p => {
                 if (selectedIds.has(p.id)) return false;
@@ -212,11 +220,18 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
         });
 
         fillerPool.slice(0, gap).forEach(p => {
-            finalSelection.push(p);
-            selectedIds.add(p.id);
             const s = (p.brand || p.loja || '').toLowerCase();
             const storeKey = (s === 'dress' || s === 'dressto') ? 'dressto' : s;
-            roundCounts[storeKey]++;
+
+            // REGRAS FILLER FARM:
+            // 1. Não pega mais Bazar se já enviou 1
+            if (storeKey === 'farm' && (p.bazar || p.isBazar) && roundCounts.farm >= 1) return;
+            // 2. Nunca pega favorito/novidade no horário (mesmo se sobrar vaga)
+            if (storeKey === 'farm' && (p.favorito || p.isFavorito || p.novidade || p.isNovidade)) return;
+
+            finalSelection.push(p);
+            selectedIds.add(p.id);
+            if (roundCounts[storeKey] !== undefined) roundCounts[storeKey]++;
         });
     }
 

@@ -6,7 +6,7 @@ const fs = require('fs');
 const DEBUG_DIR = path.join(__dirname, '../../debug');
 const DATA_DIR = path.join(__dirname, '../../data');
 const STATE_FILE = path.join(DATA_DIR, 'reloginho_state.json');
-const WEBHOOK_URL = 'https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/reloginho';
+const WEBHOOK_URL = 'https://n8n-francalheira.vlusgm.easypanel.host/webhook/reloginho';
 
 /**
  * Verifica se há um cronômetro de desconto na home da Farm Rio.

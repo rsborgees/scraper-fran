@@ -28,7 +28,7 @@ async function run() {
             console.log(p.message);
 
             if (true) {
-                const webhookUrl = 'https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa';
+                const webhookUrl = 'https://n8n-francalheira.vlusgm.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa';
                 console.log(`📤 Sending to webhook: ${webhookUrl}`);
                 const payload = {
                     timestamp: new Date().toISOString(),

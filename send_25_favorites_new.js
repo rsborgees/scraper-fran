@@ -8,7 +8,7 @@ const { buildMessageForProduct } = require('./messageBuilder');
 const { loadHistory, normalizeId } = require('./historyManager');
 require('dotenv').config();
 
-const DRIVE_SYNC_WEBHOOK_URL = "https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/fav-fran";
+const DRIVE_SYNC_WEBHOOK_URL = "https://n8n-francalheira.vlusgm.easypanel.host/webhook/fav-fran";
 
 async function sendSpecificItems(limit = 25) {
     console.log('\n' + '='.repeat(60));

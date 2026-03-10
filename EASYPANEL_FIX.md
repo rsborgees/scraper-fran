@@ -29,7 +29,7 @@ Eu criei uma ferramenta nova para isso. Após o deploy estar rodando:
 2. Use o comando abaixo no **PowerShell**:
 
 ```powershell
-Invoke-RestMethod -Uri "https://scraper-scraperv2.ncmzbc.easypanel.host/import-history" -Method Post -ContentType "application/json" -InFile "d:\scrapping\data\history.json"
+Invoke-RestMethod -Uri "https://scraper-scraperv2.vlusgm.easypanel.host/import-history" -Method Post -ContentType "application/json" -InFile "d:\scrapping\data\history.json"
 ```
 
 Isso vai "ensinar" ao servidor tudo que já foi enviado, parando as duplicatas imediatamente.

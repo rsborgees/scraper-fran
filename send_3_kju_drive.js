@@ -5,7 +5,7 @@ const { buildMessageForProduct } = require('./messageBuilder');
 const axios = require('axios');
 require('dotenv').config();
 
-const WEBHOOK_URL = 'https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa';
+const WEBHOOK_URL = 'https://n8n-francalheira.vlusgm.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa';
 
 async function send3KjuFromDrive() {
     console.log('🚀 Searching for Kju items in Drive...');

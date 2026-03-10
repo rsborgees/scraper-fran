@@ -77,7 +77,7 @@ scrapping/
 
 **Endpoint:**
 ```
-POST https://n8n-azideias-n8n.ncmzbc.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa
+POST https://n8n-francalheira.vlusgm.easypanel.host/webhook/1959ec08-24d1-4402-b458-8b56b8211caa
 ```
 
 **Payload:**

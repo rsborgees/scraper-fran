@@ -5,7 +5,7 @@
 Criei um endpoint específico para testar a Live que retorna logs detalhados:
 
 ```powershell
-curl -X POST https://scraper-scraperv2.ncmzbc.easypanel.host/test-live
+curl -X POST https://scraper-scraperv2.vlusgm.easypanel.host/test-live
 ```
 
 ### O que esse endpoint faz:
@@ -54,7 +54,7 @@ curl -X POST https://scraper-scraperv2.ncmzbc.easypanel.host/test-live
 Executa todos os scrapers (incluindo Live):
 
 ```powershell
-curl -X POST https://scraper-scraperv2.ncmzbc.easypanel.host/run-manual
+curl -X POST https://scraper-scraperv2.vlusgm.easypanel.host/run-manual
 ```
 
 Depois, verifique os logs no painel do Easypanel procurando por:
@@ -85,7 +85,7 @@ node test_live_drive_integration.js
 
 ## Próximos Passos
 
-1. **Execute o teste**: `curl -X POST https://scraper-scraperv2.ncmzbc.easypanel.host/test-live`
+1. **Execute o teste**: `curl -X POST https://scraper-scraperv2.vlusgm.easypanel.host/test-live`
 
 2. **Analise os logs**:
    - Se `captured: 0` → Algo falhou, veja os logs

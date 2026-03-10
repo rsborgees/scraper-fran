@@ -80,7 +80,7 @@ async function runAllScrapers(overrideQuotas = null) {
 
     // Distribuição proporcional baseada no que FALTA para o dia
     const quotas = overrideQuotas || {
-        farm: Math.min(7, remaining.stores.farm),
+        farm: Math.min(100, remaining.stores.farm), // Allow large pool for selection
         dressto: Math.min(10, remaining.stores.dressto),
         kju: Math.min(10, remaining.stores.kju),
         live: Math.min(10, remaining.stores.live),
@@ -140,6 +140,9 @@ async function runAllScrapers(overrideQuotas = null) {
                 });
 
                 const farmDriveItems = Array.from(uniqueFarmItems.values()).filter(item => {
+                    // EXCLUSÃO: Favoritos e Novidades são apenas para o Job das 05h
+                    if (item.isFavorito || item.novidade || item.favorito || item.isNovidade) return false;
+
                     // Farm Drive: 48h (2 dias)
                     // Permitimos tudo do Drive que passar no filtro de duplicados, Bazar tem prioridade no score
                     return !isDuplicate(normalizeId(item.id), { force: false, maxAgeHours: 48 }, item.preco);
@@ -148,20 +151,25 @@ async function runAllScrapers(overrideQuotas = null) {
                 if (farmDriveItems.length > 0) {
                     // ESTRATÉGIA: Garantir mix de Bazar e Regular no Scrape
                     const bazars = farmDriveItems.filter(i => i.bazar).sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
-                    const regulars = farmDriveItems.filter(i => !i.bazar).sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
+                    const normals = farmDriveItems.filter(i => !i.bazar).sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
 
                     // Intercalar para garantir que o 'farmQuota' pegue de ambos
+                    // Priorizamos NO MÁXIMO 2-3 bazars no pool de 25 para dar espaço para os Normais
                     const sortedFarmDriveItems = [];
                     let bIdx = 0, rIdx = 0;
+
+                    // Garante que tenhamos muitos normais no pool de scraping
                     while (sortedFarmDriveItems.length < farmDriveItems.length) {
-                        if (bIdx < bazars.length) sortedFarmDriveItems.push(bazars[bIdx++]);
-                        if (rIdx < regulars.length) sortedFarmDriveItems.push(regulars[rIdx++]);
+                        if (rIdx < normals.length) sortedFarmDriveItems.push(normals[rIdx++]);
+                        if (rIdx < normals.length) sortedFarmDriveItems.push(normals[rIdx++]); // 2 normais
+                        if (bIdx < bazars.length) sortedFarmDriveItems.push(bazars[bIdx++]);    // 1 bazar
                     }
 
-                    console.log(`📊 [FARM] ${farmDriveItems.length} totais: ${bazars.length} Bazar, ${regulars.length} Regular.`);
+                    console.log(`📊 [FARM] ${farmDriveItems.length} totais: ${bazars.length} Bazar, ${normals.length} Regular (Excluindo Fav/Nov).`);
 
                     // GARANTIA: Mínimo 25 para garantir que tenhamos itens REGULARES além dos BAZAR
-                    const farmQuota = Math.max(quotas.farm || 0, 25);
+                    // O farmQuota aqui é apenas para o SCRAPING, o distributionEngine aplicará a cota final de 7.
+                    const farmQuota = 25;
 
                     // Reutiliza o browser instanciado
                     // UPDATE: Agora retorna objeto com stats
@@ -625,7 +633,9 @@ async function runAllScrapers(overrideQuotas = null) {
         console.log('📦 Pool de produtos coletados:', countsByStore);
 
         console.log('Aplicando motor de distribuição final...');
-        const distributedProducts = distributeLinks(allProducts, quotas, remaining);
+        // Forçamos o target de 7 para Farm no distribution engine para garantir a regra 1+6
+        const activeQuotas = { ...quotas, farm: Math.min(7, remaining.stores.farm) };
+        const distributedProducts = distributeLinks(allProducts, activeQuotas, remaining);
 
         // Debug Log for Bazar Flag
         console.log('\n📊 [Orchestrator] Concluindo Distribuição. Verificando Flag Bazar:');
