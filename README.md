@@ -1,8 +1,8 @@
-# 🛍️ Multi-Store Scraper System
+# Multi-Store Scraper System
 
 Sistema automatizado de scraping para 5 lojas de moda com agendamento diário e integração webhook.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### **1. Instalação**
 ```bash
@@ -32,7 +32,7 @@ npm run scheduler:test
 
 ---
 
-## 📊 Sistema
+## Sistema
 
 - **Total de Produtos**: 120
 - **Lojas**: FARM (84), Dress To (18), KJU (6), Live (6), ZZMall (6)
@@ -41,7 +41,7 @@ npm run scheduler:test
 
 ---
 
-## 📂 Estrutura
+## Estrutura
 
 ```
 scrapping/
@@ -62,7 +62,7 @@ scrapping/
 
 ---
 
-## 🔧 Comandos
+## Comandos
 
 | Comando | O que faz |
 |---------|-----------|
@@ -73,7 +73,7 @@ scrapping/
 
 ---
 
-## 📤 Webhook Configuration
+## Webhook Configuration
 
 **Endpoint:**
 ```
@@ -98,7 +98,7 @@ POST https://n8n-francalheira.vlusgm.easypanel.host/webhook/1959ec08-24d1-4402-b
 
 ---
 
-## 🖥️ Deploy (Manter Rodando 24/7)
+## Deploy (Manter Rodando 24/7)
 
 ### **Opção 1: PM2 (Recomendado)**
 
@@ -127,19 +127,19 @@ docker run -d --restart always scraper
 
 ---
 
-## 📝 Features
+## Features
 
-✅ **Scraping Automático**: 5 lojas, 120 produtos/dia  
-✅ **Download de Imagens**: 1 imagem por produto (Playwright)  
-✅ **Regras de Preço**: FARM (promo real), Outras (preço original)  
-✅ **Agendamento**: Execução diária às 7h AM  
-✅ **Webhook**: POST automático dos dados  
-✅ **Dashboard**: Interface web para monitoramento  
-✅ **Logs**: Console em tempo real com código de cores  
+**Scraping Automático**: 5 lojas, 120 produtos/dia  
+**Download de Imagens**: 1 imagem por produto (Playwright)  
+**Regras de Preço**: FARM (promo real), Outras (preço original)  
+**Agendamento**: Execução diária às 7h AM  
+**Webhook**: POST automático dos dados  
+**Dashboard**: Interface web para monitoramento  
+**Logs**: Console em tempo real com código de cores  
 
 ---
 
-## 🛠️ Tecnologias
+## Tecnologias
 
 - **Node.js**
 - **Playwright** (Browser automation)
@@ -149,14 +149,14 @@ docker run -d --restart always scraper
 
 ---
 
-## 📚 Documentação Completa
+## Documentação Completa
 
 - [Scheduler Guide](file:///.gemini/antigravity/brain/.../scheduler_guide.md)
 - [Dashboard Walkthrough](file:///.gemini/antigravity/brain/.../scraper_dashboard_walkthrough.md)
 
 ---
 
-## ⚡ Performance
+## Performance
 
 - **Tempo médio**: ~15-20 minutos para 120 produtos
 - **Concurrent scrapers**: Sim (5 lojas em paralelo)
@@ -165,7 +165,7 @@ docker run -d --restart always scraper
 
 ---
 
-## 📞 Troubleshooting
+## Troubleshooting
 
 **Webhook não responde?**
 ```bash
@@ -183,8 +183,8 @@ pm2 logs scraper  # Verifica logs
 
 ---
 
-## 🎯 Status
+## Status
 
-✅ **Pronto para Produção**
+**Pronto para Produção**
 
 Sistema completo e testado, pronto para deploy 24/7.
