@@ -131,19 +131,14 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
     }
 
     // 2. SELEÇÃO REGULAR (Itens que NÃO são bazar E QUE NÃO são favoritos/novidades)
-    // Para Dress To, permitimos favoritos/novidades no regularPool pois é Drive-Only.
     const regularPool = allProducts.filter(p => {
         if (selectedIds.has(p.id)) return false;
         if (p.bazar || p.isBazar) return false;
 
-        const s = (p.loja || p.brand || '').toLowerCase();
-        const isDressTo = s === 'dress' || s === 'dressto';
-        if (isDressTo) return true; // DressTo always eligible in regular pool
+        const isFavOrNov = p.favorito || p.isFavorito || p.novidade || p.isNovidade || p.isSiteNovidade;
+        if (isFavOrNov) return false; // Strictly exclude from ALL STORES hourly
 
-        const isFavOrNov = p.favorito || p.isFavorito || p.novidade || p.isNovidade;
-        if (isFavOrNov && (s === 'farm' || s === 'brand')) return false; // Strictly exclude from Farm hourly
-
-        return !isFavOrNov; // Other stores must be fresh
+        return true;
     });
 
     // PRIORIDADES E QUOTAS

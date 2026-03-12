@@ -197,9 +197,10 @@ async function runAllScrapers(overrideQuotas = null) {
                 // require ja no topo
 
                 for (const store of otherStores) {
-                    const items = (driveItemsByStore[store] || []);
-                    // Removemos o filtro restritivo de favoritos/novidade aqui, 
-                    // deixamos o distributionEngine decidir o que enviar.
+                    // Removemos novidades e favoritos para o job horário
+                    const items = (driveItemsByStore[store] || []).filter(item => {
+                        return !item.isFavorito && !item.novidade && !item.favorito && !item.isNovidade;
+                    });
 
                     if (items.length > 0) {
                         const limitedItems = items
@@ -254,6 +255,7 @@ async function runAllScrapers(overrideQuotas = null) {
                     console.log(`🔍 [DRESSTO] Iniciando Drive-First (${dressItems.length} itens)...`);
 
                     let candidates = dressItems.filter(item => {
+                        if (item.isFavorito || item.novidade || item.favorito || item.isNovidade) return false;
                         const finalId = item.driveId || item.id;
                         return !isDuplicate(finalId, { force: false, maxAgeHours: 48 });
                     });
@@ -333,17 +335,9 @@ async function runAllScrapers(overrideQuotas = null) {
             console.log(`⏭️ [FARM] Pulando scraping regular. Ainda há itens no Drive para redistribuição.`);
         }
 
-        // --- NOVIDADES DO SITE (10% Rule) ---
-        const farmSiteQuota = 1;
-        console.log(`🌐 [FARM] Buscando Novidades do Site (Meta: ${farmSiteQuota})...`);
-        try {
-            let products = await scrapeFarmSiteNovidades(farmSiteQuota);
-            products.forEach(p => {
-                p.message = buildFarmMessage(p, p.timerData);
-                p.isSiteNovidade = true;
-            });
-            allProducts.push(...products);
-        } catch (e) { console.error(`❌ [FARM] Novidades Site Error: ${e.message}`); }
+        // --- NOVIDADES DO SITE (Removido) ---
+        // Removido da execução horária para não enviar novidades/favoritos. 
+        // Apenas o Job de 05h deve enviar novidades.
 
         const remainingQuotaDressTo = Math.max(0, quotas.dressto - allProducts.filter(p => p.loja === 'dressto').length);
 
