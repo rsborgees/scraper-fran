@@ -41,14 +41,9 @@ async function initBrowser() {
         launchOptions.args.push('--headless=new');
     }
 
-    if (process.env.PROXY_SERVER) {
-        console.log(`🌐 Usando Proxy: ${process.env.PROXY_SERVER}`);
-        launchOptions.args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
-    }
-
     const browser = await chromium.launch(launchOptions);
 
-    const contextOptions = {
+    const context = await browser.newContext({
         viewport: { width: 1366, height: 768 },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         locale: 'pt-BR',
@@ -60,17 +55,7 @@ async function initBrowser() {
             'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
             'Upgrade-Insecure-Requests': '1'
         }
-    };
-
-    if (process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
-        contextOptions.proxy = {
-            server: process.env.PROXY_SERVER,
-            username: process.env.PROXY_USERNAME,
-            password: process.env.PROXY_PASSWORD
-        };
-    }
-
-    const context = await browser.newContext(contextOptions);
+    });
 
     const page = await context.newPage();
 
