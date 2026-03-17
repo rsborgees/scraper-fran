@@ -22,12 +22,17 @@ async function initPuppeteer() {
     const args = [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
         '--disable-blink-features=AutomationControlled',
         '--disable-infobars',
         '--window-size=1366,768',
         '--disable-extensions',
         '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-zygote',
+        '--start-maximized',
+        '--ignore-certificate-errors',
+        '--disable-web-security'
     ];
 
     if (process.env.PROXY_SERVER) {
@@ -36,9 +41,10 @@ async function initPuppeteer() {
     }
 
     const browser = await puppeteer.launch({
-        headless: isHeadless, // puppeteer currently supports basic boolean or 'new'
+        headless: isHeadless ? 'new' : false, // Usando 'new' para o novo modo headless do Chrome (muito mais stealth)
         args: args,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        ignoreDefaultArgs: ['--enable-automation']
     });
 
     const page = await browser.newPage();

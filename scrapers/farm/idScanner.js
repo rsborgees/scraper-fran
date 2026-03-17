@@ -131,11 +131,17 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
 
                         // Fallback to DOM parsing if fastParse was inconclusive but didn't error out
                         let productLink = productData.link;
-                        
-                        // If link is a function or invalid string, try constructing it from name
+
+                        // If link is missing, try to construct from linkText or product ID directly.
+                        // The VTEX API frequently returns null 'link' for items fetched via fq= queries (normal items).
                         if (typeof productLink !== 'string' || !productLink) {
                             if (productData.linkText) {
                                 productLink = `https://www.farmrio.com.br/${productData.linkText}/p`;
+                                console.log(`      🔄 [Worker ${workerId}] Usando linkText como fallback: ${productLink}`);
+                            } else if (id) {
+                                // Last resort: use the product id directly — Farm URLs follow /{id}/p pattern
+                                productLink = `https://www.farmrio.com.br/${id}/p`;
+                                console.log(`      🔄 [Worker ${workerId}] Construindo URL do ID: ${productLink}`);
                             } else {
                                 console.error(`      ❌ [Worker ${workerId}] Link não pôde ser resolvido.`);
                                 itemHasError = true;

@@ -32,6 +32,16 @@ const QUOTAS = {
     }
 };
 
+// Máximo absoluto de itens POR EXECUÇÃO por loja.
+// Mesmo que haja gap (Farm/Dress não encheu), as lojas menores NÃO absorvem o slack.
+const RUN_CAPS = {
+    farm: 8,      // 7 normal + 1 bazar (já controlado separadamente)
+    dressto: 3,
+    kju: 1,
+    live: 2,
+    zzmall: 1
+};
+
 
 // Sub-cotas Dress To
 const DRESS_SUBQUOTAS = {
@@ -165,6 +175,7 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
             // Então o limite de normais é target - bazares_já_selecionados.
             const bazarCount = finalSelection.filter(p => (p.loja === store || (p.brand || '').toLowerCase() === store) && (p.bazar || p.isBazar)).length;
             if (roundCounts[store] >= target) continue;
+            if (roundCounts[store] >= (RUN_CAPS[store] || 999)) continue; // Respeita cap absoluto por run
             if (store === 'farm' && (roundCounts[store] - bazarCount) >= 6) continue;
 
             const nextItem = regularPool.find(p => {
@@ -192,6 +203,7 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
         for (const store of allStores) {
             if (finalSelection.length >= TOTAL_LINKS) break;
             if (!hasDailySaldo(store)) continue;
+            if (roundCounts[store] >= (RUN_CAPS[store] || 999)) continue; // Cap absoluto por run
 
             const nextItem = regularPool.find(p => {
                 if (selectedIds.has(p.id)) return false;
@@ -217,6 +229,7 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
             const s = (p.brand || p.loja || '').toLowerCase();
             const storeKey = (s === 'dress' || s === 'dressto') ? 'dressto' : s;
             if (!hasDailySaldo(storeKey)) return false;
+            if (roundCounts[storeKey] >= (RUN_CAPS[storeKey] || 999)) return false; // Cap absoluto por run
 
             // REGRAS FILLER FARM PRE-FILTER:
             // 1. Não pega mais Bazar se já enviou 1
