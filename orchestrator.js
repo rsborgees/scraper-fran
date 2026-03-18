@@ -82,9 +82,9 @@ async function runAllScrapers(overrideQuotas = null) {
     const quotas = overrideQuotas || {
         farm: Math.min(100, remaining.stores.farm), // Allow large pool for selection
         dressto: Math.min(10, remaining.stores.dressto),
-        kju: Math.min(10, remaining.stores.kju),
+        kju: Math.min(3, remaining.stores.kju),   // scrape pool pequeno; 1 por run via RUN_CAPS
         live: Math.min(10, remaining.stores.live),
-        zzmall: Math.min(10, remaining.stores.zzmall)
+        zzmall: Math.min(2, remaining.stores.zzmall) // 3 por dia max; 1 por run
     };
 
     // Ajuste se o total for menor que o esperado

@@ -101,15 +101,15 @@ function recordSentItems(products) {
 function getRemainingQuotas() {
     const stats = resetIfNewDay();
 
-    // Metas Diárias (TOTAL 106)
+    // Metas Diárias
     const DAILY_GOALS = {
         total: 165,
         stores: {
             farm: 115,
             dressto: 22,
-            kju: 10,
+            kju: 14,   // máx 1 por run
             live: 12,
-            zzmall: 6
+            zzmall: 3  // máx 3 por dia
         },
         farmCategories: {
             vestido: 70, // ~60% of 115
