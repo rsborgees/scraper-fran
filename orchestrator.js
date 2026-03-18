@@ -25,6 +25,7 @@ const {
 const { scrapeFarmSiteNovidades } = require('./scrapers/farm/siteNovidades');
 const { getRemainingQuotas, recordSentItems } = require('./dailyStatsManager');
 const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner'); // MOVIDO PARA CIMA
+const { RUN_CAPS } = require('./distributionEngine'); // Para limitar quota por run
 
 
 /**
@@ -139,14 +140,28 @@ async function runAllScrapers(overrideQuotas = null) {
                     }
                 });
 
-                const farmDriveItems = Array.from(uniqueFarmItems.values()).filter(item => {
+                let farmDriveItems = Array.from(uniqueFarmItems.values()).filter(item => {
                     // EXCLUSÃO: Favoritos e Novidades são apenas para o Job das 05h
                     if (item.isFavorito || item.novidade || item.favorito || item.isNovidade) return false;
 
                     // Farm Drive: 48h (2 dias)
-                    // Permitimos tudo do Drive que passar no filtro de duplicados, Bazar tem prioridade no score
                     return !isDuplicate(normalizeId(item.id), { force: false, maxAgeHours: 48 }, item.preco);
                 });
+
+                // Fallback: se o pool de 48h ficou vazio (comum no servidor que roda 15x/dia),
+                // aceitar itens enviados há mais de 24h para não deixar Farm sem conteúdo
+                if (farmDriveItems.length < 10) {
+                    const alreadyIds = new Set(farmDriveItems.map(i => normalizeId(i.id)));
+                    const fallback24h = Array.from(uniqueFarmItems.values()).filter(item => {
+                        if (item.isFavorito || item.novidade || item.favorito || item.isNovidade) return false;
+                        if (alreadyIds.has(normalizeId(item.id))) return false;
+                        return !isDuplicate(normalizeId(item.id), { force: true, maxAgeHours: 24 }, item.preco);
+                    });
+                    if (fallback24h.length > 0) {
+                        console.log(`   ⚠️ [FARM] Pool de 48h pequeno (${farmDriveItems.length}). Aplicando fallback de 24h (+${fallback24h.length} itens).`);
+                        farmDriveItems = [...farmDriveItems, ...fallback24h];
+                    }
+                }
 
                 if (farmDriveItems.length > 0) {
                     // ESTRATÉGIA: Garantir mix de Bazar e Regular no Scrape
@@ -154,18 +169,21 @@ async function runAllScrapers(overrideQuotas = null) {
                     const normals = farmDriveItems.filter(i => !i.bazar).sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
 
                     // Intercalar para garantir que o 'farmQuota' pegue de ambos
-                    // Priorizamos NO MÁXIMO 2-3 bazars no pool de 25 para dar espaço para os Normais
+                    // Priorizamos NO MÁXIMO 3 bazares no pool. O resto TEM que ser preenchido pelos Normais.
+                    const maxBazars = 3;
+                    const limitedBazars = bazars.slice(0, maxBazars);
+
                     const sortedFarmDriveItems = [];
                     let bIdx = 0, rIdx = 0;
 
                     // Garante que tenhamos muitos normais no pool de scraping
-                    while (sortedFarmDriveItems.length < farmDriveItems.length) {
+                    while (rIdx < normals.length || bIdx < limitedBazars.length) {
                         if (rIdx < normals.length) sortedFarmDriveItems.push(normals[rIdx++]);
                         if (rIdx < normals.length) sortedFarmDriveItems.push(normals[rIdx++]); // 2 normais
-                        if (bIdx < bazars.length) sortedFarmDriveItems.push(bazars[bIdx++]);    // 1 bazar
+                        if (bIdx < limitedBazars.length) sortedFarmDriveItems.push(limitedBazars[bIdx++]); // 1 bazar até acabar os 3
                     }
 
-                    console.log(`📊 [FARM] ${farmDriveItems.length} totais: ${bazars.length} Bazar, ${normals.length} Regular (Excluindo Fav/Nov).`);
+                    console.log(`📊 [FARM] Totais no Drive: ${bazars.length} Bazar (Usando máx ${maxBazars}), ${normals.length} Regular.`);
 
                     // GARANTIA: Mínimo 25 para garantir que tenhamos itens REGULARES além dos BAZAR
                     // O farmQuota aqui é apenas para o SCRAPING, o distributionEngine aplicará a cota final de 7.
@@ -209,11 +227,9 @@ async function runAllScrapers(overrideQuotas = null) {
 
                         console.log(`🔍 [${store.toUpperCase()}] Iniciando Drive-First (${items.length} itens)...`);
 
-                        // GARANTIA: Cotas mínimas para permitir a regra 4-2-1 (variedade)
-                        let currentQuota = quotas[store] || 0;
-                        if (store === 'kju' && currentQuota < 2) currentQuota = 2;
-                        if (store === 'dressto' && currentQuota < 4) currentQuota = 4;
-                        if (store === 'zzmall' && currentQuota < 1) currentQuota = 1;
+                        // Usa o RUN_CAP do distributionEngine como quota: o scanner para cedo quando atingido
+                        let currentQuota = RUN_CAPS[store] || quotas[store] || 1;
+                        if (store === 'dressto') currentQuota = Math.min(4, quotas.dressto || 4);
 
                         const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, store, currentQuota);
 
@@ -318,21 +334,22 @@ async function runAllScrapers(overrideQuotas = null) {
         // PHASE 2: REGULAR SCRAPING
         // =================================================================
 
-        // 1. Scrapes (Passando o objeto browser)
-        // IMPORTANTE: Só faz scraping regular se NÃO houver mais itens no Drive
-        // UPDATE: Para FARM e DressTo, NUNCA faz scraping regular (Forbidden)
-        const DRIVE_ONLY_STORES = ['farm', 'dressto'];
+        // Farm: 100% DRIVE ONLY - Usuário requisitou NUNCA pegar peças do site, de jeito nenhum.
+        const farmNormalCount = allProducts.filter(p => p.loja === 'farm' && !p.bazar && !p.isBazar).length;
+        const unusedNormalFarm = allUnusedDriveItems.filter(i => i.store === 'farm' && !i.bazar).length;
+        const farmShouldScrapeSite = false; 
 
-        if (!DRIVE_ONLY_STORES.includes('farm') && remainingQuotaFarm > 0 && !allUnusedDriveItems.some(i => i.store === 'farm')) {
-            console.log(`🌐 [FARM] Drive esgotado. Iniciando scraping regular...`);
+        if (farmShouldScrapeSite) {
+            console.log(`🌐 [FARM] Nenhum item normal recuperado do Drive. Iniciando scraping regular do site (Fallback)...`);
             try {
-                let products = await scrapeFarm(remainingQuotaFarm, false, context);
+                const siteQuota = Math.max(7, remainingQuotaFarm);
+                let products = await scrapeFarm(siteQuota, false, context);
                 products.forEach(p => p.message = buildFarmMessage(p, p.timerData));
                 allProducts.push(...products);
-                console.log(`✅ FARM (Regular): ${products.length} msgs geradas`);
+                console.log(`✅ FARM (Regular Site): ${products.length} msgs geradas`);
             } catch (e) { console.error(`❌ FARM Error: ${e.message}`); }
-        } else if (remainingQuotaFarm > 0 && allUnusedDriveItems.some(i => i.store === 'farm')) {
-            console.log(`⏭️ [FARM] Pulando scraping regular. Ainda há itens no Drive para redistribuição.`);
+        } else {
+            console.log(`⏭️ [FARM] Drive tem ${farmNormalCount} itens normais + ${unusedNormalFarm} no pool. Pulando site.`);
         }
 
         // --- NOVIDADES DO SITE (Removido) ---
@@ -357,10 +374,8 @@ async function runAllScrapers(overrideQuotas = null) {
         } catch (e) { console.error(`❌ [DRESSTO] Novidades Site Error: ${e.message}`); }
         */
 
-        if (remainingQuotaDressTo > 0 && !DRIVE_ONLY_STORES.includes('dressto')) {
-            // Este bloco agora é legado, pois Dress To é Drive-First + Site Novidades
-            console.log(`⏭️ [DRESSTO] Skipping regular scraping fallback.`);
-        } else if (quotas.dressto > 0) {
+        // Dress To é sempre Drive-only — sem scraping regular do site
+        if (quotas.dressto > 0) {
             console.log(`✅ [DRESSTO] Processamento concluído.`);
         }
 
@@ -611,6 +626,28 @@ async function runAllScrapers(overrideQuotas = null) {
         distributedProducts.forEach(p => {
             console.log(`   🔸 ${p.nome} (${p.id}): Bazar=${!!p.bazar} | isBazar=${!!p.isBazar}`);
         });
+
+        // ======= NOVO REQUERIDO PELO USUÁRIO: RESUMO FINAL ORGANIZADO =======
+        console.log('\n==================================================');
+        console.log('🛍️ RESUMO DOS PRODUTOS SELECIONADOS:');
+        console.log('==================================================');
+        
+        const groupedByStore = {};
+        distributedProducts.forEach(p => {
+            const store = (p.loja || p.brand || 'OUTRA').toUpperCase();
+            if (!groupedByStore[store]) groupedByStore[store] = [];
+            groupedByStore[store].push(p);
+        });
+
+        Object.keys(groupedByStore).sort().forEach(store => {
+            console.log(`\n🏪 ${store} (${groupedByStore[store].length} itens):`);
+            groupedByStore[store].forEach((p, idx) => {
+                const tipo = p.bazar ? '[BAZAR]' : p.favorito ? '[FAVORITO]' : p.novidade ? '[NOVIDADE]' : '[REGULAR]';
+                console.log(`   ${String(idx + 1).padStart(2, ' ')}. ${tipo} ${p.nome} | R$ ${p.precoAtual || p.preco}`);
+            });
+        });
+        console.log('\n==================================================\n');
+        // ====================================================================
 
         // 4. Gravar Stats Diárias e Marcar como Enviado
         if (distributedProducts.length > 0) {

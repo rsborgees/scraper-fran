@@ -309,6 +309,14 @@ async function processImageDirect(imageUrl, store, id) {
         reason: ''
     };
 
+    // 🚀 Bypassar Cloudinary se for link do Drive, como pedido pelo usuário
+    if (imageUrl && (imageUrl.includes('drive.google.com') || imageUrl.includes('drive.usercontent.google.com'))) {
+        // console.log(`    🔗 Link do Drive detectado, ignorando Cloudinary para: ${id}`);
+        result.cloudinary_urls.push(imageUrl);
+        result.status = 'success';
+        return result;
+    }
+
     try {
         const filename = `${store}_${id}.jpg`;
         const filepath = join(DOWNLOAD_DIR, filename);

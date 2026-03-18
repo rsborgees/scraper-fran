@@ -98,11 +98,18 @@ async function scrapeFarm(quota = 84, dryRun = false, parentBrowser = null) {
 
                     // Coleta URLs da página atual
                     const pageProductUrls = await page.evaluate(() => {
-                        // Seletor mais abrangente, pegando /p no final
                         const anchors = Array.from(document.querySelectorAll('a'));
                         return [...new Set(anchors
                             .map(a => a.href)
-                            .filter(href => (href.includes('/p?') || href.includes('/p/') || href.endsWith('/p')) && !href.includes('login') && !href.includes('cart') && !href.includes('wishlist'))
+                            .filter(href => {
+                                if (!href.includes('/p')) return false;
+                                if (href.includes('login') || href.includes('cart') || href.includes('wishlist')) return false;
+                                // Exige que o slug antes do /p contenha um ID numérico (mín. 5 dígitos)
+                                // Isso exclui filtros de categoria tipo /vestido/p?brand=farm
+                                const beforeP = href.split('/p')[0];
+                                const lastSlug = beforeP.split('/').pop();
+                                return /\d{5,}/.test(lastSlug);
+                            })
                         )];
                     });
 

@@ -254,4 +254,4 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
     return shuffle(finalSelection);
 }
 
-module.exports = { distributeLinks, QUOTAS, FARM_SUBQUOTAS, DRESS_SUBQUOTAS };
+module.exports = { distributeLinks, QUOTAS, RUN_CAPS, FARM_SUBQUOTAS, DRESS_SUBQUOTAS };

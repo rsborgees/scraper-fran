@@ -228,8 +228,13 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                             if (storeName === 'zzmall') {
                                 let isPaginaValida = false;
                                 page.on('console', msg => {
-                                    if (msg.type() === 'error' || msg.text().includes('[IDSCANNER]')) {
-                                        console.log(`      🖥️ [BROWSER-W${workerId}] ${msg.text()}`);
+                                    const text = msg.text();
+                                    const isNoisyNetworkError = text.includes('Failed to load resource: net::') || 
+                                                                text.includes('the server responded with a status of 404') || 
+                                                                text.includes('Attestation check for Attribution Reporting');
+                                    
+                                    if ((msg.type() === 'error' && !isNoisyNetworkError) || text.includes('[IDSCANNER]')) {
+                                        console.log(`      🖥️ [BROWSER-W${workerId}] ${text}`);
                                     }
                                 });
 
