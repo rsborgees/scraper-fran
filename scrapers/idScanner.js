@@ -81,463 +81,398 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
     const idBasedItems = driveItems.filter(i => !i.searchByName);
 
     if (idBasedItems.length > 0) {
-        let page;
-        let ownsPage = false;
+        const CONCURRENCY_LIMIT = 5;
+        const itemQueue = [...idBasedItems];
+        let isQuotaReached = false;
 
-        if (typeof contextOrBrowser.newPage === 'function') {
-            page = await contextOrBrowser.newPage({
-                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                locale: 'pt-BR'
-            });
+        const worker = async (workerId) => {
+            let page;
+            let ownsPage = false;
 
-        } else {
-            // It's already a page object
-            page = contextOrBrowser;
-        }
+            if (typeof contextOrBrowser.newPage === 'function') {
+                page = await contextOrBrowser.newPage({
+                    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    locale: 'pt-BR'
+                });
+                ownsPage = true;
+            } else {
+                page = contextOrBrowser;
+            }
 
-        // BLOQUEIO DE REDIRECIONAMENTO PROIBIDO
-        if (storeName === 'zzmall') {
-            await page.route('**/*', (route) => {
-                const url = route.request().url().toLowerCase();
-                // Bloqueio estrito de qualquer recurso ou navegação para caminhos proibidos
-                if (url.includes('novidades') || url.includes('fallback') || url.includes('transparencia')) {
-                    // Cumpriremos com uma página vazia para evitar erro de navegador (ERR_FAILED)
-                    return route.fulfill({
-                        status: 200,
-                        contentType: 'text/html',
-                        body: '<html><body>Destino Bloqueado</body></html>'
-                    });
-                }
-                return route.continue();
-            });
-        }
+            if (storeName === 'zzmall') {
+                await page.route('**/*', (route) => {
+                    const url = route.request().url().toLowerCase();
+                    if (url.includes('novidades') || url.includes('fallback') || url.includes('transparencia')) {
+                        return route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Destino Bloqueado</body></html>' });
+                    }
+                    return route.continue();
+                });
+            }
 
-        if (storeName === 'dressto') {
-            await contextOrBrowser.addCookies([
-                { name: 'vtex_segment', value: 'eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9', domain: '.dressto.com.br', path: '/' }
-            ]).catch(() => { });
-        }
+            if (storeName === 'dressto' && ownsPage) {
+                await contextOrBrowser.addCookies([
+                    { name: 'vtex_segment', value: 'eyJjdXJyZW5jeUNvZGUiOiJCUkwiLCJjb3VudHJ5Q29kZSI6IkJSQSIsImxvY2FsZUNvZGUiOiJwdC1CUiJ9', domain: '.dressto.com.br', path: '/' }
+                ]).catch(() => { });
+            }
 
-        try {
-            for (const item of idBasedItems) {
-                if (collectedProducts.length >= quota) break;
-
-                stats.checked++;
-                const finalIdCandidate = item.driveId || item.id;
-                attemptedIds.push(finalIdCandidate);
-                console.log(`\n🔍 [${storeName}] Buscando ID ${finalIdCandidate} (${item.isFavorito ? '⭐ Favorito' : 'Regular'})...`);
-
-                const normIdCheck = normalizeId(finalIdCandidate);
-                if (!item.isFavorito && isDuplicate(normIdCheck, { maxAgeHours })) {
-                    console.log(`   ⏭️  Pulando: Já enviado recentemente.`);
-                    stats.duplicates++;
-                    continue;
-                }
-
-                try {
-                    let navigationSuccess = false;
-                    let productData = null;
-
-                    // 👗 DRESS TO STRATEGY: API-FIRST -> BROWSER FALLBACK
-                    if (storeName === 'dressto') {
-                        try {
-                            const pApi = require('./dressto/parser');
-                            console.log(`      🔄 [DRESSTO] Usando API Direta para ID ${item.id}...`);
-                            productData = await pApi.fetchViaVtexAPI(item.id);
-
-                            if (productData) {
-                                console.log(`      ✅ [DRESSTO] Sucesso via API! (${productData.nome})`);
-                                navigationSuccess = true;
-                            } else {
-                                console.log(`      ⚠️ [DRESSTO] API falhou. Tentando Browser...`);
-                                await page.goto('https://www.dressto.com.br/', { waitUntil: 'load', timeout: 45000 });
-
-                                const prefix = item.id.split('_')[0];
-                                const variations = [item.id, item.id.replace(/_/g, '-'), item.id.replace(/_/g, ''), prefix];
-                                for (const v of variations) {
-                                    if (navigationSuccess) break;
-                                    const searchUrl = `https://www.dressto.com.br/${v}?_q=${v}&map=ft&sc=1`;
-                                    console.log(`      🔄 Tentando Browser: ${searchUrl}`);
-                                    await page.goto(searchUrl, { waitUntil: 'load', timeout: 45000 });
-                                    await page.waitForTimeout(4000);
-
-                                    if (page.url().includes('/p')) {
-                                        navigationSuccess = true;
-                                    } else {
-                                        const productLink = await page.$('a[class*="vtex-product-summary-2-x-clearLink"], a[href*="/p"]');
-                                        if (productLink) {
-                                            await productLink.click();
-                                            await page.waitForTimeout(5000);
-                                            if (page.url().includes('/p')) navigationSuccess = true;
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (err) {
-                            console.log(`      ❌ Erro na estratégia DressTo: ${err.message}`);
-                        }
+            try {
+                while (itemQueue.length > 0 && !isQuotaReached) {
+                    if (collectedProducts.length >= quota) {
+                        isQuotaReached = true;
+                        break;
                     }
 
-                    // Fallback para Outras Lojas ou se DressTo falhou
-                    if (!navigationSuccess && config.directUrlBuilder) {
-                        const directUrl = config.directUrlBuilder(item.id);
-                        try {
-                            await page.goto(directUrl, { waitUntil: 'load', timeout: 45000 });
-                            navigationSuccess = true;
-                            await page.waitForTimeout(1500);
-                        } catch (e) {
-                            console.log(`      ⚠️ Falha na Direct URL: ${e.message}`);
-                        }
+                    const item = itemQueue.shift();
+                    if (!item) break;
+
+                    stats.checked++;
+                    const finalIdCandidate = item.driveId || item.id;
+                    attemptedIds.push(finalIdCandidate);
+                    console.log(`\n🔍 [${storeName.toUpperCase()}-W${workerId}] Buscando ID ${finalIdCandidate} (${item.isFavorito ? '⭐ Favorito' : 'Regular'})...`);
+
+                    const normIdCheck = normalizeId(finalIdCandidate);
+                    if (!item.isFavorito && isDuplicate(normIdCheck, { maxAgeHours })) {
+                        console.log(`   ⏭️  [W${workerId}] Pulando: Já enviado recentemente.`);
+                        stats.duplicates++;
+                        continue;
                     }
 
-                    if (!navigationSuccess) {
-                        const searchUrl = config.searchUrl(item.id);
-                        try {
-                            await page.goto(searchUrl, { waitUntil: 'load', timeout: 45000 });
-                            navigationSuccess = true;
-                            await page.waitForTimeout(2500);
-                        } catch (e) {
-                            console.log(`      ⚠️ Falha na Search URL: ${e.message}`);
-                        }
-                    }
+                    try {
+                        let navigationSuccess = false;
+                        let productData = null;
 
-                    // Detection and Parse
-                    let product = productData;
-                    if (product) {
-                        product.imagePath = item.driveUrl || product.imagePath;
-                        product.imageUrl = item.driveUrl || product.imageUrl;
-
-                        if (storeName === 'dressto' && !product.imageUrl) {
-                            console.log(`   🛑 [DRESSTO] Bloqueando item sem imagem no Drive.`);
-                            continue;
-                        }
-
-                        product.favorito = !!item.isFavorito;
-                        product.novidade = !!item.novidade;
-                        product.bazar = !!item.bazar;
-                        product.isBazar = product.bazar;
-                        product.bazarFavorito = !!item.bazarFavorito;
-                        product.loja = storeName;
-                        product.id = item.driveId || product.id || item.id;
-
-                        collectedProducts.push(product);
-                        console.log(`   ✅ [${storeName}] Capturado: ${product.nome}`);
-                        stats.found++;
-                        if (!item.isFavorito) markAsSent([product.id]);
-                    } else if (navigationSuccess) {
-                        // SPECIAL HANDLING FOR ZZMALL: Explicit search -> wait -> click
-                        if (storeName === 'zzmall') {
-                            let isPaginaValida = false;
-
-                            // 🛡️ CAPTURA LOGS DO CONSOLE (DEBUG)
-                            page.on('console', msg => {
-                                if (msg.type() === 'error' || msg.text().includes('[IDSCANNER]')) {
-                                    console.log(`      🖥️ [BROWSER] ${msg.text()}`);
-                                }
-                            });
-
-                            // 1. WARMUP: Vamos para a home primeiro para estabelecer a sessão
+                        if (storeName === 'dressto') {
                             try {
-                                await page.goto('https://www.zzmall.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-                                await page.waitForTimeout(2000);
+                                const pApi = require('./dressto/parser');
+                                console.log(`      🔄 [DRESSTO-W${workerId}] Usando API Direta para ID ${item.id}...`);
+                                productData = await pApi.fetchViaVtexAPI(item.id);
 
-                                // Tenta aceitar cookies para limpar o overlay
-                                try {
-                                    const cookieBtn = await page.$('#onesignal-slidedown-cancel-button, button:has-text("Aceitar"), .cookie-accept-button');
-                                    if (cookieBtn) {
-                                        console.log(`      🍪 [ZZMALL] Aceitando cookies/notificações...`);
-                                        await cookieBtn.click();
-                                    }
-                                } catch (e) { }
+                                if (productData) {
+                                    console.log(`      ✅ [DRESSTO-W${workerId}] Sucesso via API! (${productData.nome})`);
+                                    navigationSuccess = true;
+                                } else {
+                                    console.log(`      ⚠️ [DRESSTO-W${workerId}] API falhou. Tentando Browser...`);
+                                    await page.goto('https://www.dressto.com.br/', { waitUntil: 'load', timeout: 30000 });
 
-                                // Pequeno scroll humano
-                                await page.mouse.wheel(0, 300);
-                                await page.waitForTimeout(3000);
-                            } catch (e) {
-                                console.log(`      ⚠️ [ZZMALL] Falha no warmup: ${e.message}`);
-                            }
+                                    const prefix = item.id.split('_')[0];
+                                    const variations = [item.id, item.id.replace(/_/g, '-'), item.id.replace(/_/g, ''), prefix];
+                                    for (const v of variations) {
+                                        if (navigationSuccess) break;
+                                        const searchUrl = `https://www.dressto.com.br/${v}?_q=${v}&map=ft&sc=1`;
+                                        console.log(`      🔄 [W${workerId}] Tentando Browser: ${searchUrl}`);
+                                        await page.goto(searchUrl, { waitUntil: 'load', timeout: 30000 });
+                                        await page.waitForTimeout(4000);
 
-                            // 2. API DE BUSCA DIRETA (Tenta antes da navegação para ser mais limpo)
-                            console.log(`      🔎 [ZZMALL] Tentando API de busca direta para ID ${item.id}...`);
-                            try {
-                                const apiUrl = `https://www.zzmall.com.br/arezzocoocc/v2/marketplacezz/products/search?query=${item.id}&fields=FULL`;
-                                const targetId = item.id;
-
-                                const productUrl = await page.evaluate(async ({ url, id }) => {
-                                    try {
-                                        const resp = await fetch(url, {
-                                            headers: { 'Accept': 'application/json' },
-                                            credentials: 'include'
-                                        });
-                                        console.log(`      [IDSCANNER] API Status: ${resp.status}`);
-                                        if (resp.ok) {
-                                            const data = await resp.json();
-                                            const count = data.products ? data.products.length : 0;
-                                            console.log(`      [IDSCANNER] API encontrou ${count} produtos.`);
-
-                                            if (count > 0) {
-                                                const ids = data.products.map(p => p.code).join(', ');
-                                                console.log(`      [IDSCANNER] IDs na API: ${ids}`);
-
-                                                const match = data.products.find(p =>
-                                                    (p.code && p.code.includes(id)) ||
-                                                    (p.url && p.url.includes(id)) ||
-                                                    (p.legacySKU && p.legacySKU.includes(id))
-                                                );
-                                                return match ? match.url : null;
-                                            } else {
-                                                console.log(`      [IDSCANNER] API retornou array de produtos vazio.`);
+                                        if (page.url().includes('/p')) {
+                                            navigationSuccess = true;
+                                        } else {
+                                            const productLink = await page.$('a[class*="vtex-product-summary-2-x-clearLink"], a[href*="/p"]');
+                                            if (productLink) {
+                                                await productLink.click();
+                                                await page.waitForTimeout(5000);
+                                                if (page.url().includes('/p')) navigationSuccess = true;
                                             }
                                         }
-                                    } catch (e) {
-                                        console.log(`      [IDSCANNER] API Error: ${e.message}`);
                                     }
-                                    return null;
-                                }, { url: apiUrl, id: targetId });
-
-                                if (productUrl) {
-                                    const finalUrl = `https://www.zzmall.com.br${productUrl}`;
-                                    console.log(`      🚀 [ZZMALL] API encontrou URL: ${finalUrl}. Navegando...`);
-                                    await page.goto(finalUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                                    await page.waitForTimeout(5000);
-                                    const checkNow = page.url();
-                                    isPaginaValida = checkNow.includes('/p') || checkNow.includes('/produto');
                                 }
                             } catch (err) {
-                                console.log(`      ⚠️ [ZZMALL] Erro ao consultar API de busca.`);
-                            }
-
-                            // 3. BUSCA DIRETA (Se a API falhar)
-                            if (!isPaginaValida) {
-                                const searchUrl = config.searchUrl(item.id);
-                                try {
-                                    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                                    console.log(`      ⏳ [ZZMALL] Esperando 10s para carregamento da busca...`);
-                                    await page.waitForTimeout(10000);
-                                    const urlCheck = page.url();
-                                    isPaginaValida = urlCheck.includes('/p') || urlCheck.includes('/produto') || urlCheck.includes('/search/');
-                                } catch (e) {
-                                    console.log(`      ⚠️ [ZZMALL] Erro na navegação de busca.`);
-                                }
-                            }
-
-                            // 4. FALLBACK 2: Se a API e a Busca falharem, tenta o fluxo HUMAN-LIKE no UI Overlay
-                            if (!isPaginaValida) {
-                                console.log(`      ⚠️ [ZZMALL] API falhou ou não encontrou. Iniciando fluxo HUMAN-LIKE...`);
-                                try {
-                                    await page.goto('https://www.zzmall.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-                                    // Delay humano para "ler" a home
-                                    await page.waitForTimeout(2000 + Math.random() * 3000);
-
-                                    const searchInput = await page.$('input.inner-input[placeholder="Buscar"]');
-                                    if (searchInput) {
-                                        // Simula movimento do mouse até o input
-                                        const box = await searchInput.boundingBox();
-                                        if (box) {
-                                            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
-                                            await page.mouse.down();
-                                            await page.mouse.up();
-                                        } else {
-                                            await searchInput.click();
-                                        }
-
-                                        await page.waitForTimeout(500 + Math.random() * 500);
-
-                                        // Limpa e foca
-                                        await page.keyboard.down('Control');
-                                        await page.keyboard.press('A');
-                                        await page.keyboard.up('Control');
-                                        await page.keyboard.press('Backspace');
-
-                                        // Digita ID com delay variável por caractere
-                                        for (const char of item.id) {
-                                            await page.keyboard.type(char, { delay: 100 + Math.random() * 200 });
-                                        }
-
-                                        console.log(`      ⏳ [ZZMALL] Aguardando overlay de resultados...`);
-                                        const overlaySelector = '.search-results__products__item__link, a[href*="/p/"]';
-
-                                        try {
-                                            // Espera o overlay aparecer
-                                            await page.waitForSelector(overlaySelector, { timeout: 15000 });
-                                            await page.waitForTimeout(1500); // Garante que renderizou tudo
-
-                                            const results = await page.$$(overlaySelector);
-                                            console.log(`      🔎 [ZZMALL] Overlay encontrou ${results.length} links.`);
-
-                                            let clicked = false;
-                                            for (const res of results) {
-                                                const href = await res.getAttribute('href');
-                                                const text = await res.innerText();
-
-                                                // Validação super estrita do ID no HREF ou no TEXTO do item
-                                                if (href && (href.includes(item.id) || href.toLowerCase().includes(item.id.toLowerCase()))) {
-                                                    console.log(`      🖱️ [ZZMALL] Clicando no item EXATO via HREF...`);
-                                                    await res.click();
-                                                    clicked = true;
-                                                    break;
-                                                }
-                                                if (text && text.includes(item.id)) {
-                                                    console.log(`      🖱️ [ZZMALL] Clicando no item EXATO via TEXTO...`);
-                                                    await res.click();
-                                                    clicked = true;
-                                                    break;
-                                                }
-                                            }
-
-                                            if (clicked) await page.waitForTimeout(6000);
-
-                                        } catch (err) {
-                                            console.log(`      ⚠️ [ZZMALL] Overlay falhou. Tentando Enter como fallback final...`);
-                                            await page.keyboard.press('Enter');
-                                            await page.waitForTimeout(10000);
-                                        }
-                                    }
-                                } catch (e) {
-                                    console.log(`      ❌ [ZZMALL] Erro no fluxo human-like.`);
-                                }
-                            }
-
-                        } // FIM IF ZZMALL
-
-                        let finalPageUrl = page.url();
-                        let isProductPage = finalPageUrl.includes('/p') || finalPageUrl.includes('/produto');
-
-                        // Se não for PDP direta, tenta identificar se é busca e clicar no item
-                        if (!isProductPage) {
-                            const isLikelySearch = finalPageUrl.includes('/search/') ||
-                                finalPageUrl.includes('/busca/') ||
-                                finalPageUrl.includes('_q=') ||
-                                finalPageUrl.includes('map=ft') ||
-                                finalPageUrl.toLowerCase().includes(item.id.toLowerCase());
-
-                            if (isLikelySearch) {
-                                console.log(`      🖱️ [${storeName.toUpperCase()}] Landing em busca. Tentando clicar no item que corresponde ao ID ${item.id}...`);
-                                const selector = config.productLinkSelector || 'a[href*="/p/"], a[href*="/produto/"]';
-
-                                const itemFound = await page.evaluate(({ sel, targetId }) => {
-                                    const anchors = Array.from(document.querySelectorAll(sel));
-                                    // Prioridade 1: Link que CONTÉM o ID exato no href
-                                    const bestMatch = anchors.find(a => a.href.toLowerCase().includes(targetId.toLowerCase()));
-                                    const a = bestMatch || anchors[0];
-                                    if (a) {
-                                        a.click();
-                                        return true;
-                                    }
-                                    return false;
-                                }, { sel: selector, targetId: item.id });
-
-                                if (itemFound) {
-                                    console.log(`      ✅ [${storeName.toUpperCase()}] Clique realizado. Aguardando PDP...`);
-                                    await page.waitForTimeout(5000);
-                                    finalPageUrl = page.url();
-                                    isProductPage = finalPageUrl.includes('/p') || finalPageUrl.includes('/produto');
-                                }
+                                console.log(`      ❌ [DRESSTO-W${workerId}] Erro na estratégia DressTo: ${err.message}`);
                             }
                         }
 
-                        if (!isProductPage) {
-                            isProductPage = await page.evaluate(() => {
-                                return !!document.querySelector('.codigo_produto, .productReference, .vtex-product-identifier');
-                            });
-                        }
-
-                        if (!isProductPage) {
-                            const notFound = await page.evaluate(() => {
-                                if (!document.body) return false;
-                                const text = document.body.innerText || '';
-                                return text.includes('Nenhum produto foi encontrado') || text.includes('NÃO ENCONTRAMOS O QUE VOCÊ BUSCOU');
-                            });
-
-                            if (notFound) {
-                                console.log(`   ❌ Produto ${item.id} não disponível.`);
-                                stats.notFound++;
-                                continue;
-                            }
-
-                            const selector = config.productLinkSelector || 'a[href*="/p"]';
-                            const href = await page.evaluate((sel) => {
-                                const a = document.querySelector(sel);
-                                return a ? a.href : null;
-                            }, selector);
-
-                            const currentUrlBeforeHref = page.url();
-                            const isLikelySearch = currentUrlBeforeHref.includes('/search/') ||
-                                currentUrlBeforeHref.includes('/busca/') ||
-                                currentUrlBeforeHref.includes('_q=') ||
-                                currentUrlBeforeHref.includes('map=ft');
-
-                            if (!currentUrlBeforeHref.includes('/p') && !currentUrlBeforeHref.includes('/produto') && !isLikelySearch) {
-                                console.log(`   ❌ [${storeName.toUpperCase()}] Abortando: Landing page inválida (${currentUrlBeforeHref}).`);
-                                continue;
+                        if (!navigationSuccess && config.directUrlBuilder) {
+                            const directUrl = config.directUrlBuilder(item.id);
+                            try {
+                                await page.goto(directUrl, { waitUntil: 'load', timeout: 30000 });
+                                navigationSuccess = true;
+                                await page.waitForTimeout(1500);
+                            } catch (e) {
+                                console.log(`      ⚠️ [W${workerId}] Falha na Direct URL: ${e.message}`);
                             }
                         }
 
-                        // Final ID Verification for ZZMall
-                        if (storeName === 'zzmall') {
-
-                            // Verify if the ID on page matches what we searched for
-                            const pageId = await page.evaluate(() => {
-                                const refEl = document.querySelector('.vtex-product-identifier, .productReference');
-                                if (!refEl) return '';
-                                // ZZMall IDs are alphanumeric, we should keep letters and numbers
-                                const text = refEl.innerText || '';
-                                return text.trim();
-                            });
-
-                            if (pageId && !pageId.toLowerCase().includes(item.id.toLowerCase()) && !item.id.toLowerCase().includes(pageId.toLowerCase())) {
-                                console.log(`   ❌ [ZZMALL] ID Errado na página: Encontrou ${pageId} mas queria ${item.id}. Abortando.`);
-                                continue;
+                        if (!navigationSuccess) {
+                            const searchUrl = config.searchUrl(item.id);
+                            try {
+                                await page.goto(searchUrl, { waitUntil: 'load', timeout: 30000 });
+                                navigationSuccess = true;
+                                await page.waitForTimeout(2500);
+                            } catch (e) {
+                                console.log(`      ⚠️ [W${workerId}] Falha na Search URL: ${e.message}`);
                             }
                         }
 
-                        // Final Parse
-                        if (storeName === 'dressto') product = await parseProductDressTo(page, page.url());
-                        else if (storeName === 'kju') product = await parseProductKJU(page, page.url());
-                        else if (storeName === 'live') product = await parseProductLive(page, page.url());
-                        else if (storeName === 'zzmall') product = await parseProductZZMall(page, page.url());
-
+                        let product = productData;
                         if (product) {
-                            product.loja = storeName;
-                            product.brand = storeName === 'dressto' ? 'DRESS' : storeName.toUpperCase();
+                            product.imagePath = item.driveUrl || product.imagePath;
+                            product.imageUrl = item.driveUrl || product.imageUrl;
+
+                            if (storeName === 'dressto' && !product.imageUrl) {
+                                console.log(`   🛑 [DRESSTO-W${workerId}] Bloqueando item sem imagem no Drive.`);
+                                continue;
+                            }
+
                             product.favorito = !!item.isFavorito;
                             product.novidade = !!item.novidade;
                             product.bazar = !!item.bazar;
                             product.isBazar = product.bazar;
                             product.bazarFavorito = !!item.bazarFavorito;
-
-                            // GANTE QUE O ID DO DRIVE SEJA MANTIDO COM PRIORIDADE (Fix Duplicatas KJU)
-                            const driveId = item.driveId || item.id;
-                            if (driveId) {
-                                product.id = driveId;
-                            } else {
-                                product.id = product.id || item.id;
-                            }
-
-                            // 🖼️ PRIORIZA FOTO DO DRIVE (Se item veio do Drive)
-                            if (item.driveUrl) {
-                                product.imagePath = item.driveUrl;
-                                product.imageUrl = item.driveUrl;
-                            }
+                            product.loja = storeName;
+                            product.id = item.driveId || product.id || item.id;
 
                             collectedProducts.push(product);
+                            console.log(`   ✅ [${storeName.toUpperCase()}-W${workerId}] Capturado: ${product.nome}`);
                             stats.found++;
-                            if (collectedProducts.length >= quota) break;
+                            if (!item.isFavorito) markAsSent([product.id]);
+                        } else if (navigationSuccess) {
+                            if (storeName === 'zzmall') {
+                                let isPaginaValida = false;
+                                page.on('console', msg => {
+                                    if (msg.type() === 'error' || msg.text().includes('[IDSCANNER]')) {
+                                        console.log(`      🖥️ [BROWSER-W${workerId}] ${msg.text()}`);
+                                    }
+                                });
 
+                                try {
+                                    await page.goto('https://www.zzmall.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                    await page.waitForTimeout(2000);
+                                    try {
+                                        const cookieBtn = await page.$('#onesignal-slidedown-cancel-button, button:has-text("Aceitar"), .cookie-accept-button');
+                                        if (cookieBtn) {
+                                            console.log(`      🍪 [ZZMALL-W${workerId}] Aceitando cookies/notificações...`);
+                                            await cookieBtn.click();
+                                        }
+                                    } catch (e) { }
+                                    await page.mouse.wheel(0, 300);
+                                    await page.waitForTimeout(3000);
+                                } catch (e) {
+                                    console.log(`      ⚠️ [ZZMALL-W${workerId}] Falha no warmup: ${e.message}`);
+                                }
+
+                                console.log(`      🔎 [ZZMALL-W${workerId}] Tentando API de busca direta para ID ${item.id}...`);
+                                try {
+                                    const apiUrl = `https://www.zzmall.com.br/arezzocoocc/v2/marketplacezz/products/search?query=${item.id}&fields=FULL`;
+                                    const targetId = item.id;
+
+                                    const productUrl = await page.evaluate(async ({ url, id }) => {
+                                        try {
+                                            const resp = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'include' });
+                                            if (resp.ok) {
+                                                const data = await resp.json();
+                                                const count = data.products ? data.products.length : 0;
+                                                if (count > 0) {
+                                                    const match = data.products.find(p => (p.code && p.code.includes(id)) || (p.url && p.url.includes(id)) || (p.legacySKU && p.legacySKU.includes(id)));
+                                                    return match ? match.url : null;
+                                                }
+                                            }
+                                        } catch (e) {}
+                                        return null;
+                                    }, { url: apiUrl, id: targetId });
+
+                                    if (productUrl) {
+                                        const finalUrl = `https://www.zzmall.com.br${productUrl}`;
+                                        console.log(`      🚀 [ZZMALL-W${workerId}] API encontrou URL: ${finalUrl}. Navegando...`);
+                                        await page.goto(finalUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                        await page.waitForTimeout(5000);
+                                        const checkNow = page.url();
+                                        isPaginaValida = checkNow.includes('/p') || checkNow.includes('/produto');
+                                    }
+                                } catch (err) {
+                                }
+
+                                if (!isPaginaValida) {
+                                    const searchUrl = config.searchUrl(item.id);
+                                    try {
+                                        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                        console.log(`      ⏳ [ZZMALL-W${workerId}] Esperando 10s para busca...`);
+                                        await page.waitForTimeout(10000);
+                                        const urlCheck = page.url();
+                                        isPaginaValida = urlCheck.includes('/p') || urlCheck.includes('/produto') || urlCheck.includes('/search/');
+                                    } catch (e) {}
+                                }
+
+                                if (!isPaginaValida) {
+                                    console.log(`      ⚠️ [ZZMALL-W${workerId}] API falhou. Iniciando fluxo HUMAN-LIKE...`);
+                                    try {
+                                        await page.goto('https://www.zzmall.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                        await page.waitForTimeout(2000 + Math.random() * 3000);
+                                        const searchInput = await page.$('input.inner-input[placeholder="Buscar"]');
+                                        if (searchInput) {
+                                            const box = await searchInput.boundingBox();
+                                            if (box) {
+                                                await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+                                                await page.mouse.down();
+                                                await page.mouse.up();
+                                            } else {
+                                                await searchInput.click();
+                                            }
+                                            await page.waitForTimeout(500 + Math.random() * 500);
+                                            await page.keyboard.down('Control');
+                                            await page.keyboard.press('A');
+                                            await page.keyboard.up('Control');
+                                            await page.keyboard.press('Backspace');
+                                            for (const char of item.id) {
+                                                await page.keyboard.type(char, { delay: 100 + Math.random() * 200 });
+                                            }
+
+                                            console.log(`      ⏳ [ZZMALL-W${workerId}] Aguardando overlay...`);
+                                            const overlaySelector = '.search-results__products__item__link, a[href*="/p/"]';
+                                            try {
+                                                await page.waitForSelector(overlaySelector, { timeout: 15000 });
+                                                await page.waitForTimeout(1500);
+                                                const results = await page.$$(overlaySelector);
+                                                let clicked = false;
+                                                for (const res of results) {
+                                                    const href = await res.getAttribute('href');
+                                                    const text = await res.innerText();
+                                                    if (href && (href.includes(item.id) || href.toLowerCase().includes(item.id.toLowerCase()))) {
+                                                        await res.click();
+                                                        clicked = true;
+                                                        break;
+                                                    }
+                                                    if (text && text.includes(item.id)) {
+                                                        await res.click();
+                                                        clicked = true;
+                                                        break;
+                                                    }
+                                                }
+                                                if (clicked) await page.waitForTimeout(6000);
+                                            } catch (err) {
+                                                await page.keyboard.press('Enter');
+                                                await page.waitForTimeout(10000);
+                                            }
+                                        }
+                                    } catch (e) {}
+                                }
+                            }
+
+                            let finalPageUrl = page.url();
+                            let isProductPage = finalPageUrl.includes('/p') || finalPageUrl.includes('/produto');
+
+                            if (!isProductPage) {
+                                const isLikelySearch = finalPageUrl.includes('/search/') || finalPageUrl.includes('/busca/') || finalPageUrl.includes('_q=') || finalPageUrl.includes('map=ft') || finalPageUrl.toLowerCase().includes(item.id.toLowerCase());
+                                if (isLikelySearch) {
+                                    console.log(`      🖱️ [${storeName.toUpperCase()}-W${workerId}] Tentando clicar no ID ${item.id}...`);
+                                    const selector = config.productLinkSelector || 'a[href*="/p/"], a[href*="/produto/"]';
+                                    const itemFound = await page.evaluate(({ sel, targetId }) => {
+                                        const anchors = Array.from(document.querySelectorAll(sel));
+                                        const bestMatch = anchors.find(a => a.href.toLowerCase().includes(targetId.toLowerCase()));
+                                        const a = bestMatch || anchors[0];
+                                        if (a) {
+                                            a.click();
+                                            return true;
+                                        }
+                                        return false;
+                                    }, { sel: selector, targetId: item.id });
+                                    if (itemFound) {
+                                        await page.waitForTimeout(5000);
+                                        finalPageUrl = page.url();
+                                        isProductPage = finalPageUrl.includes('/p') || finalPageUrl.includes('/produto');
+                                    }
+                                }
+                            }
+
+                            if (!isProductPage) {
+                                isProductPage = await page.evaluate(() => {
+                                    return !!document.querySelector('.codigo_produto, .productReference, .vtex-product-identifier');
+                                });
+                            }
+
+                            if (!isProductPage) {
+                                const notFound = await page.evaluate(() => {
+                                    if (!document.body) return false;
+                                    const text = document.body.innerText || '';
+                                    return text.includes('Nenhum produto foi encontrado') || text.includes('NÃO ENCONTRAMOS O QUE VOCÊ BUSCOU');
+                                });
+
+                                if (notFound) {
+                                    console.log(`   ❌ [W${workerId}] Produto ${item.id} não disponível.`);
+                                    stats.notFound++;
+                                    continue;
+                                }
+
+                                const selector = config.productLinkSelector || 'a[href*="/p"]';
+                                const href = await page.evaluate((sel) => {
+                                    const a = document.querySelector(sel);
+                                    return a ? a.href : null;
+                                }, selector);
+
+                                const currentUrlBeforeHref = page.url();
+                                const isLikelySearch = currentUrlBeforeHref.includes('/search/') || currentUrlBeforeHref.includes('/busca/') || currentUrlBeforeHref.includes('_q=') || currentUrlBeforeHref.includes('map=ft');
+
+                                if (!currentUrlBeforeHref.includes('/p') && !currentUrlBeforeHref.includes('/produto') && !isLikelySearch) {
+                                    console.log(`   ❌ [${storeName.toUpperCase()}-W${workerId}] Abortando: Landing page inválida.`);
+                                    continue;
+                                }
+                            }
+
+                            if (storeName === 'zzmall') {
+                                const pageId = await page.evaluate(() => {
+                                    const refEl = document.querySelector('.vtex-product-identifier, .productReference');
+                                    if (!refEl) return '';
+                                    return (refEl.innerText || '').trim();
+                                });
+
+                                if (pageId && !pageId.toLowerCase().includes(item.id.toLowerCase()) && !item.id.toLowerCase().includes(pageId.toLowerCase())) {
+                                    console.log(`   ❌ [ZZMALL-W${workerId}] ID Errado na página: Encontrou ${pageId} mas queria ${item.id}.`);
+                                    continue;
+                                }
+                            }
+
+                            if (storeName === 'dressto') product = await parseProductDressTo(page, page.url());
+                            else if (storeName === 'kju') product = await parseProductKJU(page, page.url());
+                            else if (storeName === 'live') product = await parseProductLive(page, page.url());
+                            else if (storeName === 'zzmall') product = await parseProductZZMall(page, page.url());
+
+                            if (product) {
+                                product.loja = storeName;
+                                product.brand = storeName === 'dressto' ? 'DRESS' : storeName.toUpperCase();
+                                product.favorito = !!item.isFavorito;
+                                product.novidade = !!item.novidade;
+                                product.bazar = !!item.bazar;
+                                product.isBazar = product.bazar;
+                                product.bazarFavorito = !!item.bazarFavorito;
+
+                                const driveId = item.driveId || item.id;
+                                if (driveId) {
+                                    product.id = driveId;
+                                } else {
+                                    product.id = product.id || item.id;
+                                }
+
+                                if (item.driveUrl) {
+                                    product.imagePath = item.driveUrl;
+                                    product.imageUrl = item.driveUrl;
+                                }
+
+                                collectedProducts.push(product);
+                                stats.found++;
+                                if (collectedProducts.length >= quota) {
+                                    isQuotaReached = true;
+                                    break;
+                                }
+                            }
                         }
+                    } catch (err) {
+                        console.error(`   ❌ [W${workerId}] Erro no ID ${item.id}: ${err.message}`);
+                        stats.errors++;
                     }
-
-                } catch (err) {
-                    console.error(`   ❌ Erro no ID ${item.id}: ${err.message}`);
-                    stats.errors++;
+                    await page.waitForTimeout(1000);
                 }
-                await page.waitForTimeout(1000);
+            } catch (globalErr) {
+                console.error(`❌ Erro crítico no Worker ${workerId} ${storeName}:`, globalErr.message);
+            } finally {
+                if (ownsPage && typeof page.close === 'function') await page.close();
             }
-        } catch (globalErr) {
-            console.error(`❌ Erro crítico no ID Scanner ${storeName}:`, globalErr.message);
-        } finally {
-            if (ownsPage) await page.close();
+        };
+
+        console.log(`🚀 Iniciando ${Math.min(idBasedItems.length, CONCURRENCY_LIMIT)} workers simultâneos (Generic-${storeName})...`);
+        const workers = [];
+        for (let i = 0; i < Math.min(idBasedItems.length, CONCURRENCY_LIMIT); i++) {
+            workers.push(worker(i + 1));
         }
+
+        await Promise.all(workers);
     }
 
     if (storeName === 'live' && nameBasedItems.length > 0) {

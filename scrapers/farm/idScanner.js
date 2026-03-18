@@ -67,14 +67,15 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                         // Tenta múltiplas APIs para encontrar o produto
                         const apiQueries = [
                             `ft=${id}`,
-                            `fq=alternativeId_RefId:${id}`,
-                            `fq=productId:${id}`
+                            `fq=productId:${id}`,
+                            `fq=skuId:${id}`,
+                            `fq=alternativeId_RefId:${id}`
                         ];
 
                         let productData = null;
                         for (const query of apiQueries) {
                             try {
-                                const apiUrl = `https://www.farmrio.com.br/api/catalog_system/pub/products/search?${query}`;
+                                 const apiUrl = encodeURI(`https://www.farmrio.com.br/api/catalog_system/pub/products/search?${query}`);
                                 const response = await page.goto(apiUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
                                 let json = [];
                                 try {
@@ -84,8 +85,22 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                                     try { json = JSON.parse(text); } catch (e2) { }
                                 }
 
-                                if (json && json.length > 0) {
-                                    productData = json[0];
+                                 if (json && (Array.isArray(json) ? json.length > 0 : (json && typeof json === 'object' && Object.keys(json).length > 0))) {
+                                    // Algumas APIs VTEX retornam arrays aninhados [ [ {...} ] ] ou objetos com chaves numéricas { "0": {...} }
+                                    productData = json;
+                                    while (productData && typeof productData === 'object' && (
+                                        (Array.isArray(productData) && productData.length > 0) || 
+                                        (!productData.productName && Object.keys(productData).length === 1 && Object.keys(productData)[0] === '0')
+                                    )) {
+                                        productData = Array.isArray(productData) ? productData[0] : productData['0'];
+                                    }
+                                    
+                                    // Validação final: se chegamos em algo que não é objeto ou não tem nome, ignore
+                                    if (!productData || typeof productData !== 'object' || !productData.productName) {
+                                        productData = null;
+                                        continue; 
+                                    }
+                                    
                                     console.log(`      ✅ [API] ID ${id} encontrado via ${query.split('=')[0]}`);
                                     break;
                                 }
@@ -267,11 +282,19 @@ function fastParseFromApi(productData, isFavorito = false) {
     if (!productData) return { error: 'Dados da API vazios' };
 
     const name = productData.productName || '';
-    const urlLower = String(productData.link || '').toLowerCase();
     const nameLower = name.toLowerCase();
+    
+    // Fallback para URL se o link estiver ausente (muito comum em buscas fq=)
+    let urlLower = String(productData.link || '').toLowerCase();
+    if (!urlLower && productData.linkText) {
+        urlLower = `https://www.farmrio.com.br/${productData.linkText}/p`;
+    } else if (!urlLower && productData.productReference) {
+        urlLower = `https://www.farmrio.com.br/${productData.productReference}/p`;
+    }
 
-    if (!name || !urlLower) {
-        return { error: 'Nome ou Link ausente na API', isSoftError: true };
+    if (!name) {
+        console.log(`      ⚠️ [FastAPI] Nome ausente. Data: ${JSON.stringify(productData).substring(0, 200)}...`);
+        return { error: 'Nome ausente na API', isSoftError: true };
     }
 
     // 1. FILTRO ANTI-INFANTIL (Fábula / Bento / Teen / Mini / Kids)

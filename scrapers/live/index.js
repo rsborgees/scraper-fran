@@ -34,7 +34,7 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
         console.log(`   🔗 Navegando para: ${targetUrl}`);
 
         await page.goto(targetUrl, {
-            waitUntil: 'networkidle2',
+            waitUntil: 'domcontentloaded',
             timeout: 60000
         });
 
@@ -227,7 +227,7 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
 
 async function parseProductLive(page, url) {
     try {
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 45000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await sleep(4000 + Math.random() * 2000); // Increased wait time with human random delay
 
         const data = await page.evaluate(() => {

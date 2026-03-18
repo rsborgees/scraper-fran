@@ -135,8 +135,9 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                             store = defaultStore;
                         }
 
-                        // 🔥 [FIX] Se não detectou loja mas tem "Bazar" e o ID parece da Farm (6 dígitos)
-                        if (!store && isBazar && /^\d{5,7}$/.test(mainId)) {
+                        // 🔥 [FIX] Se não detectou loja mas o ID parece da Farm (5 a 7 dígitos)
+                        // A Farm é a loja principal, então assumimos que IDs puros (ex: 355028) são dela
+                        if (!store && /^\d{5,7}$/.test(mainId)) {
                             store = 'farm';
                         }
 
