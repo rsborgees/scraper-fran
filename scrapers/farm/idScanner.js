@@ -214,6 +214,13 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                     finalProduct.isBazar = !!item.bazar;
                     finalProduct.bazarFavorito = !!item.bazarFavorito;
 
+                    // O Bazar recebe 10% extra em cima do preço já com desconto
+                    if (finalProduct.bazar && finalProduct.precoAtual > 0) {
+                        const novoPreco = parseFloat((finalProduct.precoAtual * 0.90).toFixed(2));
+                        console.log(`🎉 [PROMO BAZAR] Aplicando 10% off extra: De R$${finalProduct.precoAtual} para R$${novoPreco}`);
+                        finalProduct.precoAtual = novoPreco;
+                    }
+
                     finalProduct.url = appendQueryParams(finalProduct.url, { utm_campaign: "7B1313" });
                     finalProduct.loja = 'farm';
                     if (item.driveId) finalProduct.id = item.driveId; // Use verbatim Drive ID (e.g. 355028)
