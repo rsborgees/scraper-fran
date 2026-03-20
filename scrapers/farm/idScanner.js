@@ -75,7 +75,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                         let productData = null;
                         for (const query of apiQueries) {
                             try {
-                                 const apiUrl = encodeURI(`https://www.farmrio.com.br/api/catalog_system/pub/products/search?${query}`);
+                                const apiUrl = encodeURI(`https://www.farmrio.com.br/api/catalog_system/pub/products/search?${query}`);
                                 const response = await page.goto(apiUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
                                 let json = [];
                                 try {
@@ -85,22 +85,22 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                                     try { json = JSON.parse(text); } catch (e2) { }
                                 }
 
-                                 if (json && (Array.isArray(json) ? json.length > 0 : (json && typeof json === 'object' && Object.keys(json).length > 0))) {
+                                if (json && (Array.isArray(json) ? json.length > 0 : (json && typeof json === 'object' && Object.keys(json).length > 0))) {
                                     // Algumas APIs VTEX retornam arrays aninhados [ [ {...} ] ] ou objetos com chaves numéricas { "0": {...} }
                                     productData = json;
                                     while (productData && typeof productData === 'object' && (
-                                        (Array.isArray(productData) && productData.length > 0) || 
+                                        (Array.isArray(productData) && productData.length > 0) ||
                                         (!productData.productName && Object.keys(productData).length === 1 && Object.keys(productData)[0] === '0')
                                     )) {
                                         productData = Array.isArray(productData) ? productData[0] : productData['0'];
                                     }
-                                    
+
                                     // Validação final: se chegamos em algo que não é objeto ou não tem nome, ignore
                                     if (!productData || typeof productData !== 'object' || !productData.productName) {
                                         productData = null;
-                                        continue; 
+                                        continue;
                                     }
-                                    
+
                                     console.log(`      ✅ [API] ID ${id} encontrado via ${query.split('=')[0]}`);
                                     break;
                                 }
@@ -132,7 +132,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                                 itemHasError = true;
                                 continue;
                             }
-                            
+
                             // If it's not a soft error, continue the loop (skip item)
                             if (!fastProduct.isSoftError) continue;
                         }
@@ -214,10 +214,11 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                     finalProduct.isBazar = !!item.bazar;
                     finalProduct.bazarFavorito = !!item.bazarFavorito;
 
-                    // O Bazar recebe 10% extra em cima do preço já com desconto
-                    if (finalProduct.bazar && finalProduct.precoAtual > 0) {
+                    // O Bazar recebe 10% off caso NÃO HOUVER DESCONTO (Preço Original == Preço Atual)
+                    // (A regra genérica já desconta 10% para roupas sem promo, isso garante que ACESSÓRIOS/OUTROS do Bazar também recebam)
+                    if (finalProduct.bazar && finalProduct.precoOriginal === finalProduct.precoAtual && finalProduct.precoAtual > 0) {
                         const novoPreco = parseFloat((finalProduct.precoAtual * 0.90).toFixed(2));
-                        console.log(`🎉 [PROMO BAZAR] Aplicando 10% off extra: De R$${finalProduct.precoAtual} para R$${novoPreco}`);
+                        console.log(`🎉 [PROMO BAZAR] Aplicando 10% off (Bazar sem promo): De R$${finalProduct.precoAtual} para R$${novoPreco}`);
                         finalProduct.precoAtual = novoPreco;
                     }
 
@@ -290,7 +291,7 @@ function fastParseFromApi(productData, isFavorito = false) {
 
     const name = productData.productName || '';
     const nameLower = name.toLowerCase();
-    
+
     // Fallback para URL se o link estiver ausente (muito comum em buscas fq=)
     let urlLower = String(productData.link || '').toLowerCase();
     if (!urlLower && productData.linkText) {
