@@ -44,13 +44,20 @@ function getPriorityScore(item, history = {}) {
     // 0. Bazar Priority (Absolute priority for this feature)
     if (item.bazar || item.bazarFavorito) score += 10000;
 
-    // 1. Weekly Coverage (Absolute Priority: everything in Drive must be sent during the week)
+    // 1. Weekly Coverage & Rotation
     if (history[normId]) {
         const lastSentMs = history[normId].timestamp;
         const daysSinceLastSent = (now - lastSentMs) / (1000 * 60 * 60 * 24);
+        
+        // Priority for items not sent in the last 7 days
         if (daysSinceLastSent >= 7) score += 5000;
+        else {
+            // Rotation Score: Reward items that were sent longer ago (linear up to 5000 over 7 days)
+            // This ensures that even within 7 days, we have a clear preference for the "oldest" sent items.
+            score += Math.floor(Math.min(4999, daysSinceLastSent * 714));
+        }
     } else {
-        // Se nunca foi enviado, também é prioridade de cobertura semanal
+        // Se nunca foi enviado, também é prioridade de cobertura semanal (máxima)
         score += 5000;
     }
 
@@ -129,11 +136,18 @@ async function runAllScrapers(overrideQuotas = null) {
 
                 driveItemsByStore.farm.forEach(item => {
                     const normId = normalizeId(item.id);
-                    // Se já existe, damos preferência se o novo for favorito
+                    // Se já existe, damos preferência para Favoritos e depois para Bazar
                     if (uniqueFarmItems.has(normId)) {
                         const existing = uniqueFarmItems.get(normId);
+                        // Prioridade 1: Favorito
                         if (!existing.isFavorito && item.isFavorito) {
                             uniqueFarmItems.set(normId, item);
+                        } 
+                        // Prioridade 2: Bazar (se nenhum é favorito ou se o novo também é favorito)
+                        else if (!existing.bazar && item.bazar) {
+                            if (!existing.isFavorito || item.isFavorito) {
+                                uniqueFarmItems.set(normId, item);
+                            }
                         }
                     } else {
                         uniqueFarmItems.set(normId, item);
@@ -141,11 +155,12 @@ async function runAllScrapers(overrideQuotas = null) {
                 });
 
                 let farmDriveItems = Array.from(uniqueFarmItems.values()).filter(item => {
-                    // EXCLUSÃO: Favoritos e Novidades são apenas para o Job das 05h
-                    if (item.isFavorito || item.novidade || item.favorito || item.isNovidade) return false;
+                    // EXCLUSÃO: Favoritos e Novidades são apenas para o Job das 05h (EXCETO Bazar)
+                    if ((item.isFavorito || item.novidade || item.favorito || item.isNovidade) && !item.bazar) return false;
 
-                    // Farm Drive: 48h (2 dias)
-                    return !isDuplicate(normalizeId(item.id), { force: false, maxAgeHours: 48 }, item.preco);
+                    // Farm Drive: 48h (2 dias).
+                    const maxAge = 48; // Reverted same-day allowed for Bazar (User request)
+                    return !isDuplicate(normalizeId(item.id), { force: item.isFavorito, maxAgeHours: maxAge }, item.preco);
                 });
 
                 // Fallback: se o pool de 48h ficou vazio (comum no servidor que roda 15x/dia),
@@ -169,8 +184,8 @@ async function runAllScrapers(overrideQuotas = null) {
                     const normals = farmDriveItems.filter(i => !i.bazar).sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history));
 
                     // Intercalar para garantir que o 'farmQuota' pegue de ambos
-                    // Priorizamos NO MÁXIMO 3 bazares no pool. O resto TEM que ser preenchido pelos Normais.
-                    const maxBazars = 3;
+                    // Aumentar o pool de Bazar para 15. Bazar fica muito sem estoque, então precisamos testar mais peças para achar 1 válida.
+                    const maxBazars = 15;
                     const limitedBazars = bazars.slice(0, maxBazars);
 
                     const sortedFarmDriveItems = [];
@@ -180,7 +195,7 @@ async function runAllScrapers(overrideQuotas = null) {
                     while (rIdx < normals.length || bIdx < limitedBazars.length) {
                         if (rIdx < normals.length) sortedFarmDriveItems.push(normals[rIdx++]);
                         if (rIdx < normals.length) sortedFarmDriveItems.push(normals[rIdx++]); // 2 normais
-                        if (bIdx < limitedBazars.length) sortedFarmDriveItems.push(limitedBazars[bIdx++]); // 1 bazar até acabar os 3
+                        if (bIdx < limitedBazars.length) sortedFarmDriveItems.push(limitedBazars[bIdx++]); // 1 bazar até acabar o pool
                     }
 
                     console.log(`📊 [FARM] Totais no Drive: ${bazars.length} Bazar (Usando máx ${maxBazars}), ${normals.length} Regular.`);
@@ -211,13 +226,15 @@ async function runAllScrapers(overrideQuotas = null) {
                 // =================================================================
                 // 🚗 DRIVE-FIRST FOR OTHER STORES (Dressto, KJU, ZZMall, Live)
                 // =================================================================
-                const otherStores = ['kju', 'zzmall', 'live'];
+                const otherStores = ['kju', 'zzmall'];
                 // require ja no topo
 
                 for (const store of otherStores) {
                     // Removemos novidades e favoritos para o job horário
                     const items = (driveItemsByStore[store] || []).filter(item => {
-                        return !item.isFavorito && !item.novidade && !item.favorito && !item.isNovidade;
+                        // Relaxed for Bazar too
+                        if ((item.isFavorito || item.novidade || item.favorito || item.isNovidade) && !item.bazar) return false;
+                        return true;
                     });
 
                     if (items.length > 0) {
@@ -271,9 +288,9 @@ async function runAllScrapers(overrideQuotas = null) {
                     console.log(`🔍 [DRESSTO] Iniciando Drive-First (${dressItems.length} itens)...`);
 
                     let candidates = dressItems.filter(item => {
-                        if (item.isFavorito || item.novidade || item.favorito || item.isNovidade) return false;
+                        if ((item.isFavorito || item.novidade || item.favorito || item.isNovidade) && !item.bazar) return false;
                         const finalId = item.driveId || item.id;
-                        return !isDuplicate(finalId, { force: false, maxAgeHours: 48 });
+                        return !isDuplicate(finalId, { force: item.isFavorito, maxAgeHours: 48 });
                     });
 
                     // Passo 2: Fallback se pool for pequeno (Aceita repetição de 24h para qualquer uno)
@@ -413,7 +430,7 @@ async function runAllScrapers(overrideQuotas = null) {
         const remainingQuotaLive = Math.max(0, quotas.live - driveCountLive);
 
         // 2. LIVE Special Handling (Sets)
-        if (remainingQuotaLive > 0) {
+        if (false && remainingQuotaLive > 0) {
             try {
                 const { scrapeLive } = require('./scrapers/live');
                 let products = await scrapeLive(remainingQuotaLive, false, context);
@@ -493,9 +510,16 @@ async function runAllScrapers(overrideQuotas = null) {
                     // Marcamos esses candidatos com a flag driveExhausted
                     const exhaustedWithFlags = driveFillCandidates.map(item => ({ ...item, driveExhausted: true }));
 
-                    // Agrupar candidatos por loja para processar o gap harmoniosamente
+                    // Filter out non-bazar duplicates if any somehow slipped through (defensive)
+                    // But for Bazar we definitely want them in the filler too.
+                    const finalCandidates = exhaustedWithFlags.filter(item => {
+                        if (item.bazar) return true;
+                        return !isDuplicate(normalizeId(item.id), { maxAgeHours: 24 });
+                    });
+
+                    // Agrupar candidatos por loja
                     const candidatesByStore = {};
-                    exhaustedWithFlags.forEach(item => {
+                    finalCandidates.forEach(item => {
                         if (!candidatesByStore[item.store]) candidatesByStore[item.store] = [];
                         candidatesByStore[item.store].push(item);
                     });
@@ -625,6 +649,7 @@ async function runAllScrapers(overrideQuotas = null) {
         console.log('\n📊 [Orchestrator] Concluindo Distribuição. Verificando Flag Bazar:');
         distributedProducts.forEach(p => {
             console.log(`   🔸 ${p.nome} (${p.id}): Bazar=${!!p.bazar} | isBazar=${!!p.isBazar}`);
+            // Removed `[BAZAR]` appending, as N8N uses the `bazar: true` boolean property.
         });
 
         // ======= NOVO REQUERIDO PELO USUÁRIO: RESUMO FINAL ORGANIZADO =======

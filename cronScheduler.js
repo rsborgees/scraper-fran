@@ -252,7 +252,7 @@ async function runScheduledScraping() {
 
     try {
         // 1. Executa todos os scrapers
-        const allProducts = await runAllScrapers();
+        const allProducts = await runAllScrapers({ farm: 5, dressto: 0, kju: 0, live: 0, zzmall: 0 });
 
         console.log('\n' + '='.repeat(60));
         console.log('📊 RESULTADO DO SCRAPING');
