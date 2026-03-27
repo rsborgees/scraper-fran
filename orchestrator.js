@@ -131,6 +131,20 @@ async function runAllScrapers(overrideQuotas = null) {
                     if (items.length > 0) console.log(`   ${store.toUpperCase()}: ${items.length} itens`);
                 });
 
+                // --- NOVO: REGRA 15% DRESS TO ---
+                const totalDressToInDrive = driveItemsByStore.dressto.length;
+                if (totalDressToInDrive > 0) {
+                    const dynamicDressGoal = Math.max(15, Math.ceil(totalDressToInDrive * 0.15));
+                    console.log(`⚙️ [DynamicQuota] Dress To Pool: ${totalDressToInDrive} itens. Meta 15%: ${dynamicDressGoal}`);
+                    
+                    const { setDynamicGoals } = require('./dailyStatsManager');
+                    setDynamicGoals({ stores: { dressto: dynamicDressGoal } });
+                    
+                    // Atualiza a quota local para refletir a nova meta se necessário
+                    const newRemaining = require('./dailyStatsManager').getRemainingQuotas();
+                    quotas.dressto = Math.min(20, newRemaining.stores.dressto); 
+                }
+
                 // FARM Drive Items (único scraper de ID implementado por enquanto)
                 const uniqueFarmItems = new Map();
 
@@ -430,7 +444,7 @@ async function runAllScrapers(overrideQuotas = null) {
         const remainingQuotaLive = Math.max(0, quotas.live - driveCountLive);
 
         // 2. LIVE Special Handling (Sets)
-        if (false && remainingQuotaLive > 0) {
+        if (remainingQuotaLive > 0) {
             try {
                 const { scrapeLive } = require('./scrapers/live');
                 let products = await scrapeLive(remainingQuotaLive, false, context);

@@ -36,7 +36,7 @@ const QUOTAS = {
 // Mesmo que haja gap (Farm/Dress não encheu), as lojas menores NÃO absorvem o slack.
 const RUN_CAPS = {
     farm: 8,      // 7 normal + 1 bazar (já controlado separadamente)
-    dressto: 3,
+    dressto: 6,   // Aumentado de 3 para 6 para permitir atingir a meta de 15% da base
     kju: 1,
     live: 2,
     zzmall: 1
@@ -156,7 +156,7 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
     const secondaryStores = ['zzmall'];
     const storeTargets = {
         farm: 7,
-        dressto: 2,
+        dressto: 4, // Aumentado de 2 para 4 para dar mais peso na distribuição
         kju: 1,
         live: 1
     };

@@ -21,10 +21,15 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
     let browser, page;
     let shouldCloseBrowser = false;
 
-    if (parentBrowser) {
+    const hasLiveProxy = !!process.env.LIVE_PROXY_SERVER;
+    
+    if (parentBrowser && !hasLiveProxy) {
         browser = parentBrowser;
         page = await browser.newPage();
     } else {
+        if (hasLiveProxy && parentBrowser) {
+            console.log('   🌐 LIVE_PROXY_SERVER detectado. Ignorando browser compartilhado para usar proxy dedicado.');
+        }
         ({ browser, page } = await initPuppeteer());
         shouldCloseBrowser = true;
     }
@@ -205,18 +210,7 @@ async function scrapeLive(quota = 6, ignoreDuplicates = false, parentBrowser = n
 
     const output = [];
     for (const p of finalSelection.slice(0, quota)) {
-        console.log(`🖼️  [Final] Baixando imagem: ${p.nome}...`);
-        try {
-            let imgResult;
-            if (p.imageUrl) {
-                imgResult = await processImageDirect(p.imageUrl, 'LIVE', p.id);
-            } else {
-                imgResult = await processProductUrl(p.url, p.id);
-            }
-            if (imgResult.status === 'success' && imgResult.cloudinary_urls?.length) {
-                p.imagePath = imgResult.cloudinary_urls[0];
-            }
-        } catch (e) { console.error(e.message); }
+        console.log(`⏭️  [Final] Download de imagem ignorado (Live usa apenas imagens do Drive): ${p.nome}`);
 
         markAsSent([p.id]);
         output.push(p);

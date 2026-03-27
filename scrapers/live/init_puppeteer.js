@@ -19,6 +19,10 @@ async function initPuppeteer() {
     const mode = isHeadless ? 'HEADLESS (Server Safe)' : 'VISUAL';
     console.log(`🚀 Iniciando Puppeteer-extra (MODO ${mode}) com Stealth Plugin...`);
 
+    const proxyServer = process.env.LIVE_PROXY_SERVER || process.env.PROXY_SERVER;
+    const proxyUser = process.env.LIVE_PROXY_USERNAME || process.env.PROXY_USERNAME;
+    const proxyPass = process.env.LIVE_PROXY_PASSWORD || process.env.PROXY_PASSWORD;
+
     const args = [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -35,9 +39,9 @@ async function initPuppeteer() {
         '--disable-web-security'
     ];
 
-    if (process.env.PROXY_SERVER) {
-        console.log(`🌐 Usando Proxy: ${process.env.PROXY_SERVER}`);
-        args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+    if (proxyServer) {
+        console.log(`🌐 Usando Proxy (${process.env.LIVE_PROXY_SERVER ? 'LIVE' : 'Global'}): ${proxyServer}`);
+        args.push(`--proxy-server=${proxyServer}`);
     }
 
     const browser = await puppeteer.launch({
@@ -49,10 +53,11 @@ async function initPuppeteer() {
 
     const page = await browser.newPage();
 
-    if (process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
+    if (proxyUser && proxyPass) {
+        console.log(`🔐 Autenticando Proxy: ${proxyUser}`);
         await page.authenticate({
-            username: process.env.PROXY_USERNAME,
-            password: process.env.PROXY_PASSWORD
+            username: proxyUser,
+            password: proxyPass
         });
     }
 
@@ -61,6 +66,41 @@ async function initPuppeteer() {
     console.log(`🕵️ User-Agent configurado: ${randomUserAgent}`);
 
     await page.setViewport({ width: 1366, height: 768 });
+
+    // 🚫 BLOQUEIO DE IMAGENS: Economiza dados do proxy interceptando requests de mídia
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+        const resourceType = req.resourceType();
+        const url = req.url();
+
+        // Bloqueia imagens, fontes e mídia (maior consumo de dados)
+        if (['image', 'media', 'font'].includes(resourceType)) {
+            req.abort();
+            return;
+        }
+
+        // Bloqueia domínios de tracking/analytics que não são necessários
+        const blockedDomains = [
+            'googletagmanager.com',
+            'connect.facebook.net',
+            'static.zdassets.com',
+            'static.trustvox.com.br',
+            'advcake.dataroyal.com.br',
+            'c.usebeon.io',
+            'search-api.production.usebeon.io',
+            'sgtm.liveoficial.com.br',
+            'vfr-v3-production.sizebay.technology',
+        ];
+
+        if (blockedDomains.some(domain => url.includes(domain))) {
+            req.abort();
+            return;
+        }
+
+        req.continue();
+    });
+
+    console.log('🚫 Bloqueio de imagens/tracking ativado (economia de proxy).');
 
     // Extra stealth tactics just in case (though StealthPlugin handles most of this)
     await page.evaluateOnNewDocument(() => {

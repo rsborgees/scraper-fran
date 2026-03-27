@@ -95,28 +95,41 @@ function recordSentItems(products) {
     console.log(`📊 Stats atualizadas: Total Hoje ${stats.total}/165`);
 }
 
+// Metas Diárias
+let DAILY_GOALS = {
+    total: 165,
+    stores: {
+        farm: 115,
+        dressto: 22,
+        kju: 14,   // máx 1 por run
+        live: 12,
+        zzmall: 3  // máx 3 por dia
+    },
+    farmCategories: {
+        vestido: 70, // ~60% of 115
+        macacão: 29, // ~25% of 115
+        outros: 16   // ~15% of 115
+    }
+};
+
+/**
+ * Permite atualizar as metas dinamicamente (ex: 15% da base da Dress To)
+ */
+function setDynamicGoals(newGoals) {
+    if (newGoals.stores) {
+        DAILY_GOALS.stores = { ...DAILY_GOALS.stores, ...newGoals.stores };
+    }
+    if (newGoals.total) {
+        DAILY_GOALS.total = newGoals.total;
+    }
+    console.log(`🎯 [StatsManager] Metas atualizadas: DRESS=${DAILY_GOALS.stores.dressto}, FARM=${DAILY_GOALS.stores.farm}`);
+}
+
 /**
  * Retorna as quotas restantes para o dia
  */
 function getRemainingQuotas() {
     const stats = resetIfNewDay();
-
-    // Metas Diárias
-    const DAILY_GOALS = {
-        total: 165,
-        stores: {
-            farm: 115,
-            dressto: 22,
-            kju: 14,   // máx 1 por run
-            live: 12,
-            zzmall: 3  // máx 3 por dia
-        },
-        farmCategories: {
-            vestido: 70, // ~60% of 115
-            macacão: 29, // ~25% of 115
-            outros: 16   // ~15% of 115
-        }
-    };
 
     return {
         total: Math.max(0, DAILY_GOALS.total - stats.total),
@@ -140,5 +153,6 @@ module.exports = {
     saveStats,
     resetIfNewDay,
     recordSentItems,
-    getRemainingQuotas
+    getRemainingQuotas,
+    setDynamicGoals
 };
