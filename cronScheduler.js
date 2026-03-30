@@ -129,19 +129,22 @@ async function saveToSupabase(products) {
 
     try {
         const dataToInsert = products.map(p => ({
-            id_referencia: p.id,
+            id: p.id,
             nome: p.nome,
             loja: p.loja || p.brand,
-            preco: p.preco,
-            url: p.url || p.link,
-            imagem_url: p.imageUrl,
-            payload: p,
-            timestamp: new Date().toISOString()
+            precooriginal: p.precoOriginal || p.preco,
+            precodesconto: p.precoAtual || p.preco,
+            linkproduto: p.url || p.link,
+            imgloja: p.imageUrl,
+            favorito: p.isFavorito || p.favorito || false,
+            novidade: p.isNovidade || p.novidade || false,
+            bazar: p.isBazar || p.bazar || false,
+            sent_at: new Date().toISOString()
         }));
 
         const { error } = await supabase
             .from('produtos')
-            .upsert(dataToInsert, { onConflict: 'id_referencia' });
+            .upsert(dataToInsert, { onConflict: 'id' });
 
         if (error) throw error;
         console.log(`✅ ${products.length} itens salvos/atualizados no Supabase.`);
@@ -261,16 +264,10 @@ async function runDailyDriveSyncJob() {
             const stores = [...new Set(targetItems.map(item => item.store))];
 
             for (const store of stores) {
-                const storeQuota = runQuotas[store] || 0;
-                if (storeQuota <= 0) {
-                    console.log(`   ⏭️ [${store.toUpperCase()}] Cota dinâmica atingida no Supabase. Pulando.`);
-                    continue;
-                }
-
-                const storeItems = targetItems.filter(item => item.store === store).slice(0, storeQuota);
+                const storeItems = targetItems.filter(item => item.store === store);
                 if (storeItems.length === 0) continue;
 
-                console.log(`\n🔍 Processando ${storeItems.length} itens da ${store.toUpperCase()} (Cota: ${storeQuota})...`);
+                console.log(`\n🔍 Processando ${storeItems.length} itens da ${store.toUpperCase()} (Drive Sync)...`);
 
                 let scraped;
                 if (store === 'farm') {
