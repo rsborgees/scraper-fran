@@ -133,50 +133,6 @@ function calculateDynamicQuotas(currentStats) {
     return sessionQuotas;
 }
 
-/**
- * Salva os produtos no Supabase
- */
-async function saveToSupabase(products) {
-    if (!products || products.length === 0) return;
-
-    try {
-        const now = new Date();
-        const isoString = now.toISOString();
-        const brDate = now.toLocaleDateString('pt-BR');
-        const brTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const horaBR = `${brDate} ${brTime}`;
-
-        const dataToInsertRaw = products.map(p => ({
-            codigo: String(p.id),
-            nome: p.nome,
-            loja: p.loja || p.brand,
-            precooriginal: Math.round(p.precoOriginal || p.preco || 0),
-            precodesconto: Math.round(p.precoAtual || p.preco || 0),
-            linkproduto: p.url || p.link,
-            imgloja: p.imageUrl,
-            favorito: p.isFavorito || p.favorito || false,
-            novidade: p.isNovidade || p.novidade || false,
-            bazar: p.isBazar || p.bazar || false,
-            sent_at: isoString,
-            hora_entrada: horaBR,
-            hora_envio: horaBR // Também preenchemos este campo por redundância
-        }));
-
-        // Remove duplicatas de codigo no payload de envio (Supabase proíbe múltiplos matches no mesmo upsert)
-        const uniqueDataMap = new Map();
-        dataToInsertRaw.forEach(item => uniqueDataMap.set(item.codigo, item));
-        const dataToInsert = Array.from(uniqueDataMap.values());
-
-        const { error } = await supabase
-            .from('produtos')
-            .upsert(dataToInsert, { onConflict: 'codigo' });
-
-        if (error) throw error;
-        console.log(`✅ ${products.length} itens salvos/atualizados no Supabase.`);
-    } catch (error) {
-        console.error('❌ Erro ao salvar no Supabase:', error.message);
-    }
-}
 
 /**
  * Envia o resumo diário de promoções (Job das 09h)
@@ -340,8 +296,7 @@ async function runDailyDriveSyncJob() {
 
                 console.log('✅ Drive Sync Job enviado com sucesso para o webhook!');
 
-                // 7. Salvar no Supabase
-                await saveToSupabase(results);
+
             }
 
         } finally {
@@ -455,10 +410,7 @@ async function runScheduledScraping() {
         // 2. Envia para webhook
         const webhookResult = await sendToWebhook(allProducts);
 
-        // 3. Salvar no Supabase
-        if (allProducts.length > 0) {
-            await saveToSupabase(allProducts);
-        }
+
 
         console.log('\n' + '='.repeat(60));
         console.log('✅ SCRAPING AGENDADO CONCLUÍDO');
@@ -564,8 +516,7 @@ module.exports = {
     runDailyDriveSyncJob,
     runManualTest,
     sendToWebhook,
-    getSupabaseStats,
-    saveToSupabase
+    getSupabaseStats
 };
 
 // 2. Self-execution logic
