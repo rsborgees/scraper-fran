@@ -2,7 +2,14 @@ const cron = require('node-cron');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { runAllScrapers } = require('./orchestrator');
+const { supabase } = require('./supabaseClient');
+
+// We'll require orchestrator later to avoid circular dependencies during initialization
+let orchestrator = null;
+function getOrchestrator() {
+    if (!orchestrator) orchestrator = require('./orchestrator');
+    return orchestrator;
+}
 const { checkFarmTimer } = require('./scrapers/farm/timer_check');
 const { supabase } = require('./supabaseClient');
 
@@ -438,6 +445,7 @@ async function runScheduledScraping() {
         const runQuotas = calculateDynamicQuotas(currentStats);
 
         // 1. Executa todos os scrapers com quotas dinâmicas
+        const { runAllScrapers } = getOrchestrator();
         const allProducts = await runAllScrapers(runQuotas);
 
         console.log('\n' + '='.repeat(60));
@@ -551,15 +559,18 @@ async function runManualTest() {
 }
 
 // Exporta funções
+// 1. Define exports first
 module.exports = {
     setupDailySchedule,
     runScheduledScraping,
     runDailyDriveSyncJob,
     runManualTest,
-    sendToWebhook
+    sendToWebhook,
+    getSupabaseStats,
+    saveToSupabase
 };
 
-// Se executado diretamente, inicia o agendador
+// 2. Self-execution logic
 if (require.main === module) {
     const args = process.argv.slice(2);
 
@@ -586,9 +597,3 @@ if (require.main === module) {
         });
     }
 }
-module.exports = {
-    getSupabaseStats,
-    saveToSupabase,
-    runDailyDriveSyncJob,
-    runScheduledScraping
-};

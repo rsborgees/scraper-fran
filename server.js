@@ -190,7 +190,12 @@ app.listen(PORT, () => {
     console.log(`Scraper Dashboard rodando em http://localhost:${PORT}`);
 
     // Inicia o agendador automático (7h da manhã) ao subir o servidor
-    setupDailySchedule();
+    if (typeof setupDailySchedule === 'function') {
+        setupDailySchedule();
+    } else {
+        console.error('\n❌ ERRO CRÍTICO: setupDailySchedule não foi carregado corretamente do cronScheduler.js');
+        console.log('Tipo detectado:', typeof setupDailySchedule);
+    }
 
     // DEBUG: Informar caminho exato para configurar volume
     const path = require('path');
