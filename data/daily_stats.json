@@ -1,11 +1,11 @@
 {
   "date": "2026-03-31",
-  "total": 33,
+  "total": 60,
   "stores": {
     "farm": 16,
-    "dressto": 6,
+    "dressto": 27,
     "kju": 6,
-    "live": 3,
+    "live": 9,
     "zzmall": 2
   },
   "farmCategories": {

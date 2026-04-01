@@ -25,15 +25,11 @@ const DRIVE_SYNC_WEBHOOK_URL = "https://n8n-francalheira.vlusgm.easypanel.host/w
  */
 async function getSupabaseStats() {
     try {
-        const now = new Date();
-        const isoToday = now.toISOString().split('T')[0];
-        const brToday = now.toLocaleDateString('pt-BR'); // "DD/MM/YYYY"
-
-        // Busca multicamada: sent_at ISO OU hora_entrada formatada BR
+        // O usuário confirmou que TODOS os itens no banco atualmente são de hoje.
+        // Portanto, ignoramos filtros de data e contamos o total geral por loja.
         const { data, error } = await supabase
             .from('produtos')
-            .select('loja, bazar, favorito, novidade, hora_entrada, sent_at')
-            .or(`sent_at.gte.${isoToday},hora_entrada.ilike.%${brToday}%`);
+            .select('loja, bazar, favorito, novidade');
 
         if (error) throw error;
 
@@ -75,7 +71,7 @@ function calculateDynamicQuotas(currentStats) {
         zzmall: Math.round(GLOBAL_TARGET * 0.02)   // 3
     };
 
-    console.log(`\n📊 [DynamicBalancing] Estado atual vs Meta (165):`);
+    console.log(`\n📊 [DynamicBalancing] Estado atual (Bank/Supabase) vs Meta (165):`);
     const needed = {};
     let totalNeeded = 0;
 
@@ -88,49 +84,64 @@ function calculateDynamicQuotas(currentStats) {
         console.log(`   🔸 ${store.toUpperCase().padEnd(7)}: ${String(current).padStart(3)} / ${target} (Falta: ${diff})`);
     });
 
-    // Se precisamos de menos de 11 itens para fechar os 158, usamos o totalNeeded como limite da run
-    // Caso contrário, usamos o padrão de ~11 itens por run distribuídos proporcionalmente ao gap
     const SESSION_CAPACITY = 11;
     const sessionQuotas = {};
 
+    if (totalNeeded === 0) {
+        console.log('✅ [DynamicBalancing] Meta diária global atingida.');
+        return { farm: 0, dressto: 0, kju: 0, live: 0, zzmall: 0 };
+    }
+
     if (totalNeeded <= SESSION_CAPACITY) {
-        // Se falta pouco, tenta pegar exatamente o que falta
         Object.assign(sessionQuotas, needed);
     } else {
-        // Distribui a capacidade da sessão (11) entre as lojas que mais precisam
-        // Prioridade simples para as lojas com maiores gaps
-        const sortedStores = Object.keys(needed).sort((a, b) => needed[b] - needed[a]);
+        // Distribui a capacidade da sessão (11) priorizando quem tem o MAIOR GAP PERCENTUAL
+        // Isso garante que lojas menores que estão longe da meta (ex: Dress 10/25) 
+        // sejam priorizadas sobre Farm que já está quase lá (ex: 110/116).
+        const priorityScore = (store) => {
+            const current = currentStats.stores[store] || 0;
+            const target = IDEAL_TARGETS[store];
+            if (target === 0) return 0;
+            return (target - current) / target; // Gap percentual (0.0 a 1.0)
+        };
+
+        const sortedByGap = Object.keys(needed)
+            .filter(s => needed[s] > 0)
+            .sort((a, b) => priorityScore(b) - priorityScore(a));
+
         let distributed = 0;
         
-        // 1ª passada: Garante pelo menos 1 para cada loja que precisa (se houver vaga)
-        sortedStores.forEach(store => {
-            if (needed[store] > 0 && distributed < SESSION_CAPACITY) {
+        // 1ª passada: Garante presença das lojas com maior gap
+        for (const store of sortedByGap) {
+            if (distributed < SESSION_CAPACITY) {
                 sessionQuotas[store] = (sessionQuotas[store] || 0) + 1;
                 distributed++;
             }
-        });
+        }
 
-        // 2ª passada: Distribui o resto proporcionalmente ou por prioridade de gap
+        // 2ª passada: Preenche o resto da sessão mantendo a prioridade
         let idx = 0;
         while (distributed < SESSION_CAPACITY) {
-            const store = sortedStores[idx % sortedStores.length];
+            const store = sortedByGap[idx % sortedByGap.length];
             if (sessionQuotas[store] < needed[store]) {
                 sessionQuotas[store]++;
                 distributed++;
-            } else if (idx > sortedStores.length * 2) {
-                break; // Proteção contra loop
             }
             idx++;
+            if (idx > 100) break; // Safety
         }
     }
 
-    // Garantir que todas as chaves existam para o orchestrator
+    // Garantir que todas as chaves existam
     ['farm', 'dressto', 'kju', 'live', 'zzmall'].forEach(s => {
         if (sessionQuotas[s] === undefined) sessionQuotas[s] = 0;
     });
 
-    console.log(`🎯 [DynamicBalancing] Meta para esta execução: `, sessionQuotas);
-    return sessionQuotas;
+    console.log(`🎯 [DynamicBalancing] Meta sugerida para esta execução: `, sessionQuotas);
+    return { sessionQuotas, remaining: { 
+        total: totalNeeded,
+        stores: needed 
+    }};
 }
 
 
@@ -189,7 +200,7 @@ async function runDailyDriveSyncJob() {
             return;
         }
 
-        const runQuotas = calculateDynamicQuotas(currentStats);
+        const { sessionQuotas, remaining } = calculateDynamicQuotas(currentStats);
 
         const { getExistingIdsFromDrive } = require('./driveManager');
         const { scrapeSpecificIds } = require('./scrapers/farm/idScanner');
@@ -300,7 +311,7 @@ async function runDailyDriveSyncJob() {
             }
 
         } finally {
-            await browser.close();
+            if (browser) await browser.close();
         }
 
     } catch (error) {
@@ -396,11 +407,11 @@ async function runScheduledScraping() {
             return { products: [], webhook: { success: false, reason: 'limit_reached' } };
         }
 
-        const runQuotas = calculateDynamicQuotas(currentStats);
+        const { sessionQuotas, remaining } = calculateDynamicQuotas(currentStats);
 
         // 1. Executa todos os scrapers com quotas dinâmicas
         const { runAllScrapers } = getOrchestrator();
-        const allProducts = await runAllScrapers(runQuotas);
+        const allProducts = await runAllScrapers(sessionQuotas, remaining);
 
         console.log('\n' + '='.repeat(60));
         console.log('📊 RESULTADO DO SCRAPING');

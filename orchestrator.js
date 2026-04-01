@@ -80,13 +80,14 @@ function getPriorityScore(item, history = {}) {
     return score;
 }
 
-async function runAllScrapers(overrideQuotas = null) {
+async function runAllScrapers(overrideQuotas = null, remainingOverrides = null) {
     const allProducts = [];
 
-    // 1. Obter quotas restantes do dia
-    const remaining = getRemainingQuotas();
+    // 1. Obter quotas restantes do dia (Priorizando overrides do Supabase se fornecidos)
+    const remaining = remainingOverrides || getRemainingQuotas();
 
     // 2. Definir meta para ESTA execução (Total ~11 para chegar em 165)
+    // Se temos overrideQuotas, usamos o total delas como meta
     const itemsPerRun = 11;
 
     // Distribuição proporcional baseada no que FALTA para o dia
@@ -145,7 +146,10 @@ async function runAllScrapers(overrideQuotas = null) {
                     
                     // Atualiza a quota local para refletir a nova meta se necessário
                     const newRemaining = require('./dailyStatsManager').getRemainingQuotas();
-                    quotas.dressto = Math.min(2, newRemaining.stores.dressto); 
+                    // Removido o limite duro de 2 para permitir que Dress To recupere o atraso
+                    quotas.dressto = (overrideQuotas && overrideQuotas.dressto !== undefined) 
+                        ? overrideQuotas.dressto 
+                        : Math.min(10, newRemaining.stores.dressto); 
                 }
 
                 // FARM Drive Items (único scraper de ID implementado por enquanto)
@@ -263,7 +267,7 @@ async function runAllScrapers(overrideQuotas = null) {
 
                         // Usa o RUN_CAP do distributionEngine como quota: o scanner para cedo quando atingido
                         let currentQuota = RUN_CAPS[store] || quotas[store] || 1;
-                        if (store === 'dressto') currentQuota = Math.min(2, quotas.dressto || 2);
+                        if (store === 'dressto') currentQuota = Math.min(10, (quotas.dressto || 2) + 2);
 
                         const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, store, currentQuota);
 
@@ -335,7 +339,8 @@ async function runAllScrapers(overrideQuotas = null) {
                         .sort((a, b) => getPriorityScore(b, history) - getPriorityScore(a, history))
                         .slice(0, 50);
 
-                    const dressQuota = Math.min(2, quotas.dressto || 2);
+                    // Aumentamos a chamada do scraper (+2 de gordura) garantindo margem para perda no filtro
+                    const dressQuota = Math.min(10, (quotas.dressto || 2) + 2);
                     const { products: scrapedItems, stats } = await scrapeSpecificIdsGeneric(context, limitedItems, 'dressto', dressQuota, { maxAgeHours: 24 }); // Permite fallback de 24h
 
                     scrapedItems.forEach(p => {

@@ -36,7 +36,7 @@ const QUOTAS = {
 // Mesmo que haja gap (Farm/Dress não encheu), as lojas menores NÃO absorvem o slack.
 const RUN_CAPS = {
     farm: 8,      // 7 normal + 1 bazar (já controlado separadamente)
-    dressto: 3,   // Reduzido para 3 (meta 2 + 1 slack)
+    dressto: 5,   // Reduzido para 5 (meta de recuperação)
     kju: 1,
     live: 2,
     zzmall: 1
