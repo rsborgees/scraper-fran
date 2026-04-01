@@ -101,6 +101,23 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
         zzmall: 0
     };
 
+    // Contadores desta rodada por categoria
+    const categoryCounts = {
+        'vestido': 0,
+        'macacão': 0,
+        'blusa': 0,
+        'outros': 0
+    };
+
+    function getCatItem(p) {
+        if (!p) return 'outros';
+        const str = (p.categoria || p.category || p.nome || '').toLowerCase();
+        if (str.includes('vestido')) return 'vestido';
+        if (str.includes('macacão') || str.includes('macacao')) return 'macacão';
+        if (str.includes('blusa') || str.includes('camisa') || str.includes('t-shirt') || str.includes('top') || str.includes('cropped')) return 'blusa';
+        return 'outros';
+    }
+
     // Auxiliar: Verifica se loja ainda tem saldo no dia
     const hasDailySaldo = (store) => {
         const rem = dailyRemaining && dailyRemaining.stores && dailyRemaining.stores[store] !== undefined
@@ -137,6 +154,7 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
             const s = (selectedBazar.brand || selectedBazar.loja || '').toLowerCase();
             const storeKey = (s === 'dress' || s === 'dressto') ? 'dressto' : s;
             if (roundCounts[storeKey] !== undefined) roundCounts[storeKey]++;
+            categoryCounts[getCatItem(selectedBazar)]++;
         }
     }
 
@@ -174,13 +192,24 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
                 if (selectedIds.has(p.id)) return false;
                 const s = (p.loja || p.brand || '').toLowerCase();
                 const storeKey = (s === 'dress' || s === 'dressto') ? 'dressto' : s;
-                return storeKey === store;
+                if (storeKey !== store) return false;
+
+                // REGRA: Blusa nunca pode ser enviada em maior quantidade que macacão ou vestido
+                const cat = getCatItem(p);
+                if (cat === 'blusa') {
+                    if (categoryCounts['blusa'] >= categoryCounts['vestido'] || categoryCounts['blusa'] >= categoryCounts['macacão']) {
+                        return false; 
+                    }
+                }
+                
+                return true;
             });
 
             if (nextItem) {
                 finalSelection.push(nextItem);
                 selectedIds.add(nextItem.id);
                 roundCounts[store]++;
+                categoryCounts[getCatItem(nextItem)]++;
                 addedThisRound = true;
             }
         }
@@ -190,31 +219,32 @@ function distributeLinks(allProducts, runQuotas = {}, dailyRemaining = {}) {
     // 3. FILLER (Se ainda houver gap, usa Favoritos de qualquer loja ou Bazar extras)
     if (finalSelection.length < TOTAL_LINKS) {
         let gap = TOTAL_LINKS - finalSelection.length;
-        const fillerPool = allProducts.filter(p => {
-            if (selectedIds.has(p.id)) return false;
+        
+        for (const p of allProducts) {
+            if (finalSelection.length >= TOTAL_LINKS) break;
+            if (selectedIds.has(p.id)) continue;
+
             const s = (p.brand || p.loja || '').toLowerCase();
             const storeKey = (s === 'dress' || s === 'dressto') ? 'dressto' : s;
-            if (!hasDailySaldo(storeKey)) return false;
-            if (roundCounts[storeKey] >= (RUN_CAPS[storeKey] || 999)) return false; // Cap absoluto por run
+            if (!hasDailySaldo(storeKey)) continue;
+            if (roundCounts[storeKey] >= (RUN_CAPS[storeKey] || 999)) continue; // Cap absoluto por run
 
             // REGRAS FILLER FARM PRE-FILTER:
-            // 1. Não pega mais Bazar se já enviou 1
-            if (storeKey === 'farm' && (p.bazar || p.isBazar) && roundCounts.farm >= 1) return false;
-            // 2. Nunca pega favorito/novidade no horário (mesmo se sobrar vaga)
-            if (storeKey === 'farm' && (p.favorito || p.isFavorito || p.novidade || p.isNovidade)) return false;
+            if (storeKey === 'farm' && (p.bazar || p.isBazar) && roundCounts.farm >= 1) continue;
+            if (storeKey === 'farm' && (p.favorito || p.isFavorito || p.novidade || p.isNovidade)) continue;
 
-            return true;
-        });
-
-        // Agora fillerPool já tem só itens válidos e aceitos
-        fillerPool.slice(0, gap).forEach(p => {
-            const s = (p.brand || p.loja || '').toLowerCase();
-            const storeKey = (s === 'dress' || s === 'dressto') ? 'dressto' : s;
+            const cat = getCatItem(p);
+            if (cat === 'blusa') {
+                if (categoryCounts['blusa'] >= categoryCounts['vestido'] || categoryCounts['blusa'] >= categoryCounts['macacão']) {
+                    continue; 
+                }
+            }
 
             finalSelection.push(p);
             selectedIds.add(p.id);
             if (roundCounts[storeKey] !== undefined) roundCounts[storeKey]++;
-        });
+            categoryCounts[cat]++;
+        }
     }
 
     return shuffle(finalSelection);
