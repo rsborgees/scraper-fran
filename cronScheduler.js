@@ -3,6 +3,8 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { supabase } = require('./supabaseClient');
+const { recordSentItems } = require('./dailyStatsManager');
+
 
 // We'll require orchestrator later to avoid circular dependencies during initialization
 let orchestrator = null;
@@ -207,7 +209,7 @@ async function runDailyDriveSyncJob() {
         const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
         const { initBrowser } = require('./browser_setup');
         const { buildFarmMessage, buildDressMessage, buildKjuMessage, buildLiveMessage, buildZzMallMessage, buildMessageForProduct } = require('./messageBuilder');
-        const { loadHistory, normalizeId } = require('./historyManager');
+        const { loadHistory, normalizeId, markAsSent } = require('./historyManager');
 
         const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
         if (!folderId) throw new Error('GOOGLE_DRIVE_FOLDER_ID não configurado');
@@ -306,6 +308,12 @@ async function runDailyDriveSyncJob() {
                 });
 
                 console.log('✅ Drive Sync Job enviado com sucesso para o webhook!');
+                
+                // 7. Marcar como enviados e registrar estatísticas
+                const allIds = results.map(p => p.id);
+                markAsSent(allIds);
+                recordSentItems(results);
+                console.log(`✅ [DriveSync] ${results.length} itens marcados como enviados no histórico.`);
 
 
             }
