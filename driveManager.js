@@ -75,7 +75,7 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
         do {
             const res = await drive.files.list({
                 q: `'${folderId}' in parents and trashed = false`,
-                fields: 'nextPageToken, files(id, name, createdTime)',
+                fields: 'nextPageToken, files(id, name, createdTime, modifiedTime)',
                 spaces: 'drive',
                 pageToken: pageToken,
                 pageSize: 1000
@@ -89,6 +89,7 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                     fileCount++;
                     const nameLower = file.name.toLowerCase();
                     const createdTime = file.createdTime;
+                    const modifiedTime = file.modifiedTime;
 
                     // Regra: "o nome do arquivo é o codigo da roupa e o nome da loja"
                     // Conjunto: IDs separados por ESPAÇO. Ex: "351693 350740"
@@ -164,7 +165,8 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                                 inverno: isInverno,
                                 altoInverno: isAltoInverno,
                                 store: store,
-                                createdTime: createdTime
+                                createdTime: createdTime,
+                                modifiedTime: modifiedTime
                             });
                         }
                     } else if (nameLower.includes('live')) {
@@ -213,7 +215,8 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                                 altoInverno: isAltoInverno,
                                 store: 'live',
                                 searchByName: true, // Flag to trigger name search
-                                createdTime: createdTime
+                                createdTime: createdTime,
+                                modifiedTime: modifiedTime
                             });
                             console.log(`   ✨ [Drive] Item Live detectado por nome: "${cleanName}"`);
                         }

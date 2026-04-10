@@ -60,11 +60,17 @@ function getPriorityScore(item, history = {}) {
         score += 5000;
     }
 
-    // 2. Recent Modifications (Priority: most recent modifications in the last 7 days)
-    if (item.createdTime) {
-        const createdDate = new Date(item.createdTime);
-        const diffDays = (now - createdDate) / (1000 * 60 * 60 * 24);
-        if (diffDays < 7) score += 2000;
+    // 2. Recent Modifications/Additions (Priority: most recent activity in Drive)
+    const effectiveDate = item.modifiedTime || item.createdTime;
+    if (effectiveDate) {
+        const activityDate = new Date(effectiveDate);
+        const diffDays = (now - activityDate) / (1000 * 60 * 60 * 24);
+        
+        if (diffDays < 3) {
+            score += 15000; // Super priority for new/modified content (beats rotation)
+        } else if (diffDays < 7) {
+            score += 2000;  // Normal priority for relatively recent content
+        }
     }
 
     // 3. Novidades do Drive ou identificadas no site
