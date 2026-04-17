@@ -438,9 +438,9 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 product.brand = storeName === 'dressto' ? 'DRESS' : storeName.toUpperCase();
                                 product.favorito = !!item.isFavorito;
                                 product.novidade = !!item.novidade;
-                                product.bazar = !!item.bazar;
+                                product.bazar = !!(product.bazar || item.bazar);
                                 product.isBazar = product.bazar;
-                                product.bazarFavorito = !!item.bazarFavorito;
+                                product.bazarFavorito = !!(item.bazarFavorito || (product.bazar && product.favorito));
                                 product.verao = !!item.verao;
                                 product.altoVerao = !!item.altoVerao;
                                 product.inverno = !!item.inverno;

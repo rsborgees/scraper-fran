@@ -136,6 +136,12 @@ async function fetchViaVtexAPI(searchKey) {
         }
         */
 
+        // Detecção de Bazar pela API VTEX
+        let isBazar = false;
+        if (pApi.categories && pApi.categories.length > 0) {
+            isBazar = pApi.categories.some(c => c.toLowerCase().includes('bazar'));
+        }
+
         const result = {
             id: pApi.productReference || searchKey,
             nome: pApi.productName,
@@ -143,6 +149,7 @@ async function fetchViaVtexAPI(searchKey) {
             precoOriginal: comm.ListPrice || comm.Price,
             tamanhos: [...new Set(tamanhos)],
             categoria,
+            bazar: isBazar,
             url: pApi.link.startsWith('http') ? pApi.link : `https://www.dressto.com.br${pApi.link.startsWith('/') ? '' : '/'}${pApi.link}`,
             imageUrl: (item.images && item.images.length) ? item.images[0].imageUrl : null
         };
@@ -233,6 +240,16 @@ async function parseProductDressTo(page, url) {
             if (state) {
                 const productKey = Object.keys(state).find(k => k.startsWith('Product:'));
                 if (productKey) stateProduct = state[productKey];
+            }
+
+            // Detect Bazar from VTEX State
+            let isBazar = false;
+            if (stateProduct && stateProduct.categories) {
+                let catList = [];
+                if (Array.isArray(stateProduct.categories)) catList = stateProduct.categories;
+                else if (stateProduct.categories && stateProduct.categories.json) catList = stateProduct.categories.json;
+                
+                isBazar = catList.some(c => c.toLowerCase().includes('bazar'));
             }
 
             // Nome
@@ -406,6 +423,11 @@ async function parseProductDressTo(page, url) {
                             const pApi = json[0];
                             // Preenche dados faltantes
                             if (!nome) nome = pApi.productName;
+                            
+                            if (pApi.categories && pApi.categories.some(c => c.toLowerCase().includes('bazar'))) {
+                                isBazar = true;
+                            }
+
                             if (!categoria || categoria === 'outros') {
                                 const catRaw = (pApi.categories && pApi.categories.length) ? pApi.categories[0].toLowerCase() : '';
                                 if (catRaw.includes('vestido')) categoria = 'vestido';
@@ -463,6 +485,7 @@ async function parseProductDressTo(page, url) {
                 precoOriginal,
                 tamanhos: [...new Set(tamanhos)],
                 categoria,
+                bazar: isBazar,
                 url: window.location.href,
                 imageUrl
             };
