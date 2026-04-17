@@ -445,6 +445,7 @@ async function scrapeSpecificIdsGeneric(contextOrBrowser, driveItems, storeName,
                                 product.altoVerao = !!item.altoVerao;
                                 product.inverno = !!item.inverno;
                                 product.altoInverno = !!item.altoInverno;
+                                product.driveSize = item.driveSize || null;
 
                                 const driveId = item.driveId || item.id;
                                 if (driveId) {

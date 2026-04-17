@@ -112,7 +112,7 @@ function calculateDynamicQuotas(currentStats) {
             .sort((a, b) => priorityScore(b) - priorityScore(a));
 
         let distributed = 0;
-        
+
         // 1ª passada: Garante presença das lojas com maior gap
         for (const store of sortedByGap) {
             if (distributed < SESSION_CAPACITY) {
@@ -140,10 +140,12 @@ function calculateDynamicQuotas(currentStats) {
     });
 
     console.log(`🎯 [DynamicBalancing] Meta sugerida para esta execução: `, sessionQuotas);
-    return { sessionQuotas, remaining: { 
-        total: totalNeeded,
-        stores: needed 
-    }};
+    return {
+        sessionQuotas, remaining: {
+            total: totalNeeded,
+            stores: needed
+        }
+    };
 }
 
 
@@ -196,7 +198,7 @@ async function runDailyDriveSyncJob() {
         // 0. Verificar limite no Supabase (Filtrado por HOJE)
         const currentStats = await getSupabaseStats();
         console.log(`📊 [LimitCheck] Itens enviados hoje: ${currentStats.total}/160`);
-        
+
         if (currentStats.total >= 160) {
             console.log('⚠️ [LimitCheck] Meta diária de 160 peças já atingida. Job de 05h cancelado.');
             return;
@@ -245,43 +247,51 @@ async function runDailyDriveSyncJob() {
             return 0;
         });
 
-        // 4. Limite de 50 produtos
-        const targetItems = candidates.slice(0, 50);
-        console.log(`🎯 Selecionados ${targetItems.length} itens para rotação hoje (Priorizando inéditos/antigos).`);
-
-        // 5. Inicializar navegador
+        // 4. Inicializar navegador e resultados
         const { browser, context } = await initBrowser();
         const results = [];
+        const TARGET_GOAL = 50;
+        let candidatesOffset = 0;
 
         try {
-            // Agrupar por loja para processamento
-            const stores = [...new Set(targetItems.map(item => item.store))];
+            while (results.length < TARGET_GOAL && candidatesOffset < candidates.length) {
+                const remainingNeeded = TARGET_GOAL - results.length;
+                // Pegamos um lote maior (ex: 2x o necessário) para compensar itens sem estoque
+                const batchSize = Math.max(remainingNeeded * 2, 20); 
+                const currentBatch = candidates.slice(candidatesOffset, candidatesOffset + batchSize);
+                candidatesOffset += batchSize;
 
-            for (const store of stores) {
-                const storeItems = targetItems.filter(item => item.store === store);
-                if (storeItems.length === 0) continue;
+                if (currentBatch.length === 0) break;
 
-                console.log(`\n🔍 Processando ${storeItems.length} itens da ${store.toUpperCase()} (Drive Sync)...`);
+                console.log(`\n🔍 [Tentativa] Buscando mais ${remainingNeeded} itens (Analisando lote de ${currentBatch.length})...`);
 
-                let scraped;
-                if (store === 'farm') {
-                    // maxAgeHours: 0 para permitir repetição de itens já enviados em dias anteriores se necessário para atingir a meta
-                    scraped = await scrapeSpecificIds(context, storeItems, 999, { maxAgeHours: 0 });
-                } else {
-                    scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, 999, { maxAgeHours: 0 });
+                // Agrupar lote por loja
+                const stores = [...new Set(currentBatch.map(item => item.store))];
+                for (const store of stores) {
+                    if (results.length >= TARGET_GOAL) break;
+
+                    const storeItems = currentBatch.filter(item => item.store === store);
+                    console.log(`   - ${store.toUpperCase()}: ${storeItems.length} itens no lote.`);
+
+                    let scraped;
+                    if (store === 'farm') {
+                        scraped = await scrapeSpecificIds(context, storeItems, TARGET_GOAL - results.length, { maxAgeHours: 0 });
+                    } else {
+                        scraped = await scrapeSpecificIdsGeneric(context, storeItems, store, TARGET_GOAL - results.length, { maxAgeHours: 0 });
+                    }
+
+                    if (scraped.products && scraped.products.length > 0) {
+                        scraped.products.forEach(p => {
+                            if (!p.message) p.message = buildMessageForProduct(p);
+                            results.push(p);
+                        });
+                    }
                 }
 
-                if (scraped.products && scraped.products.length > 0) {
-                    scraped.products.forEach(p => {
-                        if (!p.message) {
-                            p.message = buildMessageForProduct(p);
-                        }
-                        results.push(p);
-                    });
-                }
+                console.log(`📊 Progresso: ${results.length}/${TARGET_GOAL} itens coletados.`);
             }
 
-            console.log(`\n📦 Total coletado para o Job das 05h: ${results.length} produtos.`);
+            console.log(`\n📦 Total final coletado para o Job das 05h: ${results.length} produtos.`);
 
             if (results.length > 0) {
                 // 6. Enviar para Webhook
@@ -308,7 +318,7 @@ async function runDailyDriveSyncJob() {
                 });
 
                 console.log('✅ Drive Sync Job enviado com sucesso para o webhook!');
-                
+
                 // 7. Marcar como enviados e registrar estatísticas
                 const allIds = results.map(p => p.id);
                 markAsSent(allIds);
@@ -409,7 +419,7 @@ async function runScheduledScraping() {
         // 0. Verificar limite e calcular quotas inteligentes (Filtrado por HOJE)
         const currentStats = await getSupabaseStats();
         console.log(`📊 [LimitCheck] Itens enviados hoje: ${currentStats.total}/160`);
-        
+
         if (currentStats.total >= 160) {
             console.log('⚠️ [LimitCheck] Meta diária de 160 peças atingida. Scraping cancelado.');
             return { products: [], webhook: { success: false, reason: 'limit_reached' } };

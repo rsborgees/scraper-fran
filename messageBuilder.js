@@ -29,11 +29,13 @@ function buildKjuMessage(produto) {
         priceLine = `Por *${formatPrice(produto.precoAtual)}* 🔥`;
     }
 
+    const driveSizeMsg = produto.driveSize ? `Meu (Fran) tamanho ideal: ${produto.driveSize}\n` : '';
+
     return `
 ⭕️ Farm na Kju 🤩‼️
 
 ${priceLine}
-
+${driveSizeMsg}
 ${produto.url}
 
 *Cód vendedora: ${SELLER_CODE}*
@@ -60,9 +62,11 @@ function buildDressMessage(p) {
         priceLine = `Por *${formatPrice(precoVal)}* 🔥`;
     }
 
+    const driveSizeMsg = p.driveSize ? `\n\nMeu (Fran) tamanho ideal: ${p.driveSize}` : '';
+
     return `
 ${p.nome}
-${sizes}
+${sizes}${driveSizeMsg}
 ${priceLine}
 
 + código de vendedora: 5KP4
@@ -98,8 +102,10 @@ function buildLiveMessage(products) {
         // Final link without UTM campaign as requested
         const link = p.url;
 
+        const driveSizeMsg = p.driveSize ? `\nMeu (Fran) tamanho ideal: ${p.driveSize}` : '';
+
         msg += `${p.nome}\n`;
-        msg += `${priceLine} ${sizes}\n`;
+        msg += `${priceLine} ${sizes}${driveSizeMsg}\n`;
         if (installments) msg += `${installments}\n`;
         msg += `\n${link}\n\n`;
     });
@@ -153,16 +159,19 @@ function buildFarmMessage(produto, timerData = null) {
             itemsMsg += `*${item.nome}* ${sizes} ${priceLine}\n${itemUrl}\n\n`;
         });
 
+        const driveSizeMsg = produto.driveSize ? `Meu (Fran) tamanho ideal: ${produto.driveSize}` : null;
+
         const parts = [
             progressiveHeader,
             itemsMsg.trim(),
+            driveSizeMsg,
             `Código de vendedora *${SELLER_CODE}*`,
             cupomText,
             `🌈*Vaga pra entrar no grupo:*`,
             LINKTREE
         ];
 
-        return parts.filter(p => p && p.trim() !== "").join('\n\n');
+        return parts.filter(p => p && (typeof p === 'string' ? p.trim() !== "" : true)).join('\n\n');
     }
 
     // 3. Lógica para Produto Único (Legado/Padrão)
@@ -177,10 +186,13 @@ function buildFarmMessage(produto, timerData = null) {
         priceLine = `*${formatPrice(produto.precoAtual)}* 🔥`;
     }
 
+    const driveSizeMsg = produto.driveSize ? `Meu (Fran) tamanho ideal: ${produto.driveSize}` : null;
+
     const parts = [
         progressiveHeader,
         produto.nome,
         sizes,
+        driveSizeMsg,
         priceLine,
         cupomText,
         `Código Vendedora ${SELLER_CODE}`,
@@ -189,7 +201,7 @@ function buildFarmMessage(produto, timerData = null) {
         LINKTREE
     ];
 
-    return parts.filter(p => p && p.trim() !== "").join('\n\n');
+    return parts.filter(p => p && (typeof p === 'string' ? p.trim() !== "" : true)).join('\n\n');
 }
 
 /**
@@ -201,12 +213,14 @@ function buildZzMallMessage(produto) {
         ? `De ~${formatPrice(produto.precoOriginal)}~ Por ${formatPrice(produto.precoAtual)}`
         : formatPrice(produto.precoAtual);
 
+    const driveSizeMsg = produto.driveSize ? `\n\nMeu (Fran) tamanho ideal: ${produto.driveSize}` : '';
+
     return `
 AREZZO, SCHÜTZ, ANACAPRI, VANS, VICENZA ❤️
 
 
 🏷️ use o voucher ZZCUPOM4452 para aplicar desconto
-
+${driveSizeMsg}
 
 ${priceLine}
 

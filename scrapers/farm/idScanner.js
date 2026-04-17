@@ -219,6 +219,7 @@ async function scrapeSpecificIds(contextOrBrowser, driveItems, quota = 999, opti
                     finalProduct.altoVerao = !!item.altoVerao;
                     finalProduct.inverno = !!item.inverno;
                     finalProduct.altoInverno = !!item.altoInverno;
+                    finalProduct.driveSize = item.driveSize || null;
 
                     finalProduct.url = appendQueryParams(finalProduct.url, { utm_campaign: "7B1313" });
                     finalProduct.loja = 'farm';

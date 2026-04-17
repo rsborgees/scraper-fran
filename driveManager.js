@@ -147,6 +147,10 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                             store = 'farm';
                         }
 
+                        // 📏 EXTRAÇÃO DE TAMANHO (Ex: "123456 P farm" -> P)
+                        const sizeMatch = file.name.match(/\b(PP|P|M|G|GG|G1|G2|G3)\b/i);
+                        const driveSize = sizeMatch ? sizeMatch[1].toUpperCase() : null;
+
                         if (store) {
                             items.push({
                                 id: mainId,
@@ -155,6 +159,7 @@ async function getExistingIdsFromDrive(folderId, defaultStore = null) {
                                 isSet: ids.length > 1,
                                 fileId: file.id,
                                 name: file.name,
+                                driveSize: driveSize, // Novo campo para o tamanho do modelo
                                 driveUrl: `https://drive.google.com/uc?export=download&id=${file.id}`,
                                 isFavorito: isFavorito,
                                 novidade: isNovidade,
@@ -271,10 +276,15 @@ async function findFileByProductId(folderId, productId) {
             // Link direto para download
             const driveUrl = `https://drive.google.com/uc?export=download&id=${file.id}`;
 
+            // 📏 EXTRAÇÃO DE TAMANHO
+            const sizeMatch = file.name.match(/\b(PP|P|M|G|GG|G1|G2|G3)\b/i);
+            const driveSize = sizeMatch ? sizeMatch[1].toUpperCase() : null;
+
             return {
                 id: productId,
                 fileId: file.id,
                 name: file.name,
+                driveSize: driveSize,
                 driveUrl: driveUrl
             };
         }
