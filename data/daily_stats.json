@@ -1,5 +1,5 @@
 {
-  "date": "2026-04-20",
+  "date": "2026-04-22",
   "total": 51,
   "stores": {
     "farm": 51,
@@ -9,9 +9,9 @@
     "zzmall": 0
   },
   "farmCategories": {
-    "vestido": 45,
-    "macacão": 0,
-    "outros": 6
+    "vestido": 33,
+    "macacão": 3,
+    "outros": 15
   },
   "bazarCount": 0
 }

@@ -8,6 +8,37 @@ const { recordSentItems } = require('./dailyStatsManager');
 // Arquivo de flag para rastrear a última execução do Drive Sync Job
 const DRIVE_SYNC_FLAG_FILE = path.join(__dirname, 'data', 'last_drive_sync.json');
 
+/**
+ * Retorna a data de hoje no fuso de Brasília (YYYY-MM-DD)
+ * Independente da configuração de locale do servidor.
+ */
+function getTodayBRTISO() {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    const [{ value: day }, , { value: month }, , { value: year }] = formatter.formatToParts(now);
+    return `${year}-${month}-${day}`;
+}
+
+/**
+ * Retorna a data de hoje no formato do banco (DD/MM/YYYY)
+ */
+function getTodayBRTString() {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+    const [{ value: day }, , { value: month }, , { value: year }] = formatter.formatToParts(now);
+    return `${day}/${month}/${year}`;
+}
+
 function getLastDriveSyncDate() {
     try {
         if (!fs.existsSync(DRIVE_SYNC_FLAG_FILE)) return null;
@@ -22,8 +53,12 @@ function markDriveSyncRan() {
     try {
         const dataDir = path.join(__dirname, 'data');
         if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-        const today = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).split('/').reverse().join('-');
-        fs.writeFileSync(DRIVE_SYNC_FLAG_FILE, JSON.stringify({ lastRunDate: today, lastRunTime: new Date().toISOString() }, null, 2));
+        const today = getTodayBRTISO();
+        fs.writeFileSync(DRIVE_SYNC_FLAG_FILE, JSON.stringify({ 
+            lastRunDate: today, 
+            lastRunTime: new Date().toISOString() 
+        }, null, 2));
+        console.log(`✅ [Flag] Drive Sync marcado como executado hoje: ${today}`);
     } catch (e) {
         console.error('⚠️  Erro ao marcar Drive Sync como executado:', e.message);
     }
@@ -51,11 +86,13 @@ const DRIVE_SYNC_WEBHOOK_URL = "https://n8n-francalheira.vlusgm.easypanel.host/w
  */
 async function getSupabaseStats() {
     try {
-        // O usuário confirmou que TODOS os itens no banco atualmente são de hoje.
-        // Portanto, ignoramos filtros de data e contamos o total geral por loja.
+        const today = getTodayBRTString();
+        console.log(`🔍 [Stats] Buscando produtos enviados em: ${today} (filtros por 'hora_entrada')`);
+
         const { data, error } = await supabase
             .from('produtos')
-            .select('loja, bazar, favorito, novidade');
+            .select('loja, bazar, favorito, novidade, hora_entrada')
+            .like('hora_entrada', `${today}%`); // Filtra apenas itens de HOJE
 
         if (error) throw error;
 
@@ -217,27 +254,16 @@ async function runDailyDriveSyncJob() {
     console.log('\n' + '='.repeat(60));
     console.log(`📂 DRIVE SYNC JOB INICIADO (05:00) - ${new Date().toLocaleString('pt-BR')}`);
     console.log('='.repeat(60) + '\n');
-
-    // Marca o job como executado ANTES de começar (evita execuções paralelas em catch-up)
-    markDriveSyncRan();
-
     try {
-        // 0. Verificar limite no Supabase (Filtrado por HOJE)
-        const currentStats = await getSupabaseStats();
-        console.log(`📊 [LimitCheck] Itens enviados hoje: ${currentStats.total}/160`);
-
-        if (currentStats.total >= 160) {
-            console.log('⚠️ [LimitCheck] Meta diária de 160 peças já atingida. Job de 05h cancelado.');
-            return;
-        }
-
-        const { sessionQuotas, remaining } = calculateDynamicQuotas(currentStats);
+        // NOTA: Para o Job de 5 AM, ignoramos o estado do banco conforme solicitado pelo usuário.
+        // O banco deve estar vazio nesse horário, permitindo o envio completo dos 50 itens.
+        console.log(`📊 [DriveSync] Iniciando processamento direto sem verificação de limite.`);
 
         const { getExistingIdsFromDrive } = require('./driveManager');
         const { scrapeSpecificIds } = require('./scrapers/farm/idScanner');
         const { scrapeSpecificIdsGeneric } = require('./scrapers/idScanner');
         const { initBrowser } = require('./browser_setup');
-        const { buildFarmMessage, buildDressMessage, buildKjuMessage, buildLiveMessage, buildZzMallMessage, buildMessageForProduct } = require('./messageBuilder');
+        const { buildMessageForProduct } = require('./messageBuilder');
         const { loadHistory, normalizeId, markAsSent } = require('./historyManager');
 
         const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -254,8 +280,13 @@ async function runDailyDriveSyncJob() {
 
         if (candidates.length === 0) {
             console.log('ℹ️ Nenhum favorito ou novidade encontrado para enviar.');
+            // Ainda assim marcamos como executado para não ficar tentando em loop no catch-up se o drive estiver vazio
+            markDriveSyncRan();
             return;
         }
+
+        // Marcar como executado agora que sabemos que há trabalho a fazer
+        markDriveSyncRan();
 
         // 3. Ordenação para Rotação (Inéditos primeiro, depois os mais antigos)
         candidates.forEach(item => {
@@ -532,17 +563,28 @@ function setupDailySchedule() {
     console.log('✅ Cron Jobs Iniciados! (Timezone: São Paulo)\n');
 
     // 🔁 CATCH-UP: Se o processo reiniciou depois das 05h e o job ainda não rodou hoje, executa agora
-    const nowBRT = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-    const currentHourBRT = nowBRT.getHours();
-    const todayBRT = nowBRT.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).split('/').reverse().join('-');
+    const todayBRT = getTodayBRTISO();
     const lastRunDate = getLastDriveSyncDate();
 
+    // Calcula hora atual em Brasília para o Catch-Up
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Sao_Paulo',
+        hour: 'numeric',
+        hour12: false
+    });
+    const currentHourBRT = parseInt(formatter.format(now));
+
+    console.log(`🕒 [SchedulerCheck] Agora: ${currentHourBRT}h BRT | Hoje: ${todayBRT} | Último Sync: ${lastRunDate}`);
+
     if (currentHourBRT >= 5 && lastRunDate !== todayBRT) {
-        console.log(`⚡ [CatchUp] Drive Sync não rodou hoje (${todayBRT}). Executando agora...`);
+        console.log(`⚡ [CatchUp] Drive Sync não rodou hoje (${todayBRT}). Agendando execução imediata...`);
         // Pequeno delay para o servidor terminar de inicializar
         setTimeout(() => runDailyDriveSyncJob().catch(e => console.error('❌ [CatchUp] Erro:', e.message)), 5000);
-    } else {
+    } else if (lastRunDate === todayBRT) {
         console.log(`✅ [CatchUp] Drive Sync já executou hoje (${lastRunDate}). Nada a fazer.`);
+    } else {
+        console.log(`⏲️ [CatchUp] Aguardando horário das 05h para Drive Sync.`);
     }
 
 }
@@ -587,7 +629,9 @@ module.exports = {
     runDailyDriveSyncJob,
     runManualTest,
     sendToWebhook,
-    getSupabaseStats
+    getSupabaseStats,
+    getTodayBRTISO,
+    getTodayBRTString
 };
 
 // 2. Self-execution logic
